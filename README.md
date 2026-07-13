@@ -2,7 +2,7 @@
 
 BatikCraft Studio adalah aplikasi desktop native berbasis Python dan Tkinter untuk membuat motif batik secara manual, melakukan batikfikasi objek, mengintegrasikan generative AI, serta menyiapkan motif untuk proses lisensi dan bidding melalui website BatikCraft.
 
-> Status: Milestone 1 — application foundation. Pengembangan dilakukan bertahap agar setiap modul dapat diuji, diperbaiki, dan disempurnakan menggunakan IBM Bob.
+> Status: Milestone 2A — project domain. Pengembangan dilakukan bertahap agar setiap modul dapat diuji, diperbaiki, dan disempurnakan menggunakan IBM Bob.
 
 ## Fokus Produk
 
@@ -20,7 +20,7 @@ Bidding, transaksi, dan pengelolaan lisensi dilakukan di website BatikCraft. Des
 
 ## Roadmap Bertahap
 
-### Milestone 1 — Application Foundation
+### Milestone 1 — Application Foundation ✅
 
 - struktur package Python;
 - shell aplikasi Tkinter;
@@ -32,14 +32,39 @@ Bidding, transaksi, dan pengelolaan lisensi dilakukan di website BatikCraft. Des
 
 ### Milestone 2 — Project and Workspace Core
 
-- membuat proyek baru;
-- model dokumen proyek;
-- canvas motif;
-- layer manager;
+#### Milestone 2A — Project Domain ✅
+
+- model proyek tervalidasi tanpa dependensi GUI;
+- metadata proyek dan schema version;
+- ukuran canvas dan warna latar;
+- layer descriptor dan transform non-destruktif;
+- add, update, remove, reorder, dan selection layer;
+- revision serta dirty-state tracking;
+- exception domain yang eksplisit;
+- unit test untuk invariant dan failure path.
+
+#### Milestone 2B — Project Serializer
+
+- format editable `.batikcraft` berbasis ZIP;
+- manifest `project.json`;
+- folder assets, masks, renders, dan metadata;
+- atomic save/open;
+- validasi archive dan perlindungan path traversal;
+- round-trip serta corrupted-file tests.
+
+#### Milestone 2C — Workspace Shell
+
+- New Project dan Open Project;
+- canvas motif kosong;
+- integrasi project domain ke aplikasi Tkinter;
+- dirty-project close confirmation.
+
+#### Milestone 2D — Layer Editing
+
 - import PNG/JPG;
 - select, move, scale, rotate, duplicate, dan delete;
-- undo/redo;
-- penyimpanan proyek editable `.batikcraft`.
+- visibility, lock, dan layer ordering;
+- undo/redo.
 
 ### Milestone 3 — Manual Motif Tools
 
@@ -151,6 +176,19 @@ atau:
 batikcraft-studio
 ```
 
+## Contoh Project Domain
+
+```python
+from batikcraft_studio.domain import Layer, Project
+
+project = Project.create("Flora Otomotif", "Balya Rochmadi")
+project.add_layer(Layer(name="Main Object"))
+
+assert project.is_dirty
+project.mark_saved()
+assert not project.is_dirty
+```
+
 ## Validasi
 
 ```bash
@@ -163,5 +201,6 @@ CI GitHub menjalankan kedua perintah tersebut pada setiap push dan pull request.
 ## Dokumentasi
 
 - `docs/ARCHITECTURE.md` — batas modul dan arah dependensi;
+- `docs/PROJECT_DOMAIN.md` — invariant dan API Milestone 2A;
 - `docs/BOB_PROMPTS.md` — prompt bertahap untuk IBM Bob;
 - `docs/BOB_DEVELOPMENT_LOG.md` — catatan kontribusi Bob dan hasil review.
