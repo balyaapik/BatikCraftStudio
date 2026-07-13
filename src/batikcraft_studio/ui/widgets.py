@@ -6,7 +6,7 @@ import tkinter as tk
 from collections.abc import Callable
 from tkinter import ttk
 
-from .icons import create_icon
+from .icons import create_icon, default_icon_color
 from .tooltip import ToolTip
 
 
@@ -22,7 +22,7 @@ def icon_button(
 ) -> ttk.Button:
     """Create an icon-only ttk button and keep its image alive."""
 
-    icon_color = color or ("#FFFFFF" if style.startswith("Rail") else "#2B2B2B")
+    icon_color = color or default_icon_color(icon, on_dark=style.startswith("Rail"))
     image = create_icon(parent, icon, size=size, color=icon_color)
     button = ttk.Button(parent, image=image, command=command, style=style, takefocus=True)
     button.image = image  # type: ignore[attr-defined]
