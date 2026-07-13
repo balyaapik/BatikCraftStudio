@@ -2,7 +2,7 @@
 
 BatikCraft Studio adalah aplikasi desktop native berbasis Python dan Tkinter untuk membuat motif batik secara manual, melakukan batikfikasi objek, mengintegrasikan generative AI, serta menyiapkan motif untuk proses lisensi dan bidding melalui website BatikCraft.
 
-> Status: tahap fondasi. Pengembangan dilakukan bertahap agar setiap modul dapat diuji, diperbaiki, dan disempurnakan menggunakan IBM Bob.
+> Status: Milestone 1 — application foundation. Pengembangan dilakukan bertahap agar setiap modul dapat diuji, diperbaiki, dan disempurnakan menggunakan IBM Bob.
 
 ## Fokus Produk
 
@@ -95,12 +95,11 @@ Bidding, transaksi, dan pengelolaan lisensi dilakukan di website BatikCraft. Des
 
 - Python 3.11+
 - Tkinter / ttk
-- Pillow
-- NumPy
-- OpenCV pada milestone pemrosesan citra
+- Pillow pada milestone image workspace
+- NumPy dan OpenCV pada milestone pemrosesan citra
 - PyTorch atau ONNX Runtime pada milestone AI
-- Requests/HTTPX untuk integrasi website
-- Pytest untuk pengujian
+- Requests/HTTPX pada milestone integrasi website
+- Pytest dan Ruff untuk validasi
 
 ## Prinsip Pengembangan
 
@@ -113,4 +112,56 @@ Bidding, transaksi, dan pengelolaan lisensi dilakukan di website BatikCraft. Des
 
 ## Menjalankan Aplikasi
 
-Petunjuk lengkap akan tersedia setelah fondasi Milestone 1 ditambahkan.
+Pastikan Python 3.11 atau lebih baru tersedia dan instal Tkinter melalui distribusi Python/OS apabila belum disertakan.
+
+```bash
+python -m venv .venv
+```
+
+Aktifkan virtual environment.
+
+Windows PowerShell:
+
+```powershell
+.venv\Scripts\Activate.ps1
+```
+
+Linux/macOS:
+
+```bash
+source .venv/bin/activate
+```
+
+Instal aplikasi dan alat pengembangan:
+
+```bash
+python -m pip install --upgrade pip
+python -m pip install -e ".[dev]"
+```
+
+Jalankan aplikasi:
+
+```bash
+python -m batikcraft_studio
+```
+
+atau:
+
+```bash
+batikcraft-studio
+```
+
+## Validasi
+
+```bash
+ruff check .
+pytest
+```
+
+CI GitHub menjalankan kedua perintah tersebut pada setiap push dan pull request.
+
+## Dokumentasi
+
+- `docs/ARCHITECTURE.md` — batas modul dan arah dependensi;
+- `docs/BOB_PROMPTS.md` — prompt bertahap untuk IBM Bob;
+- `docs/BOB_DEVELOPMENT_LOG.md` — catatan kontribusi Bob dan hasil review.
