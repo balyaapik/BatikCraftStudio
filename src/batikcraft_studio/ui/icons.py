@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import json
 import zipfile
-from functools import lru_cache
+from functools import cache, lru_cache
 from importlib.resources import files
 from io import BytesIO
 from types import MappingProxyType
@@ -75,7 +75,9 @@ def default_icon_color(name: str, *, on_dark: bool = False) -> str:
 def font_awesome_metadata() -> MappingProxyType[str, Any]:
     """Return read-only attribution metadata embedded with the icon archive."""
 
-    return MappingProxyType(dict(_metadata()))
+    metadata = dict(_metadata())
+    metadata["icons"] = tuple(metadata["icons"])
+    return MappingProxyType(metadata)
 
 
 def render_icon(
@@ -146,7 +148,7 @@ def _metadata() -> dict[str, Any]:
     return data
 
 
-@lru_cache(maxsize=None)
+@cache
 def _source_alpha(name: str) -> Image.Image:
     # Validate both public names and archive metadata before reading binary data.
     _validate_icon_name(name)
