@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import re
 import tkinter as tk
+from collections.abc import Callable
 from tkinter import filedialog, messagebox
-from typing import Callable
 
 from batikcraft_studio.application import (
     NoActiveProjectError,
