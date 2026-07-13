@@ -8,8 +8,9 @@ from tkinter import ttk
 from batikcraft_studio.application import ProjectSession
 from batikcraft_studio.config import APP_NAME, APP_VERSION, WORKSPACES, get_workspace
 
+from .layer_editor import LayerEditorWorkspaceView
 from .theme import COLORS
-from .views import EditorWorkspaceView, WorkspaceView, create_workspace_view
+from .views import WorkspaceView, create_workspace_view
 
 
 class MainWindow(ttk.Frame):
@@ -20,9 +21,9 @@ class MainWindow(ttk.Frame):
         self.parent = parent
         self.session = session
         self.active_workspace_key = "dashboard"
-        self.active_view: WorkspaceView | EditorWorkspaceView | None = None
+        self.active_view: WorkspaceView | LayerEditorWorkspaceView | None = None
         self.nav_buttons: dict[str, ttk.Button] = {}
-        self.status_text = tk.StringVar(value="Ready — workspace shell loaded.")
+        self.status_text = tk.StringVar(value="Ready — layer editor loaded.")
         self.project_title_text = tk.StringVar(value="No project open")
         self.project_meta_text = tk.StringVar(value="Create or open a .batikcraft project")
         self.project_path_text = tk.StringVar(value="")
@@ -123,7 +124,6 @@ class MainWindow(ttk.Frame):
 
         definition = get_workspace(key)
         self.active_workspace_key = key
-
         if self.active_view is not None:
             self.active_view.destroy()
 
@@ -132,6 +132,7 @@ class MainWindow(ttk.Frame):
             definition=definition,
             set_status=self.set_status,
             session=self.session,
+            refresh_context=self.refresh_project_context,
         )
         self.active_view.grid(row=0, column=0, sticky="nsew")
 
@@ -139,7 +140,6 @@ class MainWindow(ttk.Frame):
             button.configure(
                 style="NavActive.TButton" if workspace_key == key else "Nav.TButton"
             )
-
         self._update_window_title()
         self.set_status(f"Workspace opened: {definition.label}")
 
@@ -164,6 +164,28 @@ class MainWindow(ttk.Frame):
         if self.active_view is not None:
             self.active_view.refresh_project()
         self._update_window_title()
+
+    def editor_import_image(self) -> None:
+        self._require_editor_view().import_image_dialog()
+
+    def editor_undo(self) -> None:
+        self._require_editor_view().undo()
+
+    def editor_redo(self) -> None:
+        self._require_editor_view().redo()
+
+    def editor_duplicate(self) -> None:
+        self._require_editor_view().duplicate_active()
+
+    def editor_delete(self) -> None:
+        self._require_editor_view().delete_active()
+
+    def _require_editor_view(self) -> LayerEditorWorkspaceView:
+        if not isinstance(self.active_view, LayerEditorWorkspaceView):
+            self.show_workspace("editor")
+        if not isinstance(self.active_view, LayerEditorWorkspaceView):
+            raise RuntimeError("Motif Editor could not be opened.")
+        return self.active_view
 
     def set_status(self, message: str) -> None:
         """Expose a single status channel for all child workspaces."""

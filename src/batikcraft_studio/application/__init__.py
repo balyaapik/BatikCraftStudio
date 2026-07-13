@@ -1,6 +1,7 @@
 """Application services that coordinate domain, persistence, and UI workflows."""
 
 from batikcraft_studio.application.session import (
+    LayerLockedError,
     NoActiveProjectError,
     ProjectPathRequiredError,
     ProjectSession,
@@ -9,6 +10,7 @@ from batikcraft_studio.application.session import (
 )
 
 __all__ = [
+    "LayerLockedError",
     "NoActiveProjectError",
     "ProjectPathRequiredError",
     "ProjectSession",
