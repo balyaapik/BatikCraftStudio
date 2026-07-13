@@ -279,7 +279,7 @@ def test_load_rejects_duplicate_manifest_asset_paths(tmp_path: Path) -> None:
     assets = manifest["assets"]
     assert isinstance(assets, list)
     duplicate = dict(assets[0])
-    duplicate["path"] = str(duplicate["path"]).upper()
+    duplicate["path"] = "assets/Car.bin"
     assets.append(duplicate)
     _put_manifest(members, manifest)
     _write_members(path, members)
