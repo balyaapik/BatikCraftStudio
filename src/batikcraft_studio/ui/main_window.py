@@ -5,26 +5,32 @@ from __future__ import annotations
 import tkinter as tk
 from tkinter import ttk
 
+from batikcraft_studio.application import ProjectSession
 from batikcraft_studio.config import APP_NAME, APP_VERSION, WORKSPACES, get_workspace
 
 from .theme import COLORS
-from .views import WorkspaceView
+from .views import EditorWorkspaceView, WorkspaceView, create_workspace_view
 
 
 class MainWindow(ttk.Frame):
     """Top-level application layout shared by all feature workspaces."""
 
-    def __init__(self, parent: tk.Tk) -> None:
+    def __init__(self, parent: tk.Tk, session: ProjectSession) -> None:
         super().__init__(parent, style="App.TFrame")
         self.parent = parent
+        self.session = session
         self.active_workspace_key = "dashboard"
-        self.active_view: WorkspaceView | None = None
+        self.active_view: WorkspaceView | EditorWorkspaceView | None = None
         self.nav_buttons: dict[str, ttk.Button] = {}
-        self.status_text = tk.StringVar(value="Ready — application foundation loaded.")
+        self.status_text = tk.StringVar(value="Ready — workspace shell loaded.")
+        self.project_title_text = tk.StringVar(value="No project open")
+        self.project_meta_text = tk.StringVar(value="Create or open a .batikcraft project")
+        self.project_path_text = tk.StringVar(value="")
 
         self._build_layout()
         self._bind_shortcuts()
         self.show_workspace(self.active_workspace_key)
+        self.refresh_project_context()
 
     def _build_layout(self) -> None:
         self.pack(fill="both", expand=True)
@@ -76,15 +82,34 @@ class MainWindow(ttk.Frame):
         content_shell = ttk.Frame(self, style="App.TFrame")
         content_shell.grid(row=0, column=1, sticky="nsew")
         content_shell.columnconfigure(0, weight=1)
-        content_shell.rowconfigure(0, weight=1)
+        content_shell.rowconfigure(1, weight=1)
+
+        project_bar = ttk.Frame(content_shell, style="Surface.TFrame", padding=(20, 12))
+        project_bar.grid(row=0, column=0, sticky="ew")
+        project_bar.columnconfigure(0, weight=1)
+        ttk.Label(
+            project_bar,
+            textvariable=self.project_title_text,
+            style="ProjectTitle.TLabel",
+        ).grid(row=0, column=0, sticky="w")
+        ttk.Label(
+            project_bar,
+            textvariable=self.project_meta_text,
+            style="ProjectMeta.TLabel",
+        ).grid(row=1, column=0, sticky="w", pady=(3, 0))
+        ttk.Label(
+            project_bar,
+            textvariable=self.project_path_text,
+            style="ProjectPath.TLabel",
+        ).grid(row=0, column=1, rowspan=2, sticky="e", padx=(20, 0))
 
         self.workspace_host = ttk.Frame(content_shell, style="App.TFrame")
-        self.workspace_host.grid(row=0, column=0, sticky="nsew")
+        self.workspace_host.grid(row=1, column=0, sticky="nsew")
         self.workspace_host.columnconfigure(0, weight=1)
         self.workspace_host.rowconfigure(0, weight=1)
 
         status = ttk.Label(content_shell, textvariable=self.status_text, style="Status.TLabel")
-        status.grid(row=1, column=0, sticky="ew")
+        status.grid(row=2, column=0, sticky="ew")
 
     def _bind_shortcuts(self) -> None:
         for index, workspace in enumerate(WORKSPACES, start=1):
@@ -102,10 +127,11 @@ class MainWindow(ttk.Frame):
         if self.active_view is not None:
             self.active_view.destroy()
 
-        self.active_view = WorkspaceView(
+        self.active_view = create_workspace_view(
             self.workspace_host,
             definition=definition,
             set_status=self.set_status,
+            session=self.session,
         )
         self.active_view.grid(row=0, column=0, sticky="nsew")
 
@@ -114,8 +140,30 @@ class MainWindow(ttk.Frame):
                 style="NavActive.TButton" if workspace_key == key else "Nav.TButton"
             )
 
-        self.parent.title(f"{APP_NAME} — {definition.label}")
+        self._update_window_title()
         self.set_status(f"Workspace opened: {definition.label}")
+
+    def refresh_project_context(self) -> None:
+        """Refresh project labels and the active workspace after session changes."""
+
+        snapshot = self.session.snapshot()
+        if not snapshot.has_project:
+            self.project_title_text.set("No project open")
+            self.project_meta_text.set("Create or open a .batikcraft project")
+            self.project_path_text.set("")
+        else:
+            dirty_label = "Unsaved changes" if snapshot.dirty else "Saved"
+            self.project_title_text.set(f"{snapshot.title}  •  {dirty_label}")
+            self.project_meta_text.set(
+                f"Creator: {snapshot.creator}  •  "
+                f"Canvas: {snapshot.width} × {snapshot.height}px  •  "
+                f"Layers: {snapshot.layer_count}"
+            )
+            self.project_path_text.set(snapshot.display_path)
+
+        if self.active_view is not None:
+            self.active_view.refresh_project()
+        self._update_window_title()
 
     def set_status(self, message: str) -> None:
         """Expose a single status channel for all child workspaces."""
@@ -146,12 +194,20 @@ class MainWindow(ttk.Frame):
             self.set_status(message)
         elif not busy:
             self.set_status("Ready")
-
-        # Force cursor updates without processing unrelated queued actions.
         self.parent.update_idletasks()
+
+    def _update_window_title(self) -> None:
+        workspace = get_workspace(self.active_workspace_key).label
+        snapshot = self.session.snapshot()
+        if snapshot.has_project:
+            dirty = " *" if snapshot.dirty else ""
+            project_label = f"{snapshot.title}{dirty}"
+            self.parent.title(f"{project_label} — {workspace} — {APP_NAME}")
+        else:
+            self.parent.title(f"{APP_NAME} — {workspace}")
 
     @property
     def background_color(self) -> str:
-        """Expose the canvas color for future classic Tk widgets."""
+        """Expose the canvas color for classic Tk widgets."""
 
         return COLORS["canvas"]
