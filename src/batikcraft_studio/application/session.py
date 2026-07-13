@@ -176,6 +176,12 @@ class ProjectSession:
         self._assets = {}
         self._clear_history()
 
+    def replace_assets(self, assets: Mapping[str, bytes]) -> None:
+        """Replace embedded assets for compatibility and non-editor workflows."""
+
+        self.require_project()
+        self._assets = {str(path): bytes(content) for path, content in assets.items()}
+
     def import_raster_image(
         self,
         filename: str,
