@@ -120,7 +120,9 @@ class ProjectArchive:
                 for path in sorted(asset_bytes):
                     archive.writestr(path, asset_bytes[path])
 
-            with temporary_path.open("rb") as handle:
+            # Windows requires a write-capable descriptor for fsync(); opening the
+            # completed archive as read-only can raise ``OSError: [Errno 9]``.
+            with temporary_path.open("r+b") as handle:
                 os.fsync(handle.fileno())
             os.replace(temporary_path, target)
             project.mark_saved()
