@@ -14,65 +14,71 @@ The repository contains the public persistence API under
 `src/batikcraft_studio/persistence` and the archive contract in
 `docs/PROJECT_FORMAT.md`.
 
+## Completed Foundation — Milestone 2C: Workspace Shell
+
+The repository now contains:
+
+- `ProjectSession` under `src/batikcraft_studio/application`;
+- New/Open/Save/Save As/Close workflows in `app.py`;
+- project context and a blank responsive editor canvas;
+- Save–Discard–Cancel protection for dirty projects;
+- session tests under `tests/test_project_session.py`;
+- the shell contract in `docs/WORKSPACE_SHELL.md`.
+
 Suggested Bob review prompt:
 
 ```text
-Review Milestone 2B in src/batikcraft_studio/persistence,
-docs/PROJECT_FORMAT.md, and tests/test_project_archive.py.
+Review Milestone 2C in src/batikcraft_studio/application,
+src/batikcraft_studio/app.py, src/batikcraft_studio/ui, docs/WORKSPACE_SHELL.md,
+and tests/test_project_session.py.
 
-Do not add Tkinter dialogs or image rendering yet. Do not replace the domain
-model or introduce another serializer.
+Do not implement image import, image rendering, layer transforms, drawing tools,
+Object Batikfication, GAN inference, licensing, or website integration.
 
 Check specifically for:
-- unsafe ZIP member handling and path traversal gaps;
-- atomic-save failure behavior;
-- missing, duplicate, encrypted, oversized, or corrupted members;
-- manifest/domain round-trip loss;
-- SHA-256 and size verification gaps;
-- mutable asset state escaping from ProjectBundle;
-- insufficient failure-path tests.
+- session replacement after failed open/save operations;
+- dirty-state confirmation edge cases;
+- canceled Save As behavior during close/new/open/exit;
+- asset bytes or mutable session state escaping;
+- file-dialog logic leaking into domain or persistence modules;
+- cross-platform Tkinter shortcut and dialog issues;
+- missing UI-independent failure-path tests.
 
 Make only clear corrective changes. Run ruff check . and pytest. Record the actual
 Bob contribution in docs/BOB_DEVELOPMENT_LOG.md.
 ```
 
-## Next Prompt — Milestone 2C: Workspace Shell
+## Next Prompt — Milestone 2D: Layer Editing
 
 ```text
 You are extending BatikCraft Studio, a Python 3.11 Tkinter application.
-Read README.md, docs/ARCHITECTURE.md, docs/PROJECT_DOMAIN.md, and
- docs/PROJECT_FORMAT.md first.
+Read README.md, docs/ARCHITECTURE.md, docs/PROJECT_DOMAIN.md,
+docs/PROJECT_FORMAT.md, and docs/WORKSPACE_SHELL.md first.
 
-Implement only the workspace application shell around the existing domain and
-persistence APIs. Do not implement image rendering, layer transforms, drawing,
-Object Batikfication, GAN inference, licensing, or website integration.
+Implement only image-backed layer editing on top of the existing ProjectSession,
+Project aggregate, and Tkinter editor shell. Do not implement drawing tools,
+Object Batikfication, GAN inference, pattern repeat, licensing, or website APIs.
 
 Requirements:
-- create an application-level document/session service that owns the current
-  Project, loaded asset bytes, and current file path;
-- implement New Project, Open Project, Save, and Save As commands;
-- use ProjectArchive for all save/open operations;
-- add Tkinter file dialogs only in the UI layer;
-- display the current project title, canvas dimensions, dirty state, and file path;
-- add a basic blank canvas placeholder without Pillow or image rendering;
-- prompt before replacing or closing a dirty project with Save, Discard, Cancel;
-- prevent a failed open/save operation from replacing the current valid session;
-- keep domain and persistence modules free from Tkinter imports;
-- add unit tests for the session service and targeted UI-independent command logic;
+- add Pillow only for PNG/JPG decoding, preview rendering, and RGBA conversion;
+- import PNG/JPG through the UI and embed canonical PNG bytes below assets/;
+- create one existing domain Layer per imported image with a stable asset_ref;
+- render layers in stack order without putting image bytes into the domain model;
+- support selection, move, scale, rotate, duplicate, delete, visibility, lock,
+  and layer ordering;
+- keep transformations non-destructive and stored in Layer.transform;
+- add an application command/history service with undo and redo;
+- prevent locked layers from being transformed or deleted;
+- keep active selection transient and do not dirty the project by selection alone;
+- refresh project context after every content mutation;
+- preserve all imported assets through Save/Open round trips;
+- add UI-independent tests for commands, history, asset naming, and mutations;
+- keep domain and persistence modules free from Tkinter and Pillow imports;
 - run ruff check . and pytest;
 - update docs/BOB_DEVELOPMENT_LOG.md with Bob's actual contribution.
 
 Before editing, summarize the files you intend to add or change. After editing,
-summarize validation results and unresolved decisions.
-```
-
-## Future Prompt — Milestone 2D: Layer Editing
-
-```text
-Add image-backed workspace layers after Milestone 2C is stable. Implement PNG/JPG
-import, selection, move, scale, rotate, duplicate, delete, visibility, lock, layer
-ordering, and undo/redo. Keep rendering concerns out of the project domain and use
-application commands for mutations. Do not add Object Batikfication or GAN work yet.
+summarize validation results, manual GUI checks, and unresolved decisions.
 ```
 
 ## Review Checklist for Every Bob Task
