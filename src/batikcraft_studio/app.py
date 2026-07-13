@@ -50,6 +50,11 @@ class BatikCraftApplication:
             accelerator="Ctrl+O",
             command=self.open_project,
         )
+        file_menu.add_command(
+            label="Import Image…",
+            accelerator="Ctrl+I",
+            command=self.main_window.editor_import_image,
+        )
         file_menu.add_separator()
         file_menu.add_command(
             label="Save",
@@ -69,6 +74,29 @@ class BatikCraftApplication:
         )
         file_menu.add_command(label="Exit", command=self.request_close)
         menu_bar.add_cascade(label="File", menu=file_menu)
+
+        edit_menu = tk.Menu(menu_bar)
+        edit_menu.add_command(
+            label="Undo",
+            accelerator="Ctrl+Z",
+            command=self.main_window.editor_undo,
+        )
+        edit_menu.add_command(
+            label="Redo",
+            accelerator="Ctrl+Y",
+            command=self.main_window.editor_redo,
+        )
+        edit_menu.add_separator()
+        edit_menu.add_command(
+            label="Duplicate Layer",
+            accelerator="Ctrl+D",
+            command=self.main_window.editor_duplicate,
+        )
+        edit_menu.add_command(
+            label="Delete Layer",
+            command=self.main_window.editor_delete,
+        )
+        menu_bar.add_cascade(label="Edit", menu=edit_menu)
 
         view_menu = tk.Menu(menu_bar)
         view_menu.add_command(
@@ -92,14 +120,23 @@ class BatikCraftApplication:
         menu_bar.add_cascade(label="Help", menu=help_menu)
 
         self.root.configure(menu=menu_bar)
-        self.root.bind_all("<Control-n>", lambda _event: self._run_shortcut(self.new_project))
-        self.root.bind_all("<Control-o>", lambda _event: self._run_shortcut(self.open_project))
-        self.root.bind_all("<Control-s>", lambda _event: self._run_shortcut(self.save_project))
-        self.root.bind_all(
-            "<Control-Shift-S>",
-            lambda _event: self._run_shortcut(self.save_project_as),
+        bindings: tuple[tuple[str, Callable[[], object]], ...] = (
+            ("<Control-n>", self.new_project),
+            ("<Control-o>", self.open_project),
+            ("<Control-i>", self.main_window.editor_import_image),
+            ("<Control-s>", self.save_project),
+            ("<Control-Shift-S>", self.save_project_as),
+            ("<Control-w>", self.close_project),
+            ("<Control-z>", self.main_window.editor_undo),
+            ("<Control-y>", self.main_window.editor_redo),
+            ("<Control-Shift-Z>", self.main_window.editor_redo),
+            ("<Control-d>", self.main_window.editor_duplicate),
         )
-        self.root.bind_all("<Control-w>", lambda _event: self._run_shortcut(self.close_project))
+        for sequence, command in bindings:
+            self.root.bind_all(
+                sequence,
+                lambda _event, action=command: self._run_shortcut(action),
+            )
         self.root.bind_all("<Control-l>", lambda _event: self.main_window.focus_navigation())
 
     def new_project(self) -> None:
