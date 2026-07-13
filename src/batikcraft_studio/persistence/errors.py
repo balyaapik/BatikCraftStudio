@@ -13,6 +13,10 @@ class ArchiveSaveError(ProjectArchiveError, OSError):
     """Raised when an archive cannot be written or atomically replaced."""
 
 
+class ArchiveOpenError(ProjectArchiveError, OSError):
+    """Raised when an archive path cannot be read."""
+
+
 class CorruptArchiveError(ProjectArchiveError):
     """Raised when a file is not a readable, trustworthy ZIP archive."""
 
