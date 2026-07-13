@@ -194,9 +194,15 @@ class Project:
     ) -> None:
         """Insert a unique layer into the stack."""
 
+        if not isinstance(layer, Layer):
+            raise ProjectValidationError("layer must be a Layer value object.")
+        if not isinstance(select, bool):
+            raise ProjectValidationError("select must be a boolean.")
         if any(existing.layer_id == layer.layer_id for existing in self._layers):
             raise DuplicateLayerError(f"Layer {layer.layer_id} already exists.")
         insertion_index = len(self._layers) if index is None else index
+        if isinstance(insertion_index, bool) or not isinstance(insertion_index, int):
+            raise ProjectValidationError("Layer insertion index must be an integer.")
         if not 0 <= insertion_index <= len(self._layers):
             raise ProjectValidationError("Layer insertion index is out of range.")
         self._layers.insert(insertion_index, layer)
@@ -239,6 +245,8 @@ class Project:
     def reorder_layer(self, layer_id: str, new_index: int) -> None:
         """Move a layer to a zero-based stack position."""
 
+        if isinstance(new_index, bool) or not isinstance(new_index, int):
+            raise ProjectValidationError("Layer destination index must be an integer.")
         if not 0 <= new_index < len(self._layers):
             raise ProjectValidationError("Layer destination index is out of range.")
         current_index = self._layer_index(layer_id)
@@ -269,26 +277,45 @@ class Project:
                 "Unsupported schema_version "
                 f"{self._schema_version!r}; expected {CURRENT_SCHEMA_VERSION!r}."
             )
-        if self._created_at.tzinfo is None or self._created_at.utcoffset() is None:
-            issues.append("created_at must be timezone-aware.")
-        if self._updated_at.tzinfo is None or self._updated_at.utcoffset() is None:
-            issues.append("updated_at must be timezone-aware.")
-        if self._updated_at < self._created_at:
+        if not isinstance(self._metadata, ProjectMetadata):
+            issues.append("metadata must be a ProjectMetadata value object.")
+        if not isinstance(self._canvas, CanvasSpec):
+            issues.append("canvas must be a CanvasSpec value object.")
+
+        created_is_aware = self._is_aware_datetime(self._created_at)
+        updated_is_aware = self._is_aware_datetime(self._updated_at)
+        if not created_is_aware:
+            issues.append("created_at must be a timezone-aware datetime.")
+        if not updated_is_aware:
+            issues.append("updated_at must be a timezone-aware datetime.")
+        if created_is_aware and updated_is_aware and self._updated_at < self._created_at:
             issues.append("updated_at must not be earlier than created_at.")
-        if isinstance(self._revision, bool) or not isinstance(self._revision, int):
+
+        revision_is_int = isinstance(self._revision, int) and not isinstance(
+            self._revision, bool
+        )
+        if not revision_is_int:
             issues.append("revision must be an integer.")
         elif self._revision < 0:
             issues.append("revision must not be negative.")
-        if isinstance(self._saved_revision, bool) or not isinstance(
-            self._saved_revision, int
-        ):
+
+        saved_revision_is_int = isinstance(self._saved_revision, int) and not isinstance(
+            self._saved_revision, bool
+        )
+        if not saved_revision_is_int:
             issues.append("saved_revision must be an integer.")
         elif self._saved_revision < -1:
             issues.append("saved_revision must be at least -1.")
-        elif isinstance(self._revision, int) and self._saved_revision > self._revision:
+        elif revision_is_int and self._saved_revision > self._revision:
             issues.append("saved_revision must not exceed revision.")
 
-        layer_ids = [layer.layer_id for layer in self._layers]
+        valid_layers: list[Layer] = []
+        for index, layer in enumerate(self._layers):
+            if isinstance(layer, Layer):
+                valid_layers.append(layer)
+            else:
+                issues.append(f"layers[{index}] must be a Layer value object.")
+        layer_ids = [layer.layer_id for layer in valid_layers]
         if len(layer_ids) != len(set(layer_ids)):
             issues.append("Layer IDs must be unique within a project.")
         if self._active_layer_id is not None and self._active_layer_id not in layer_ids:
@@ -311,3 +338,11 @@ class Project:
     def _record_change(self) -> None:
         self._revision += 1
         self._updated_at = datetime.now(UTC)
+
+    @staticmethod
+    def _is_aware_datetime(value: object) -> bool:
+        return (
+            isinstance(value, datetime)
+            and value.tzinfo is not None
+            and value.utcoffset() is not None
+        )
