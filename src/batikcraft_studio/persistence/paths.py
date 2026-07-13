@@ -37,6 +37,8 @@ def normalize_archive_path(value: str, *, allow_manifest: bool = False) -> str:
         raise UnsafeArchivePathError("Archive path must not contain a drive prefix.")
 
     normalized = path.as_posix()
+    if normalized != value:
+        raise UnsafeArchivePathError("Archive path must already be canonical POSIX form.")
     if allow_manifest and normalized == MANIFEST_PATH:
         return normalized
     if len(parts) < 2 or parts[0] not in RESERVED_ROOTS:
