@@ -18,6 +18,8 @@ _HEX_COLOR_PATTERN = re.compile(r"^#[0-9A-Fa-f]{6}$")
 
 
 def _validate_non_blank(value: str, field_name: str, maximum: int) -> str:
+    if not isinstance(value, str):
+        raise ProjectValidationError(f"{field_name} must be a string.")
     normalized = value.strip()
     if not normalized:
         raise ProjectValidationError(f"{field_name} must not be blank.")
@@ -29,7 +31,12 @@ def _validate_non_blank(value: str, field_name: str, maximum: int) -> str:
 
 
 def _validate_finite(value: float, field_name: str) -> float:
-    numeric = float(value)
+    if isinstance(value, bool):
+        raise ProjectValidationError(f"{field_name} must be numeric.")
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError) as exc:
+        raise ProjectValidationError(f"{field_name} must be numeric.") from exc
     if not math.isfinite(numeric):
         raise ProjectValidationError(f"{field_name} must be finite.")
     return numeric
@@ -37,10 +44,10 @@ def _validate_finite(value: float, field_name: str) -> float:
 
 def _validate_uuid(value: str, field_name: str) -> str:
     try:
-        UUID(value)
+        normalized = str(UUID(value))
     except (ValueError, TypeError, AttributeError) as exc:
         raise ProjectValidationError(f"{field_name} must be a valid UUID.") from exc
-    return value
+    return normalized
 
 
 class LayerKind(StrEnum):
@@ -64,11 +71,15 @@ class ProjectMetadata:
     def __post_init__(self) -> None:
         title = _validate_non_blank(self.title, "title", 120)
         creator = _validate_non_blank(self.creator, "creator", 120)
+        if not isinstance(self.description, str):
+            raise ProjectValidationError("description must be a string.")
         description = self.description.strip()
         if len(description) > 2_000:
             raise ProjectValidationError(
                 "description must contain at most 2000 characters."
             )
+        if isinstance(self.tags, str):
+            raise ProjectValidationError("tags must be a sequence of strings.")
 
         normalized_tags: list[str] = []
         seen: set[str] = set()
@@ -108,7 +119,9 @@ class CanvasSpec:
             raise ProjectValidationError(
                 f"canvas height must be between 1 and {MAX_CANVAS_DIMENSION}."
             )
-        if not _HEX_COLOR_PATTERN.fullmatch(self.background_color):
+        if not isinstance(self.background_color, str) or not _HEX_COLOR_PATTERN.fullmatch(
+            self.background_color
+        ):
             raise ProjectValidationError(
                 "background_color must use the #RRGGBB hexadecimal format."
             )
@@ -162,20 +175,30 @@ class Layer:
     def __post_init__(self) -> None:
         name = _validate_non_blank(self.name, "layer name", 120)
         layer_id = _validate_uuid(self.layer_id, "layer_id")
+        try:
+            kind = LayerKind(self.kind)
+        except (TypeError, ValueError) as exc:
+            raise ProjectValidationError(f"Unsupported layer kind: {self.kind!r}.") from exc
+        if not isinstance(self.visible, bool):
+            raise ProjectValidationError("visible must be a boolean.")
+        if not isinstance(self.locked, bool):
+            raise ProjectValidationError("locked must be a boolean.")
+        if not isinstance(self.transform, Transform):
+            raise ProjectValidationError("transform must be a Transform value object.")
+        if not isinstance(self.properties, Mapping):
+            raise ProjectValidationError("properties must be a mapping.")
+        for key in self.properties:
+            _validate_non_blank(key, "property key", 120)
+
         opacity = _validate_finite(self.opacity, "opacity")
         if not 0.0 <= opacity <= 1.0:
             raise ProjectValidationError("opacity must be between 0.0 and 1.0.")
         if self.asset_ref is not None:
-            asset_ref = self.asset_ref.strip()
-            if not asset_ref:
-                raise ProjectValidationError("asset_ref must not be blank when supplied.")
-            if len(asset_ref) > 500:
-                raise ProjectValidationError(
-                    "asset_ref must contain at most 500 characters."
-                )
+            asset_ref = _validate_non_blank(self.asset_ref, "asset_ref", 500)
             object.__setattr__(self, "asset_ref", asset_ref)
 
         object.__setattr__(self, "name", name)
+        object.__setattr__(self, "kind", kind)
         object.__setattr__(self, "layer_id", layer_id)
         object.__setattr__(self, "opacity", opacity)
         object.__setattr__(self, "properties", MappingProxyType(dict(self.properties)))
