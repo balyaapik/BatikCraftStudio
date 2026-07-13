@@ -49,7 +49,8 @@ class WorkspaceView(ttk.Frame):
 
         body = ttk.Frame(self, style="App.TFrame")
         body.grid(row=1, column=0, sticky="nsew")
-        body.columnconfigure((0, 1), weight=1, uniform="workspace-card")
+        body.columnconfigure(0, weight=1, uniform="workspace-card")
+        body.columnconfigure(1, weight=1, uniform="workspace-card")
         body.rowconfigure(0, weight=1)
 
         primary_title, primary_items = self._primary_card_content()
