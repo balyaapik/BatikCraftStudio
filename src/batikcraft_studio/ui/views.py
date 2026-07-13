@@ -1,4 +1,4 @@
-"""Initial workspace views used by the Milestone 1 application shell."""
+"""Workspace views for BatikCraft Studio."""
 
 from __future__ import annotations
 
@@ -6,13 +6,16 @@ import tkinter as tk
 from collections.abc import Callable
 from tkinter import ttk
 
+from batikcraft_studio.application import ProjectSession
 from batikcraft_studio.config import WorkspaceDefinition
+
+from .theme import COLORS
 
 StatusCallback = Callable[[str], None]
 
 
 class WorkspaceView(ttk.Frame):
-    """Reusable placeholder view that documents the next feature boundary."""
+    """Reusable informational view for workspaces not implemented yet."""
 
     def __init__(
         self,
@@ -29,23 +32,7 @@ class WorkspaceView(ttk.Frame):
         self.columnconfigure(0, weight=1)
         self.rowconfigure(1, weight=1)
 
-        header = ttk.Frame(self, style="App.TFrame")
-        header.grid(row=0, column=0, sticky="ew", pady=(0, 24))
-        header.columnconfigure(0, weight=1)
-
-        ttk.Label(header, text=self.definition.eyebrow, style="Eyebrow.TLabel").grid(
-            row=0, column=0, sticky="w"
-        )
-        ttk.Label(header, text=self.definition.title, style="Title.TLabel").grid(
-            row=1, column=0, sticky="w", pady=(5, 8)
-        )
-        ttk.Label(
-            header,
-            text=self.definition.description,
-            style="Description.TLabel",
-            wraplength=820,
-            justify="left",
-        ).grid(row=2, column=0, sticky="w")
+        _build_header(self, self.definition)
 
         body = ttk.Frame(self, style="App.TFrame")
         body.grid(row=1, column=0, sticky="nsew")
@@ -55,9 +42,8 @@ class WorkspaceView(ttk.Frame):
 
         primary_title, primary_items = self._primary_card_content()
         secondary_title, secondary_items = self._secondary_card_content()
-
-        self._build_card(body, 0, primary_title, primary_items)
-        self._build_card(body, 1, secondary_title, secondary_items)
+        _build_card(body, 0, primary_title, primary_items)
+        _build_card(body, 1, secondary_title, secondary_items)
 
         actions = ttk.Frame(self, style="App.TFrame")
         actions.grid(row=2, column=0, sticky="ew", pady=(24, 0))
@@ -76,54 +62,17 @@ class WorkspaceView(ttk.Frame):
             ),
         ).pack(side="left", padx=(10, 0))
 
-    def _build_card(
-        self,
-        parent: ttk.Frame,
-        column: int,
-        title: str,
-        items: tuple[str, ...],
-    ) -> None:
-        card = ttk.Frame(parent, style="Surface.TFrame", padding=(22, 20))
-        card.grid(
-            row=0,
-            column=column,
-            sticky="nsew",
-            padx=(0, 10) if column == 0 else (10, 0),
-        )
-        card.columnconfigure(0, weight=1)
-
-        ttk.Label(card, text=title, style="CardTitle.TLabel").grid(
-            row=0, column=0, sticky="w", pady=(0, 14)
-        )
-
-        for index, item in enumerate(items, start=1):
-            row = ttk.Frame(card, style="Surface.TFrame")
-            row.grid(row=index, column=0, sticky="ew", pady=5)
-            ttk.Label(row, text="•", style="CardText.TLabel").pack(side="left", anchor="n")
-            ttk.Label(
-                row,
-                text=item,
-                style="CardText.TLabel",
-                wraplength=390,
-                justify="left",
-            ).pack(side="left", fill="x", expand=True, padx=(8, 0))
+    def refresh_project(self) -> None:
+        """Hook used by project-aware workspaces."""
 
     def _primary_card_content(self) -> tuple[str, tuple[str, ...]]:
         content: dict[str, tuple[str, tuple[str, ...]]] = {
             "dashboard": (
-                "Current foundation",
+                "Workspace shell ready",
                 (
-                    "A lightweight Tkinter shell with no AI dependency yet.",
-                    "Five isolated workspaces ready for incremental implementation.",
-                    "A stable navigation boundary for future IBM Bob tasks.",
-                ),
-            ),
-            "editor": (
-                "Milestone 2 boundary",
-                (
-                    "Project document and editable canvas.",
-                    "Layer ordering, visibility, lock, and transformations.",
-                    "Import, selection, move, scale, rotate, duplicate, and delete.",
+                    "Create, open, save, and close editable .batikcraft projects.",
+                    "Project metadata and save state are visible above every workspace.",
+                    "The Motif Editor now shows a scaled blank canvas placeholder.",
                 ),
             ),
             "batikification": (
@@ -158,17 +107,9 @@ class WorkspaceView(ttk.Frame):
             "dashboard": (
                 "Development rules",
                 (
-                    "One milestone per branch and draft pull request.",
+                    "One milestone per branch and pull request.",
                     "Manual workflows remain usable when AI is unavailable.",
                     "UI, domain logic, imaging, and external APIs stay separated.",
-                ),
-            ),
-            "editor": (
-                "Not included yet",
-                (
-                    "Full vector editing and advanced blend modes.",
-                    "AI inference or website communication.",
-                    "Pattern repeat rendering, which belongs to its own engine.",
                 ),
             ),
             "batikification": (
@@ -200,8 +141,7 @@ class WorkspaceView(ttk.Frame):
 
     def _action_label(self) -> str:
         labels = {
-            "dashboard": "Start foundation check",
-            "editor": "Prepare editor milestone",
+            "dashboard": "Open File menu",
             "batikification": "Prepare batikification milestone",
             "preview": "Prepare pattern milestone",
             "publish": "Prepare publishing milestone",
@@ -212,3 +152,192 @@ class WorkspaceView(ttk.Frame):
         self.set_status(
             f"{self.definition.label} is intentionally scoped for a later milestone."
         )
+
+
+class EditorWorkspaceView(ttk.Frame):
+    """Project-aware blank canvas shell; image rendering begins in Milestone 2D."""
+
+    def __init__(
+        self,
+        parent: tk.Misc,
+        definition: WorkspaceDefinition,
+        set_status: StatusCallback,
+        session: ProjectSession,
+    ) -> None:
+        super().__init__(parent, style="App.TFrame", padding=(28, 24))
+        self.definition = definition
+        self.set_status = set_status
+        self.session = session
+        self.canvas_caption = tk.StringVar()
+        self.canvas = tk.Canvas(
+            self,
+            background=COLORS["surface_alt"],
+            highlightthickness=1,
+            highlightbackground=COLORS["line"],
+        )
+        self._build()
+        self.refresh_project()
+
+    def _build(self) -> None:
+        self.columnconfigure(0, weight=1)
+        self.rowconfigure(2, weight=1)
+
+        _build_header(self, self.definition, compact=True)
+
+        tools = ttk.Frame(self, style="Surface.TFrame", padding=(14, 10))
+        tools.grid(row=1, column=0, sticky="ew", pady=(0, 14))
+        ttk.Label(
+            tools,
+            textvariable=self.canvas_caption,
+            style="CardText.TLabel",
+        ).pack(side="left")
+        ttk.Label(
+            tools,
+            text="Canvas tools and image rendering arrive in Milestone 2D.",
+            style="CardText.TLabel",
+        ).pack(side="right")
+
+        self.canvas.grid(row=2, column=0, sticky="nsew")
+        self.canvas.bind("<Configure>", lambda _event: self._draw_canvas_placeholder())
+
+    def refresh_project(self) -> None:
+        snapshot = self.session.snapshot()
+        if not snapshot.has_project:
+            self.canvas_caption.set("No project open")
+        else:
+            dirty = " • Unsaved changes" if snapshot.dirty else " • Saved"
+            self.canvas_caption.set(
+                f"{snapshot.title} • {snapshot.width} × {snapshot.height}px{dirty}"
+            )
+        self._draw_canvas_placeholder()
+
+    def _draw_canvas_placeholder(self) -> None:
+        self.canvas.delete("all")
+        snapshot = self.session.snapshot()
+        width = max(self.canvas.winfo_width(), 20)
+        height = max(self.canvas.winfo_height(), 20)
+
+        if not snapshot.has_project or snapshot.width is None or snapshot.height is None:
+            self.canvas.create_text(
+                width / 2,
+                height / 2,
+                text="Create or open a BatikCraft project to begin.",
+                fill=COLORS["muted_ink"],
+                font=("Segoe UI", 14),
+            )
+            return
+
+        margin = 52
+        available_width = max(width - margin * 2, 40)
+        available_height = max(height - margin * 2, 40)
+        scale = min(available_width / snapshot.width, available_height / snapshot.height)
+        display_width = max(snapshot.width * scale, 20)
+        display_height = max(snapshot.height * scale, 20)
+        left = (width - display_width) / 2
+        top = (height - display_height) / 2
+        right = left + display_width
+        bottom = top + display_height
+
+        self.canvas.create_rectangle(
+            left + 7,
+            top + 7,
+            right + 7,
+            bottom + 7,
+            fill="#C9C0B3",
+            outline="",
+        )
+        self.canvas.create_rectangle(
+            left,
+            top,
+            right,
+            bottom,
+            fill=snapshot.background_color or "#FFFFFF",
+            outline=COLORS["accent_dark"],
+            width=2,
+        )
+        self.canvas.create_text(
+            width / 2,
+            height / 2,
+            text=(
+                f"{snapshot.title}\n"
+                f"{snapshot.width} × {snapshot.height}px\n"
+                "Blank motif canvas"
+            ),
+            fill=COLORS["muted_ink"],
+            font=("Segoe UI Semibold", 12),
+            justify="center",
+        )
+
+
+def create_workspace_view(
+    parent: tk.Misc,
+    *,
+    definition: WorkspaceDefinition,
+    set_status: StatusCallback,
+    session: ProjectSession,
+) -> WorkspaceView | EditorWorkspaceView:
+    if definition.key == "editor":
+        return EditorWorkspaceView(parent, definition, set_status, session)
+    return WorkspaceView(parent, definition, set_status)
+
+
+def _build_header(
+    parent: ttk.Frame,
+    definition: WorkspaceDefinition,
+    *,
+    compact: bool = False,
+) -> None:
+    header = ttk.Frame(parent, style="App.TFrame")
+    header.grid(row=0, column=0, sticky="ew", pady=(0, 16 if compact else 24))
+    header.columnconfigure(0, weight=1)
+    ttk.Label(header, text=definition.eyebrow, style="Eyebrow.TLabel").grid(
+        row=0,
+        column=0,
+        sticky="w",
+    )
+    ttk.Label(header, text=definition.title, style="Title.TLabel").grid(
+        row=1,
+        column=0,
+        sticky="w",
+        pady=(5, 8),
+    )
+    ttk.Label(
+        header,
+        text=definition.description,
+        style="Description.TLabel",
+        wraplength=820,
+        justify="left",
+    ).grid(row=2, column=0, sticky="w")
+
+
+def _build_card(
+    parent: ttk.Frame,
+    column: int,
+    title: str,
+    items: tuple[str, ...],
+) -> None:
+    card = ttk.Frame(parent, style="Surface.TFrame", padding=(22, 20))
+    card.grid(
+        row=0,
+        column=column,
+        sticky="nsew",
+        padx=(0, 10) if column == 0 else (10, 0),
+    )
+    card.columnconfigure(0, weight=1)
+    ttk.Label(card, text=title, style="CardTitle.TLabel").grid(
+        row=0,
+        column=0,
+        sticky="w",
+        pady=(0, 14),
+    )
+    for index, item in enumerate(items, start=1):
+        row = ttk.Frame(card, style="Surface.TFrame")
+        row.grid(row=index, column=0, sticky="ew", pady=5)
+        ttk.Label(row, text="•", style="CardText.TLabel").pack(side="left", anchor="n")
+        ttk.Label(
+            row,
+            text=item,
+            style="CardText.TLabel",
+            wraplength=390,
+            justify="left",
+        ).pack(side="left", fill="x", expand=True, padx=(8, 0))
