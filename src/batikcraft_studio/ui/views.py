@@ -9,9 +9,10 @@ from tkinter import ttk
 from batikcraft_studio.application import ProjectSession
 from batikcraft_studio.config import WorkspaceDefinition
 
-from .theme import COLORS
+from .layer_editor import LayerEditorWorkspaceView
 
 StatusCallback = Callable[[str], None]
+RefreshCallback = Callable[[], None]
 
 
 class WorkspaceView(ttk.Frame):
@@ -31,7 +32,6 @@ class WorkspaceView(ttk.Frame):
     def _build(self) -> None:
         self.columnconfigure(0, weight=1)
         self.rowconfigure(1, weight=1)
-
         _build_header(self, self.definition)
 
         body = ttk.Frame(self, style="App.TFrame")
@@ -68,11 +68,11 @@ class WorkspaceView(ttk.Frame):
     def _primary_card_content(self) -> tuple[str, tuple[str, ...]]:
         content: dict[str, tuple[str, tuple[str, ...]]] = {
             "dashboard": (
-                "Workspace shell ready",
+                "Layer editor ready",
                 (
                     "Create, open, save, and close editable .batikcraft projects.",
-                    "Project metadata and save state are visible above every workspace.",
-                    "The Motif Editor now shows a scaled blank canvas placeholder.",
+                    "Import PNG/JPEG images as editable raster layers.",
+                    "Use transform, visibility, lock, ordering, undo, and redo controls.",
                 ),
             ),
             "batikification": (
@@ -141,7 +141,7 @@ class WorkspaceView(ttk.Frame):
 
     def _action_label(self) -> str:
         labels = {
-            "dashboard": "Open File menu",
+            "dashboard": "Open Motif Editor",
             "batikification": "Prepare batikification milestone",
             "preview": "Prepare pattern milestone",
             "publish": "Prepare publishing milestone",
@@ -154,130 +154,22 @@ class WorkspaceView(ttk.Frame):
         )
 
 
-class EditorWorkspaceView(ttk.Frame):
-    """Project-aware blank canvas shell; image rendering begins in Milestone 2D."""
-
-    def __init__(
-        self,
-        parent: tk.Misc,
-        definition: WorkspaceDefinition,
-        set_status: StatusCallback,
-        session: ProjectSession,
-    ) -> None:
-        super().__init__(parent, style="App.TFrame", padding=(28, 24))
-        self.definition = definition
-        self.set_status = set_status
-        self.session = session
-        self.canvas_caption = tk.StringVar()
-        self.canvas = tk.Canvas(
-            self,
-            background=COLORS["surface_alt"],
-            highlightthickness=1,
-            highlightbackground=COLORS["line"],
-        )
-        self._build()
-        self.refresh_project()
-
-    def _build(self) -> None:
-        self.columnconfigure(0, weight=1)
-        self.rowconfigure(2, weight=1)
-
-        _build_header(self, self.definition, compact=True)
-
-        tools = ttk.Frame(self, style="Surface.TFrame", padding=(14, 10))
-        tools.grid(row=1, column=0, sticky="ew", pady=(0, 14))
-        ttk.Label(
-            tools,
-            textvariable=self.canvas_caption,
-            style="CardText.TLabel",
-        ).pack(side="left")
-        ttk.Label(
-            tools,
-            text="Canvas tools and image rendering arrive in Milestone 2D.",
-            style="CardText.TLabel",
-        ).pack(side="right")
-
-        self.canvas.grid(row=2, column=0, sticky="nsew")
-        self.canvas.bind("<Configure>", lambda _event: self._draw_canvas_placeholder())
-
-    def refresh_project(self) -> None:
-        snapshot = self.session.snapshot()
-        if not snapshot.has_project:
-            self.canvas_caption.set("No project open")
-        else:
-            dirty = " • Unsaved changes" if snapshot.dirty else " • Saved"
-            self.canvas_caption.set(
-                f"{snapshot.title} • {snapshot.width} × {snapshot.height}px{dirty}"
-            )
-        self._draw_canvas_placeholder()
-
-    def _draw_canvas_placeholder(self) -> None:
-        self.canvas.delete("all")
-        snapshot = self.session.snapshot()
-        width = max(self.canvas.winfo_width(), 20)
-        height = max(self.canvas.winfo_height(), 20)
-
-        if not snapshot.has_project or snapshot.width is None or snapshot.height is None:
-            self.canvas.create_text(
-                width / 2,
-                height / 2,
-                text="Create or open a BatikCraft project to begin.",
-                fill=COLORS["muted_ink"],
-                font=("Segoe UI", 14),
-            )
-            return
-
-        margin = 52
-        available_width = max(width - margin * 2, 40)
-        available_height = max(height - margin * 2, 40)
-        scale = min(available_width / snapshot.width, available_height / snapshot.height)
-        display_width = max(snapshot.width * scale, 20)
-        display_height = max(snapshot.height * scale, 20)
-        left = (width - display_width) / 2
-        top = (height - display_height) / 2
-        right = left + display_width
-        bottom = top + display_height
-
-        self.canvas.create_rectangle(
-            left + 7,
-            top + 7,
-            right + 7,
-            bottom + 7,
-            fill="#C9C0B3",
-            outline="",
-        )
-        self.canvas.create_rectangle(
-            left,
-            top,
-            right,
-            bottom,
-            fill=snapshot.background_color or "#FFFFFF",
-            outline=COLORS["accent_dark"],
-            width=2,
-        )
-        self.canvas.create_text(
-            width / 2,
-            height / 2,
-            text=(
-                f"{snapshot.title}\n"
-                f"{snapshot.width} × {snapshot.height}px\n"
-                "Blank motif canvas"
-            ),
-            fill=COLORS["muted_ink"],
-            font=("Segoe UI Semibold", 12),
-            justify="center",
-        )
-
-
 def create_workspace_view(
     parent: tk.Misc,
     *,
     definition: WorkspaceDefinition,
     set_status: StatusCallback,
     session: ProjectSession,
-) -> WorkspaceView | EditorWorkspaceView:
+    refresh_context: RefreshCallback,
+) -> WorkspaceView | LayerEditorWorkspaceView:
     if definition.key == "editor":
-        return EditorWorkspaceView(parent, definition, set_status, session)
+        return LayerEditorWorkspaceView(
+            parent,
+            definition=definition,
+            set_status=set_status,
+            session=session,
+            refresh_context=refresh_context,
+        )
     return WorkspaceView(parent, definition, set_status)
 
 
