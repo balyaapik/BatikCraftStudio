@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import re
 import tkinter as tk
-from pathlib import Path
 from tkinter import filedialog, messagebox
 from typing import Callable
 
