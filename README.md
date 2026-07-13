@@ -2,7 +2,7 @@
 
 BatikCraft Studio adalah aplikasi desktop native berbasis Python dan Tkinter untuk membuat motif batik secara manual, melakukan batikfikasi objek, mengintegrasikan generative AI, serta menyiapkan motif untuk proses lisensi dan bidding melalui website BatikCraft.
 
-> Status: Milestone 2A — project domain. Pengembangan dilakukan bertahap agar setiap modul dapat diuji, diperbaiki, dan disempurnakan menggunakan IBM Bob.
+> Status: Milestone 2B — project serializer. Pengembangan dilakukan bertahap agar setiap modul dapat diuji, diperbaiki, dan disempurnakan menggunakan IBM Bob.
 
 ## Fokus Produk
 
@@ -43,21 +43,24 @@ Bidding, transaksi, dan pengelolaan lisensi dilakukan di website BatikCraft. Des
 - exception domain yang eksplisit;
 - unit test untuk invariant dan failure path.
 
-#### Milestone 2B — Project Serializer
+#### Milestone 2B — Project Serializer ✅
 
 - format editable `.batikcraft` berbasis ZIP;
-- manifest `project.json`;
-- folder assets, masks, renders, dan metadata;
-- atomic save/open;
-- validasi archive dan perlindungan path traversal;
-- round-trip serta corrupted-file tests.
+- manifest `project.json` yang versioned dan strict;
+- reserved roots assets, masks, renders, dan metadata;
+- atomic save menggunakan temporary file dan `os.replace`;
+- load asset tervalidasi tanpa ekstraksi filesystem;
+- SHA-256 dan size verification;
+- perlindungan path traversal dan duplicate entry;
+- corrupted-file, missing-asset, dan round-trip tests.
 
 #### Milestone 2C — Workspace Shell
 
 - New Project dan Open Project;
 - canvas motif kosong;
-- integrasi project domain ke aplikasi Tkinter;
-- dirty-project close confirmation.
+- integrasi project domain dan serializer ke aplikasi Tkinter;
+- dirty-project close confirmation;
+- Save dan Save As melalui application service.
 
 #### Milestone 2D — Layer Editing
 
@@ -132,7 +135,7 @@ Bidding, transaksi, dan pengelolaan lisensi dilakukan di website BatikCraft. Des
 - modul AI tidak boleh membekukan Tkinter main thread;
 - output AI tetap dapat diedit secara manual;
 - fitur non-AI harus tetap dapat digunakan saat model belum tersedia;
-- kode UI, domain, imaging, dan integrasi eksternal dipisahkan;
+- kode UI, domain, persistence, imaging, dan integrasi eksternal dipisahkan;
 - perubahan IBM Bob dicatat di `docs/BOB_DEVELOPMENT_LOG.md`.
 
 ## Menjalankan Aplikasi
@@ -189,6 +192,31 @@ project.mark_saved()
 assert not project.is_dirty
 ```
 
+## Contoh Save dan Open `.batikcraft`
+
+```python
+from batikcraft_studio.domain import Layer, Project
+from batikcraft_studio.persistence import ProjectArchive
+
+project = Project.create("Flora Otomotif", "Balya Rochmadi")
+project.add_layer(
+    Layer(
+        name="Main Object",
+        asset_ref="assets/main-object.png",
+    )
+)
+
+ProjectArchive.save(
+    "flora-otomotif.batikcraft",
+    project,
+    {"assets/main-object.png": image_bytes},
+)
+
+bundle = ProjectArchive.load("flora-otomotif.batikcraft")
+loaded_project = bundle.project
+loaded_image = bundle.get_asset("assets/main-object.png")
+```
+
 ## Validasi
 
 ```bash
@@ -202,5 +230,6 @@ CI GitHub menjalankan kedua perintah tersebut pada setiap push dan pull request.
 
 - `docs/ARCHITECTURE.md` — batas modul dan arah dependensi;
 - `docs/PROJECT_DOMAIN.md` — invariant dan API Milestone 2A;
+- `docs/PROJECT_FORMAT.md` — format archive dan keamanan Milestone 2B;
 - `docs/BOB_PROMPTS.md` — prompt bertahap untuk IBM Bob;
 - `docs/BOB_DEVELOPMENT_LOG.md` — catatan kontribusi Bob dan hasil review.
