@@ -30,8 +30,6 @@ def configure_theme(root: tk.Tk) -> ttk.Style:
     root.configure(background=COLORS["canvas"])
     style = ttk.Style(root)
 
-    # ``clam`` supports background and border styling more consistently across
-    # Windows, Linux, and macOS than most platform-native ttk themes.
     if "clam" in style.theme_names():
         style.theme_use("clam")
 
@@ -55,6 +53,24 @@ def configure_theme(root: tk.Tk) -> ttk.Style:
         "BrandMeta.TLabel",
         background=COLORS["sidebar"],
         foreground="#CFC3B8",
+        font=("Segoe UI", 9),
+    )
+    style.configure(
+        "ProjectTitle.TLabel",
+        background=COLORS["surface"],
+        foreground=COLORS["ink"],
+        font=("Segoe UI Semibold", 12),
+    )
+    style.configure(
+        "ProjectMeta.TLabel",
+        background=COLORS["surface"],
+        foreground=COLORS["muted_ink"],
+        font=("Segoe UI", 9),
+    )
+    style.configure(
+        "ProjectPath.TLabel",
+        background=COLORS["surface"],
+        foreground=COLORS["accent_dark"],
         font=("Segoe UI", 9),
     )
     style.configure(
