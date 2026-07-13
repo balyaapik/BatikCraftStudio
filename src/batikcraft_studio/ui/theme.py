@@ -6,18 +6,20 @@ import tkinter as tk
 from tkinter import ttk
 
 COLORS: dict[str, str] = {
-    "ink": "#211A17",
-    "muted_ink": "#6E625B",
-    "canvas": "#F3EFE7",
-    "surface": "#FFFDF8",
-    "surface_alt": "#E9E1D4",
-    "sidebar": "#2D2926",
-    "sidebar_hover": "#403A36",
-    "sidebar_active": "#B97745",
+    "ink": "#242424",
+    "muted_ink": "#666666",
+    "canvas": "#D5D5D5",
+    "surface": "#F3F3F3",
+    "surface_alt": "#E7E7E7",
+    "toolbar": "#ECECEC",
+    "rail": "#383838",
+    "rail_hover": "#4A4A4A",
+    "rail_active": "#A85F32",
     "accent": "#A85F32",
     "accent_dark": "#7D4326",
     "accent_soft": "#E8C7A8",
-    "line": "#D9D0C3",
+    "line": "#BDBDBD",
+    "line_dark": "#8F8F8F",
     "success": "#46654B",
     "warning": "#9A6B27",
     "white": "#FFFFFF",
@@ -25,128 +27,120 @@ COLORS: dict[str, str] = {
 
 
 def configure_theme(root: tk.Tk) -> ttk.Style:
-    """Configure a restrained, unisex earth-tone theme and return its style."""
+    """Configure a compact editor-style theme using native ttk widgets."""
 
-    root.configure(background=COLORS["canvas"])
+    root.configure(background=COLORS["surface_alt"])
     style = ttk.Style(root)
-
     if "clam" in style.theme_names():
         style.theme_use("clam")
 
     style.configure(
         ".",
-        background=COLORS["canvas"],
-        foreground=COLORS["ink"],
-        font=("Segoe UI", 10),
-    )
-    style.configure("App.TFrame", background=COLORS["canvas"])
-    style.configure("Surface.TFrame", background=COLORS["surface"])
-    style.configure("Sidebar.TFrame", background=COLORS["sidebar"])
-
-    style.configure(
-        "Brand.TLabel",
-        background=COLORS["sidebar"],
-        foreground=COLORS["white"],
-        font=("Segoe UI Semibold", 18),
-    )
-    style.configure(
-        "BrandMeta.TLabel",
-        background=COLORS["sidebar"],
-        foreground="#CFC3B8",
-        font=("Segoe UI", 9),
-    )
-    style.configure(
-        "ProjectTitle.TLabel",
         background=COLORS["surface"],
         foreground=COLORS["ink"],
-        font=("Segoe UI Semibold", 12),
+        font=("Segoe UI", 9),
+        bordercolor=COLORS["line"],
+        lightcolor=COLORS["surface"],
+        darkcolor=COLORS["line_dark"],
+    )
+    style.configure("App.TFrame", background=COLORS["surface_alt"])
+    style.configure("Surface.TFrame", background=COLORS["surface"])
+    style.configure("Toolbar.TFrame", background=COLORS["toolbar"])
+    style.configure("Rail.TFrame", background=COLORS["rail"])
+    style.configure("Dock.TFrame", background=COLORS["surface"])
+
+    style.configure(
+        "ProjectTitle.TLabel",
+        background=COLORS["toolbar"],
+        foreground=COLORS["ink"],
+        font=("Segoe UI Semibold", 9),
     )
     style.configure(
         "ProjectMeta.TLabel",
-        background=COLORS["surface"],
+        background=COLORS["toolbar"],
         foreground=COLORS["muted_ink"],
         font=("Segoe UI", 9),
     )
     style.configure(
         "ProjectPath.TLabel",
-        background=COLORS["surface"],
-        foreground=COLORS["accent_dark"],
-        font=("Segoe UI", 9),
+        background=COLORS["toolbar"],
+        foreground=COLORS["muted_ink"],
+        font=("Segoe UI", 8),
     )
     style.configure(
-        "Eyebrow.TLabel",
-        background=COLORS["canvas"],
-        foreground=COLORS["accent_dark"],
+        "PanelTitle.TLabel",
+        background=COLORS["surface"],
+        foreground=COLORS["ink"],
         font=("Segoe UI Semibold", 9),
+        padding=(6, 5),
     )
     style.configure(
-        "Title.TLabel",
-        background=COLORS["canvas"],
-        foreground=COLORS["ink"],
-        font=("Segoe UI Semibold", 25),
-    )
-    style.configure(
-        "Description.TLabel",
-        background=COLORS["canvas"],
-        foreground=COLORS["muted_ink"],
-        font=("Segoe UI", 11),
-    )
-    style.configure(
-        "CardTitle.TLabel",
-        background=COLORS["surface"],
-        foreground=COLORS["ink"],
-        font=("Segoe UI Semibold", 13),
-    )
-    style.configure(
-        "CardText.TLabel",
+        "Muted.TLabel",
         background=COLORS["surface"],
         foreground=COLORS["muted_ink"],
-        font=("Segoe UI", 10),
+        font=("Segoe UI", 9),
     )
     style.configure(
         "Status.TLabel",
-        background=COLORS["surface_alt"],
+        background=COLORS["toolbar"],
         foreground=COLORS["muted_ink"],
-        padding=(14, 7),
-        font=("Segoe UI", 9),
+        padding=(8, 3),
+        font=("Segoe UI", 8),
     )
 
     style.configure(
-        "Nav.TButton",
-        anchor="w",
-        background=COLORS["sidebar"],
-        foreground="#E7DED5",
-        borderwidth=0,
-        padding=(16, 12),
-        font=("Segoe UI", 10),
+        "Tool.TButton",
+        background=COLORS["toolbar"],
+        foreground=COLORS["ink"],
+        borderwidth=1,
+        relief="flat",
+        padding=5,
+        width=2,
     )
     style.map(
-        "Nav.TButton",
-        background=[("active", COLORS["sidebar_hover"])],
-        foreground=[("active", COLORS["white"])],
+        "Tool.TButton",
+        background=[("pressed", COLORS["accent_soft"]), ("active", "#DADADA")],
+        relief=[("pressed", "sunken")],
     )
     style.configure(
-        "NavActive.TButton",
-        anchor="w",
-        background=COLORS["sidebar_active"],
+        "ToolActive.TButton",
+        background=COLORS["accent_soft"],
+        foreground=COLORS["ink"],
+        borderwidth=1,
+        relief="sunken",
+        padding=5,
+        width=2,
+    )
+    style.map("ToolActive.TButton", background=[("active", COLORS["accent_soft"])])
+
+    style.configure(
+        "Rail.TButton",
+        background=COLORS["rail"],
         foreground=COLORS["white"],
         borderwidth=0,
-        padding=(16, 12),
-        font=("Segoe UI Semibold", 10),
+        relief="flat",
+        padding=8,
+        width=2,
     )
-    style.map(
-        "NavActive.TButton",
-        background=[("active", COLORS["sidebar_active"])],
-        foreground=[("active", COLORS["white"])],
+    style.map("Rail.TButton", background=[("active", COLORS["rail_hover"])])
+    style.configure(
+        "RailActive.TButton",
+        background=COLORS["rail_active"],
+        foreground=COLORS["white"],
+        borderwidth=0,
+        relief="flat",
+        padding=8,
+        width=2,
     )
+    style.map("RailActive.TButton", background=[("active", COLORS["rail_active"])])
 
     style.configure(
         "Primary.TButton",
         background=COLORS["accent"],
         foreground=COLORS["white"],
-        borderwidth=0,
-        padding=(16, 10),
-        font=("Segoe UI Semibold", 10),
+        borderwidth=1,
+        padding=(10, 5),
+        font=("Segoe UI Semibold", 9),
     )
     style.map(
         "Primary.TButton",
@@ -155,16 +149,29 @@ def configure_theme(root: tk.Tk) -> ttk.Style:
     )
     style.configure(
         "Secondary.TButton",
-        background=COLORS["surface"],
+        background=COLORS["toolbar"],
         foreground=COLORS["ink"],
-        bordercolor=COLORS["line"],
         borderwidth=1,
-        padding=(16, 10),
-        font=("Segoe UI Semibold", 10),
+        padding=(9, 5),
+        font=("Segoe UI", 9),
+    )
+    style.map("Secondary.TButton", background=[("active", "#DADADA")])
+
+    style.configure("TNotebook", background=COLORS["surface"], borderwidth=0)
+    style.configure(
+        "TNotebook.Tab",
+        background=COLORS["toolbar"],
+        foreground=COLORS["ink"],
+        padding=(12, 5),
+        font=("Segoe UI", 9),
     )
     style.map(
-        "Secondary.TButton",
-        background=[("active", COLORS["surface_alt"])],
+        "TNotebook.Tab",
+        background=[("selected", COLORS["surface"]), ("active", "#DDDDDD")],
+        font=[("selected", ("Segoe UI Semibold", 9))],
     )
+    style.configure("TLabelframe", background=COLORS["surface"], bordercolor=COLORS["line"])
+    style.configure("TLabelframe.Label", background=COLORS["surface"], font=("Segoe UI", 9))
+    style.configure("TEntry", fieldbackground=COLORS["white"], padding=3)
 
     return style
