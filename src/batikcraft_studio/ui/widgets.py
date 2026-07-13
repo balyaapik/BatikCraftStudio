@@ -18,10 +18,11 @@ def icon_button(
     command: Callable[[], object],
     style: str = "Tool.TButton",
     size: int = 20,
+    color: str = "#2B2B2B",
 ) -> ttk.Button:
     """Create an icon-only ttk button and keep its image alive."""
 
-    image = create_icon(parent, icon, size=size)
+    image = create_icon(parent, icon, size=size, color=color)
     button = ttk.Button(parent, image=image, command=command, style=style, takefocus=True)
     button.image = image  # type: ignore[attr-defined]
     ToolTip(button, tooltip)
