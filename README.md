@@ -2,7 +2,7 @@
 
 BatikCraft Studio adalah aplikasi desktop native berbasis Python dan Tkinter untuk membuat motif batik secara manual, melakukan batikfikasi objek, mengintegrasikan generative AI, serta menyiapkan motif untuk proses lisensi dan bidding melalui website BatikCraft.
 
-> Status: Milestone 2B — project serializer. Pengembangan dilakukan bertahap agar setiap modul dapat diuji, diperbaiki, dan disempurnakan menggunakan IBM Bob.
+> Status: Milestone 2C — workspace shell. Pengembangan dilakukan bertahap agar setiap modul dapat diuji, diperbaiki, dan disempurnakan menggunakan IBM Bob.
 
 ## Fokus Produk
 
@@ -18,6 +18,18 @@ Aplikasi desktop difokuskan pada proses penciptaan motif:
 
 Bidding, transaksi, dan pengelolaan lisensi dilakukan di website BatikCraft. Desktop hanya menyiapkan serta menerbitkan aset motif.
 
+## Fitur yang Sudah Berfungsi
+
+- shell aplikasi Tkinter dengan lima workspace;
+- project domain tervalidasi;
+- format proyek editable `.batikcraft` berbasis ZIP;
+- New Project, Open, Save, Save As, Close Project, dan Exit;
+- Save–Discard–Cancel untuk proyek yang belum disimpan;
+- project context bar berisi judul, creator, ukuran canvas, layer count, path, dan dirty state;
+- blank motif canvas yang responsif terhadap aspect ratio proyek;
+- keyboard shortcut untuk file dan workspace navigation;
+- CI menggunakan Ruff dan Pytest.
+
 ## Roadmap Bertahap
 
 ### Milestone 1 — Application Foundation ✅
@@ -25,49 +37,46 @@ Bidding, transaksi, dan pengelolaan lisensi dilakukan di website BatikCraft. Des
 - struktur package Python;
 - shell aplikasi Tkinter;
 - sidebar dan perpindahan workspace;
-- Dashboard, Motif Editor, Object Batikfication, Pattern Preview, dan Publish placeholder;
-- konfigurasi tema;
-- status bar dan penanganan error awal;
-- dokumentasi arsitektur serta petunjuk menjalankan aplikasi.
+- tema, status bar, menu, dan shortcut dasar;
+- dokumentasi arsitektur dan CI.
 
 ### Milestone 2 — Project and Workspace Core
 
 #### Milestone 2A — Project Domain ✅
 
-- model proyek tervalidasi tanpa dependensi GUI;
 - metadata proyek dan schema version;
 - ukuran canvas dan warna latar;
 - layer descriptor dan transform non-destruktif;
 - add, update, remove, reorder, dan selection layer;
-- revision serta dirty-state tracking;
-- exception domain yang eksplisit;
-- unit test untuk invariant dan failure path.
+- revision dan dirty-state tracking;
+- exception domain serta failure-path tests.
 
 #### Milestone 2B — Project Serializer ✅
 
-- format editable `.batikcraft` berbasis ZIP;
-- manifest `project.json` yang versioned dan strict;
-- reserved roots assets, masks, renders, dan metadata;
+- format `.batikcraft` berbasis ZIP;
+- manifest `project.json` yang strict dan versioned;
+- assets, masks, renders, dan metadata;
 - atomic save menggunakan temporary file dan `os.replace`;
-- load asset tervalidasi tanpa ekstraksi filesystem;
-- SHA-256 dan size verification;
-- perlindungan path traversal dan duplicate entry;
-- corrupted-file, missing-asset, dan round-trip tests.
+- verified in-memory load tanpa ekstraksi filesystem;
+- SHA-256, size verification, path traversal protection, dan corrupted-file tests.
 
-#### Milestone 2C — Workspace Shell
+#### Milestone 2C — Workspace Shell ✅
 
+- application-level `ProjectSession`;
 - New Project dan Open Project;
-- canvas motif kosong;
-- integrasi project domain dan serializer ke aplikasi Tkinter;
-- dirty-project close confirmation;
-- Save dan Save As melalui application service.
+- Save, Save As, Close Project, dan Exit;
+- dirty-project Save–Discard–Cancel confirmation;
+- project context di main window;
+- responsive blank canvas placeholder;
+- session lifecycle dan failure-path tests.
 
 #### Milestone 2D — Layer Editing
 
-- import PNG/JPG;
+- import PNG/JPG menggunakan Pillow;
+- image-backed layers dan canonical embedded PNG assets;
 - select, move, scale, rotate, duplicate, dan delete;
 - visibility, lock, dan layer ordering;
-- undo/redo.
+- undo/redo melalui application command history.
 
 ### Milestone 3 — Manual Motif Tools
 
@@ -85,17 +94,13 @@ Bidding, transaksi, dan pengelolaan lisensi dilakukan di website BatikCraft. Des
 - koreksi mask manual;
 - pilihan gaya batik;
 - mode Outline, Fill, dan Generative;
-- procedural batik fill sebagai fallback yang stabil;
+- procedural batik fill sebagai fallback;
 - empat variasi hasil;
 - hasil masuk sebagai editable workspace layer.
 
 ### Milestone 5 — Pattern Engine
 
-- straight repeat;
-- mirror repeat;
-- half-drop;
-- half-brick;
-- rotational repeat;
+- straight, mirror, half-drop, half-brick, dan rotational repeat;
 - live seamless preview;
 - export tile dan repeat preview.
 
@@ -114,39 +119,26 @@ Bidding, transaksi, dan pengelolaan lisensi dilakukan di website BatikCraft. Des
 - form konfigurasi lisensi;
 - preview ber-watermark;
 - publishing manifest;
-- autentikasi website;
-- upload desain;
-- membuka halaman bidding di browser;
-- membaca status bidding dari website.
+- autentikasi dan upload ke website;
+- membuka halaman bidding dan membaca status bidding.
 
-## Teknologi Awal
+## Teknologi
 
 - Python 3.11+
 - Tkinter / ttk
-- Pillow pada milestone image workspace
-- NumPy dan OpenCV pada milestone pemrosesan citra
-- PyTorch atau ONNX Runtime pada milestone AI
-- Requests/HTTPX pada milestone integrasi website
+- Pillow mulai Milestone 2D
+- NumPy dan OpenCV untuk pemrosesan citra
+- PyTorch atau ONNX Runtime untuk AI
+- Requests/HTTPX untuk integrasi website
 - Pytest dan Ruff untuk validasi
-
-## Prinsip Pengembangan
-
-- setiap milestone dibuat dalam branch dan pull request tersendiri;
-- modul AI tidak boleh membekukan Tkinter main thread;
-- output AI tetap dapat diedit secara manual;
-- fitur non-AI harus tetap dapat digunakan saat model belum tersedia;
-- kode UI, domain, persistence, imaging, dan integrasi eksternal dipisahkan;
-- perubahan IBM Bob dicatat di `docs/BOB_DEVELOPMENT_LOG.md`.
 
 ## Menjalankan Aplikasi
 
-Pastikan Python 3.11 atau lebih baru tersedia dan instal Tkinter melalui distribusi Python/OS apabila belum disertakan.
+Buat dan aktifkan virtual environment:
 
 ```bash
 python -m venv .venv
 ```
-
-Aktifkan virtual environment.
 
 Windows PowerShell:
 
@@ -160,14 +152,14 @@ Linux/macOS:
 source .venv/bin/activate
 ```
 
-Instal aplikasi dan alat pengembangan:
+Instal aplikasi dan development tools:
 
 ```bash
 python -m pip install --upgrade pip
 python -m pip install -e ".[dev]"
 ```
 
-Jalankan aplikasi:
+Jalankan:
 
 ```bash
 python -m batikcraft_studio
@@ -179,42 +171,35 @@ atau:
 batikcraft-studio
 ```
 
-## Contoh Project Domain
+## Workflow Proyek di GUI
+
+1. Pilih **File → New Project** atau tekan `Ctrl+N`.
+2. Masukkan judul, creator, ukuran canvas, dan warna latar.
+3. Blank canvas tampil di workspace **Motif Editor**.
+4. Pilih **File → Save As** atau tekan `Ctrl+Shift+S`.
+5. Simpan sebagai file `.batikcraft`.
+6. Gunakan `Ctrl+S` untuk penyimpanan berikutnya.
+7. Gunakan **Open Project** atau `Ctrl+O` untuk membuka proyek kembali.
+
+Saat proyek memiliki perubahan yang belum tersimpan, New, Open, Close, atau Exit akan menampilkan pilihan Save, Discard, atau Cancel.
+
+## Contoh Application Session
 
 ```python
-from batikcraft_studio.domain import Layer, Project
+from batikcraft_studio.application import ProjectSession
 
-project = Project.create("Flora Otomotif", "Balya Rochmadi")
-project.add_layer(Layer(name="Main Object"))
-
-assert project.is_dirty
-project.mark_saved()
-assert not project.is_dirty
-```
-
-## Contoh Save dan Open `.batikcraft`
-
-```python
-from batikcraft_studio.domain import Layer, Project
-from batikcraft_studio.persistence import ProjectArchive
-
-project = Project.create("Flora Otomotif", "Balya Rochmadi")
-project.add_layer(
-    Layer(
-        name="Main Object",
-        asset_ref="assets/main-object.png",
-    )
+session = ProjectSession()
+session.new_project(
+    title="Flora Otomotif",
+    creator="Balya Rochmadi",
+    width=1600,
+    height=1200,
 )
+session.save_as("flora-otomotif.batikcraft")
 
-ProjectArchive.save(
-    "flora-otomotif.batikcraft",
-    project,
-    {"assets/main-object.png": image_bytes},
-)
-
-bundle = ProjectArchive.load("flora-otomotif.batikcraft")
-loaded_project = bundle.project
-loaded_image = bundle.get_asset("assets/main-object.png")
+snapshot = session.snapshot()
+assert snapshot.title == "Flora Otomotif"
+assert snapshot.dirty is False
 ```
 
 ## Validasi
@@ -226,10 +211,21 @@ pytest
 
 CI GitHub menjalankan kedua perintah tersebut pada setiap push dan pull request.
 
+## Prinsip Pengembangan
+
+- setiap milestone dibuat dalam branch dan pull request tersendiri;
+- kode UI, application, domain, persistence, imaging, dan integration dipisahkan;
+- domain dan persistence tidak boleh mengimpor Tkinter;
+- model domain tidak menyimpan image bytes atau widget state;
+- fitur non-AI harus tetap berfungsi saat model tidak tersedia;
+- AI tidak boleh membekukan Tkinter main thread;
+- perubahan IBM Bob dicatat secara jujur di development log.
+
 ## Dokumentasi
 
 - `docs/ARCHITECTURE.md` — batas modul dan arah dependensi;
 - `docs/PROJECT_DOMAIN.md` — invariant dan API Milestone 2A;
 - `docs/PROJECT_FORMAT.md` — format archive dan keamanan Milestone 2B;
+- `docs/WORKSPACE_SHELL.md` — session, file commands, dan GUI contract Milestone 2C;
 - `docs/BOB_PROMPTS.md` — prompt bertahap untuk IBM Bob;
 - `docs/BOB_DEVELOPMENT_LOG.md` — catatan kontribusi Bob dan hasil review.
