@@ -1,84 +1,89 @@
 # Scoped IBM Bob Prompts
 
-Use small prompts with explicit file boundaries. Bob should inspect the repository and tests before making changes.
+Use small prompts with explicit file boundaries. Bob should inspect the repository and
+tests before making changes.
 
 ## Completed Foundation — Milestone 2A: Project Domain
 
 The repository contains the project aggregate and immutable value objects under
-`src/batikcraft_studio/domain`. IBM Bob should extend those contracts rather than
-create a second project or layer model.
+`src/batikcraft_studio/domain`. Extend those contracts instead of creating a second
+project or layer model.
 
 ## Completed Foundation — Milestone 2B: Project Serializer
 
-The repository contains the public persistence API under
-`src/batikcraft_studio/persistence` and the archive contract in
-`docs/PROJECT_FORMAT.md`.
+The persistence API lives under `src/batikcraft_studio/persistence`; the archive
+contract is documented in `docs/PROJECT_FORMAT.md`.
 
 ## Completed Foundation — Milestone 2C: Workspace Shell
 
+The repository contains `ProjectSession`, New/Open/Save/Save As/Close workflows,
+project context, dirty-project confirmation, and the workspace shell contract in
+`docs/WORKSPACE_SHELL.md`.
+
+## Completed Foundation — Milestone 2D: Raster Layer Editing
+
 The repository now contains:
 
-- `ProjectSession` under `src/batikcraft_studio/application`;
-- New/Open/Save/Save As/Close workflows in `app.py`;
-- project context and a blank responsive editor canvas;
-- Save–Discard–Cancel protection for dirty projects;
-- session tests under `tests/test_project_session.py`;
-- the shell contract in `docs/WORKSPACE_SHELL.md`.
+- safe raster normalization under `src/batikcraft_studio/imaging/raster.py`;
+- bounded Pillow rendering under `src/batikcraft_studio/imaging/renderer.py`;
+- layer commands and snapshot history in `ProjectSession`;
+- the interactive editor under `src/batikcraft_studio/ui/layer_editor.py`;
+- tests in `tests/test_raster_imaging.py` and `tests/test_layer_editor_session.py`;
+- the editor contract in `docs/LAYER_EDITOR.md`.
 
-Suggested Bob review prompt:
+Suggested IBM Bob review prompt:
 
 ```text
-Review Milestone 2C in src/batikcraft_studio/application,
-src/batikcraft_studio/app.py, src/batikcraft_studio/ui, docs/WORKSPACE_SHELL.md,
-and tests/test_project_session.py.
+Review Milestone 2D in:
+- src/batikcraft_studio/imaging;
+- src/batikcraft_studio/application/session.py;
+- src/batikcraft_studio/ui/layer_editor.py;
+- src/batikcraft_studio/app.py;
+- docs/LAYER_EDITOR.md;
+- tests/test_raster_imaging.py;
+- tests/test_layer_editor_session.py.
 
-Do not implement image import, image rendering, layer transforms, drawing tools,
-Object Batikfication, GAN inference, licensing, or website integration.
+Do not add brush, eraser, shape, motif stamp, Object Batikfication, GAN inference,
+pattern repeat, licensing, or website integration.
 
 Check specifically for:
-- session replacement after failed open/save operations;
-- dirty-state confirmation edge cases;
-- canceled Save As behavior during close/new/open/exit;
-- asset bytes or mutable session state escaping;
-- file-dialog logic leaking into domain or persistence modules;
-- cross-platform Tkinter shortcut and dialog issues;
+- Pillow decompression-bomb, malformed-file, alpha, color-mode, and EXIF issues;
+- preview rendering errors for off-canvas, negative-scale, rotated, and opaque layers;
+- transform convention inconsistencies between renderer, hit testing, and UI;
+- undo/redo loss of asset bytes, path, saved revision, selection, or layer order;
+- shared-asset deletion and duplicate-layer edge cases;
+- locked-layer mutation gaps;
+- partial mutations after invalid inspector input;
+- expensive repeated rendering or Tkinter main-thread responsiveness problems;
+- cross-platform file-dialog and keyboard-shortcut behavior;
 - missing UI-independent failure-path tests.
 
 Make only clear corrective changes. Run ruff check . and pytest. Record the actual
-Bob contribution in docs/BOB_DEVELOPMENT_LOG.md.
+Bob contribution in docs/BOB_DEVELOPMENT_LOG.md, including manual GUI checks that
+were performed and unresolved risks.
 ```
 
-## Next Prompt — Milestone 2D: Layer Editing
+## Next Prompt — Milestone 3A: Basic Paint Layer
 
 ```text
-You are extending BatikCraft Studio, a Python 3.11 Tkinter application.
-Read README.md, docs/ARCHITECTURE.md, docs/PROJECT_DOMAIN.md,
-docs/PROJECT_FORMAT.md, and docs/WORKSPACE_SHELL.md first.
+You are extending BatikCraft Studio after the raster layer editor is stable.
+Read README.md, docs/LAYER_EDITOR.md, and the existing domain/application/imaging
+modules first.
 
-Implement only image-backed layer editing on top of the existing ProjectSession,
-Project aggregate, and Tkinter editor shell. Do not implement drawing tools,
-Object Batikfication, GAN inference, pattern repeat, licensing, or website APIs.
-
-Requirements:
-- add Pillow only for PNG/JPG decoding, preview rendering, and RGBA conversion;
-- import PNG/JPG through the UI and embed canonical PNG bytes below assets/;
-- create one existing domain Layer per imported image with a stable asset_ref;
-- render layers in stack order without putting image bytes into the domain model;
-- support selection, move, scale, rotate, duplicate, delete, visibility, lock,
-  and layer ordering;
-- keep transformations non-destructive and stored in Layer.transform;
-- add an application command/history service with undo and redo;
-- prevent locked layers from being transformed or deleted;
-- keep active selection transient and do not dirty the project by selection alone;
-- refresh project context after every content mutation;
-- preserve all imported assets through Save/Open round trips;
-- add UI-independent tests for commands, history, asset naming, and mutations;
-- keep domain and persistence modules free from Tkinter and Pillow imports;
+Implement only a basic paint-layer foundation:
+- create a paint layer backed by an RGBA PNG asset;
+- add brush and eraser tools with adjustable size and opacity;
+- draw in project coordinates and preserve the existing center-based layer transform;
+- commit one history entry per completed stroke, not per mouse-move event;
+- keep raster import, transforms, save/open, and undo/redo working;
+- do not implement shapes, stamps, symmetry, Object Batikfication, GAN inference,
+  pattern repeat, licensing, or website integration;
+- add non-GUI tests for stroke compositing, erasing, history, and save/open;
 - run ruff check . and pytest;
-- update docs/BOB_DEVELOPMENT_LOG.md with Bob's actual contribution.
+- update docs and the Bob development log truthfully.
 
-Before editing, summarize the files you intend to add or change. After editing,
-summarize validation results, manual GUI checks, and unresolved decisions.
+Before editing, summarize the files you intend to change. After editing, report test
+results, manual GUI checks, and unresolved performance decisions.
 ```
 
 ## Review Checklist for Every Bob Task
