@@ -64,7 +64,7 @@ def render_isen_cap(
     kind = _validate_isen_type(isen_type)
     rgb = _validate_color(color)
     if isinstance(size, bool) or not isinstance(size, int) or not 32 <= size <= 1024:
-        raise IsenError("Cap source size must be an integer between 32 and 1024 pixels.")
+        raise IsenError("Ukuran sumber cap harus berupa bilangan bulat antara 32 dan 1024 piksel.")
 
     supersample = 4
     work_size = size * supersample
@@ -82,6 +82,9 @@ def render_isen_cap(
         _draw_cecek_sawut(draw, work_size, ink)
 
     image = image.resize((size, size), Image.Resampling.LANCZOS)
+    alpha = image.getchannel("A")
+    image = Image.new("RGBA", (size, size), (*rgb, 0))
+    image.putalpha(alpha)
     output = BytesIO()
     image.save(output, format="PNG", optimize=True)
     return output.getvalue()
@@ -98,11 +101,11 @@ def symmetry_placements(
 
     x, y = _validate_position(position)
     if isinstance(canvas_width, bool) or not isinstance(canvas_width, int) or canvas_width < 1:
-        raise IsenError("Canvas width must be a positive integer.")
+        raise IsenError("Lebar kanvas harus berupa bilangan bulat positif.")
     if isinstance(canvas_height, bool) or not isinstance(canvas_height, int) or canvas_height < 1:
-        raise IsenError("Canvas height must be a positive integer.")
+        raise IsenError("Tinggi kanvas harus berupa bilangan bulat positif.")
     if not 0 <= x <= canvas_width or not 0 <= y <= canvas_height:
-        raise IsenError("Cap position must be inside the project canvas.")
+        raise IsenError("Posisi cap harus berada di dalam kanvas proyek.")
     mode = _validate_susun(susun)
 
     center_x = canvas_width / 2
