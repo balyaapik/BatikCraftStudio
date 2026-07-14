@@ -4,6 +4,7 @@ from dataclasses import dataclass
 
 import pytest
 
+from batikcraft_studio.app import BatikCraftApplication
 from batikcraft_studio.i18n import category_label, current_language, set_language, tr
 from batikcraft_studio.ui.keyboard import event_targets_text_input, run_single_key_shortcut
 
@@ -45,6 +46,30 @@ def test_single_key_shortcut_runs_from_canvas() -> None:
     assert result == "break"
     assert calls == ["opened"]
     assert not event_targets_text_input(event)
+
+
+def test_global_control_and_delete_shortcuts_do_not_run_in_text_fields() -> None:
+    calls: list[str] = []
+
+    result = BatikCraftApplication._run_shortcut(
+        _Event(_Widget("TEntry")),  # type: ignore[arg-type]
+        lambda: calls.append("changed-canvas"),
+    )
+
+    assert result is None
+    assert calls == []
+
+
+def test_global_shortcuts_still_run_from_canvas() -> None:
+    calls: list[str] = []
+
+    result = BatikCraftApplication._run_shortcut(
+        _Event(_Widget("Canvas")),  # type: ignore[arg-type]
+        lambda: calls.append("saved"),
+    )
+
+    assert result == "break"
+    assert calls == ["saved"]
 
 
 def test_indonesian_and_english_catalogs_format_messages() -> None:
