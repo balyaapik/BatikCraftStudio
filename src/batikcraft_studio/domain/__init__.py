@@ -2,7 +2,9 @@
 
 from batikcraft_studio.domain.errors import (
     DuplicateLayerError,
+    DuplicateObjectError,
     LayerNotFoundError,
+    ObjectNotFoundError,
     ProjectDomainError,
     ProjectValidationError,
 )
@@ -28,6 +30,7 @@ __all__ = [
     "MAX_CANVAS_DIMENSION",
     "CanvasSpec",
     "DuplicateLayerError",
+    "DuplicateObjectError",
     "Layer",
     "LayerKind",
     "LayerNodeKind",
@@ -35,6 +38,7 @@ __all__ = [
     "LayerObject",
     "ObjectBounds",
     "ObjectKind",
+    "ObjectNotFoundError",
     "Project",
     "ProjectDomainError",
     "ProjectMetadata",
