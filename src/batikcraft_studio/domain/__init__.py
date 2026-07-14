@@ -1,5 +1,14 @@
 """Public project-domain API for BatikCraft Studio."""
 
+from batikcraft_studio.domain.batik_process import (
+    PROCESS_SCHEMA_VERSION,
+    BatikProcessPlan,
+    ColorRecipe,
+    DyeSource,
+    DyeSourceKind,
+    ProcessAction,
+    ProcessStep,
+)
 from batikcraft_studio.domain.errors import (
     DuplicateLayerError,
     DuplicateObjectError,
@@ -28,9 +37,14 @@ __all__ = [
     "CURRENT_SCHEMA_VERSION",
     "LEGACY_SCHEMA_VERSIONS",
     "MAX_CANVAS_DIMENSION",
+    "PROCESS_SCHEMA_VERSION",
+    "BatikProcessPlan",
     "CanvasSpec",
+    "ColorRecipe",
     "DuplicateLayerError",
     "DuplicateObjectError",
+    "DyeSource",
+    "DyeSourceKind",
     "Layer",
     "LayerKind",
     "LayerNodeKind",
@@ -39,6 +53,8 @@ __all__ = [
     "ObjectBounds",
     "ObjectKind",
     "ObjectNotFoundError",
+    "ProcessAction",
+    "ProcessStep",
     "Project",
     "ProjectDomainError",
     "ProjectMetadata",

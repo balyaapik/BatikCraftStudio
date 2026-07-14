@@ -8,7 +8,7 @@ import tkinter as tk
 from tkinter import messagebox
 
 from .config import APP_NAME
-from .multi_object_app import MultiObjectApplication
+from .process_app import BatikProcessApplication
 
 
 def _configure_logging() -> None:
@@ -24,7 +24,7 @@ def main() -> int:
     _configure_logging()
 
     try:
-        application = MultiObjectApplication()
+        application = BatikProcessApplication()
         application.run()
     except tk.TclError as exc:
         logging.exception("Tkinter could not initialize")

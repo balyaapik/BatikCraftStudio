@@ -34,6 +34,10 @@ from batikcraft_studio.application.paint_session import (
     PaintLayerError,
     PaintProjectSession,
 )
+from batikcraft_studio.application.process_session import (
+    BATIK_PROCESS_EXTENSION,
+    BatikProcessProjectSession,
+)
 from batikcraft_studio.application.session import (
     LayerLockedError,
     NoActiveProjectError,
@@ -50,13 +54,15 @@ from batikcraft_studio.application.structured_batification_session import (
     StructuredBatificationProjectSession,
 )
 
-# The public desktop session includes offline AI plus transient multi-selection and persistent
-# object groups without changing the project schema.
-ProjectSession = MultiObjectProjectSession
+# The public desktop session now includes process documentation on top of offline AI and
+# multi-object editing. Process data lives in a hidden non-rendering group node.
+ProjectSession = BatikProcessProjectSession
 
 __all__ = [
+    "BATIK_PROCESS_EXTENSION",
     "GROUP_ID_KEY",
     "GROUP_NAME_KEY",
+    "BatikProcessProjectSession",
     "BatikProjectSession",
     "BatificationGeneration",
     "CapIsenError",
