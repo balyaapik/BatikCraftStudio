@@ -65,6 +65,7 @@ class PaintProjectSession(ProjectSession):
                 and active.node_kind is LayerNodeKind.LAYER
                 and active.asset_ref is None
                 and not project.is_layer_effectively_locked(active.layer_id)
+                and active.transform == Transform()
             ):
                 return active
         return self.create_paint_layer()
@@ -91,6 +92,11 @@ class PaintProjectSession(ProjectSession):
             raise PaintLayerError(
                 "Lapis cat lama berbasis kanvas penuh tidak dipakai untuk stroke baru; "
                 "buat Lapis Canting baru."
+            )
+        if layer.transform != Transform():
+            raise PaintLayerError(
+                "Lapis canting container harus tetap di posisi asal, tanpa rotasi atau skala; "
+                "transformasikan objek goresannya."
             )
 
         cropped = render_cropped_stroke(
