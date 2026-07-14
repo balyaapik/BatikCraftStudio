@@ -9,9 +9,9 @@ from tkinter import ttk
 from batikcraft_studio.application import ProjectSession
 from batikcraft_studio.config import WorkspaceDefinition
 
-from .canvas_structure_editor import CanvasStructureEditorWorkspaceView
 from .icons import create_icon
 from .theme import COLORS
+from .viewport_editor import ViewportEditorWorkspaceView
 
 StatusCallback = Callable[[str], None]
 RefreshCallback = Callable[[], None]
@@ -63,10 +63,10 @@ def create_workspace_view(
     set_status: StatusCallback,
     session: ProjectSession,
     refresh_context: RefreshCallback,
-) -> CanvasStructureEditorWorkspaceView:
-    """Return the ruler-enabled object-first layer editor."""
+) -> ViewportEditorWorkspaceView:
+    """Return the zoomable object-first layer editor."""
 
-    return CanvasStructureEditorWorkspaceView(
+    return ViewportEditorWorkspaceView(
         parent,
         definition=definition,
         set_status=set_status,
