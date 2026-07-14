@@ -12,6 +12,7 @@ from batikcraft_studio.application.clipboard_session import (
     ClipboardProjectSession,
     ObjectClipboardSnapshot,
 )
+from batikcraft_studio.application.direct_style_session import DirectStyleProjectSession
 from batikcraft_studio.application.interactive_transform_session import (
     InteractiveTransformProjectSession,
 )
@@ -61,9 +62,9 @@ from batikcraft_studio.application.viewport_session import (
     ViewportProjectSession,
 )
 
-# The public desktop session includes zoom-aware batch clipboard actions on top of object-first
-# layers, nested folders, process documentation, offline AI, and multi-object editing.
-ProjectSession = ViewportProjectSession
+# The public desktop session includes direct palette styling, closed-area fill, tree drag/drop,
+# zoom-aware batch clipboard actions, object-first layers, process documentation, and offline AI.
+ProjectSession = DirectStyleProjectSession
 
 __all__ = [
     "BATIK_PROCESS_EXTENSION",
@@ -75,6 +76,7 @@ __all__ = [
     "CanvasStructureProjectSession",
     "CapIsenError",
     "ClipboardProjectSession",
+    "DirectStyleProjectSession",
     "EditableObjectProjectSession",
     "InteractiveTransformProjectSession",
     "LayerLockedError",

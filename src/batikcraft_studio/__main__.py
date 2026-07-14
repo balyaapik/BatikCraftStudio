@@ -8,7 +8,7 @@ import tkinter as tk
 from tkinter import messagebox
 
 from .config import APP_NAME
-from .viewport_app import ViewportApplication
+from .direct_style_app import DirectStyleApplication
 
 
 def _configure_logging() -> None:
@@ -24,7 +24,7 @@ def main() -> int:
     _configure_logging()
 
     try:
-        application = ViewportApplication()
+        application = DirectStyleApplication()
         application.run()
     except tk.TclError as exc:
         logging.exception("Tkinter could not initialize")
