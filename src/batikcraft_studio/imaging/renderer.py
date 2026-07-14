@@ -1,4 +1,4 @@
-"""Pillow renderer for legacy layers and object-capable layer containers."""
+"""Pillow renderer for legacy layers and affine object-capable containers."""
 
 from __future__ import annotations
 
@@ -17,6 +17,11 @@ from batikcraft_studio.domain import (
     ObjectKind,
     Project,
     Transform,
+)
+from batikcraft_studio.imaging.affine_object import (
+    object_axis_aligned_bounds,
+    object_shear,
+    point_hits_affine_object,
 )
 from batikcraft_studio.imaging.shape import ShapeError, render_shape_image
 
@@ -44,15 +49,9 @@ def render_project_preview(
     max_width: int,
     max_height: int,
 ) -> RenderedProject:
-    """Render visible layer containers, objects, and legacy layers."""
-
     if max_width < 1 or max_height < 1:
         raise ProjectRenderError("Preview dimensions must be positive.")
-    scale = min(
-        max_width / project.canvas.width,
-        max_height / project.canvas.height,
-        1.0,
-    )
+    scale = min(max_width / project.canvas.width, max_height / project.canvas.height, 1.0)
     preview_width = max(1, round(project.canvas.width * scale))
     preview_height = max(1, round(project.canvas.height * scale))
     background = (*ImageColor.getrgb(project.canvas.background_color), 255)
@@ -65,7 +64,6 @@ def render_project_preview(
             continue
         if layer.objects:
             layer_surface = _render_object_layer(
-                project,
                 layer,
                 assets,
                 preview_width=preview_width,
@@ -75,8 +73,9 @@ def render_project_preview(
             effective_opacity = _effective_layer_opacity(project, layer)
             if effective_opacity < 1.0:
                 alpha = layer_surface.getchannel("A")
-                alpha = ImageEnhance.Brightness(alpha).enhance(effective_opacity)
-                layer_surface.putalpha(alpha)
+                layer_surface.putalpha(
+                    ImageEnhance.Brightness(alpha).enhance(effective_opacity)
+                )
             result.alpha_composite(layer_surface)
             continue
 
@@ -107,21 +106,12 @@ def transformed_object_bounds(
     *,
     preview_scale: float = 1.0,
 ) -> tuple[float, float, float, float]:
-    """Return an object's axis-aligned transformed bounds around its center."""
-
-    return _transformed_bounds(
-        width=item.bounds.width,
-        height=item.bounds.height,
-        transform=item.transform,
-        preview_scale=preview_scale,
-    )
+    left, top, right, bottom = object_axis_aligned_bounds(item)
+    return tuple(value * preview_scale for value in (left, top, right, bottom))
 
 
 def point_hits_object(item: LayerObject, x: float, y: float) -> bool:
-    """Return whether a project-space point intersects an object's rotated bounds."""
-
-    left, top, right, bottom = transformed_object_bounds(item)
-    return left <= x <= right and top <= y <= bottom
+    return point_hits_affine_object(item, x, y)
 
 
 def transformed_layer_bounds(
@@ -129,8 +119,6 @@ def transformed_layer_bounds(
     *,
     preview_scale: float = 1.0,
 ) -> tuple[float, float, float, float]:
-    """Return bounds for a legacy layer or the union of its visible objects."""
-
     visible_objects = [item for item in layer.objects if item.visible]
     if visible_objects:
         bounds = [
@@ -159,7 +147,6 @@ def point_hits_layer(layer: Layer, x: float, y: float) -> bool:
 
 
 def _render_object_layer(
-    project: Project,
     layer: Layer,
     assets: Mapping[str, bytes],
     *,
@@ -187,14 +174,8 @@ def _prepare_object_image(
     *,
     preview_scale: float,
 ) -> Image.Image:
-    width = max(
-        1,
-        round(item.bounds.width * abs(item.transform.scale_x) * preview_scale),
-    )
-    height = max(
-        1,
-        round(item.bounds.height * abs(item.transform.scale_y) * preview_scale),
-    )
+    width = max(1, round(item.bounds.width * abs(item.transform.scale_x) * preview_scale))
+    height = max(1, round(item.bounds.height * abs(item.transform.scale_y) * preview_scale))
     if item.kind is ObjectKind.SHAPE:
         legacy_shape = Layer(
             name=item.name,
@@ -227,6 +208,9 @@ def _prepare_object_image(
         image = image.transpose(Image.Transpose.FLIP_LEFT_RIGHT)
     if item.transform.scale_y < 0:
         image = image.transpose(Image.Transpose.FLIP_TOP_BOTTOM)
+    shear_x, shear_y = object_shear(item)
+    if shear_x or shear_y:
+        image = _apply_centered_shear(image, shear_x, shear_y)
     if item.transform.rotation_degrees:
         image = image.rotate(
             -item.transform.rotation_degrees,
@@ -239,18 +223,61 @@ def _prepare_object_image(
     return image
 
 
+def _apply_centered_shear(image: Image.Image, shear_x: float, shear_y: float) -> Image.Image:
+    """Apply a centered two-axis shear and expand to retain all pixels."""
+
+    determinant = 1.0 - shear_x * shear_y
+    if abs(determinant) < 0.05:
+        shear_y = math.copysign((1.0 - 0.05) / max(abs(shear_x), 1e-6), shear_y)
+        determinant = 1.0 - shear_x * shear_y
+    center_x = image.width / 2
+    center_y = image.height / 2
+    corners = (
+        (-center_x, -center_y),
+        (center_x, -center_y),
+        (center_x, center_y),
+        (-center_x, center_y),
+    )
+    transformed = tuple(
+        (x + shear_x * y, shear_y * x + y) for x, y in corners
+    )
+    min_x = min(point[0] for point in transformed)
+    max_x = max(point[0] for point in transformed)
+    min_y = min(point[1] for point in transformed)
+    max_y = max(point[1] for point in transformed)
+    output_size = (
+        max(1, math.ceil(max_x - min_x)),
+        max(1, math.ceil(max_y - min_y)),
+    )
+    inverse_a = 1.0 / determinant
+    inverse_b = -shear_x / determinant
+    inverse_c = -shear_y / determinant
+    inverse_d = 1.0 / determinant
+    coefficients = (
+        inverse_a,
+        inverse_b,
+        inverse_a * min_x + inverse_b * min_y + center_x,
+        inverse_c,
+        inverse_d,
+        inverse_c * min_x + inverse_d * min_y + center_y,
+    )
+    return image.transform(
+        output_size,
+        Image.Transform.AFFINE,
+        coefficients,
+        resample=Image.Resampling.BICUBIC,
+    )
+
+
 def _erase_from_surface(
     surface: Image.Image,
     eraser: Image.Image,
     left: int,
     top: int,
 ) -> None:
-    """Subtract an eraser object's alpha from prior objects in its layer."""
-
     mask = Image.new("L", surface.size, 0)
     mask.paste(eraser.getchannel("A"), (left, top))
-    alpha = ImageChops.subtract(surface.getchannel("A"), mask)
-    surface.putalpha(alpha)
+    surface.putalpha(ImageChops.subtract(surface.getchannel("A"), mask))
 
 
 def _effective_layer_opacity(project: Project, layer: Layer) -> float:
@@ -277,7 +304,6 @@ def _prepare_layer_image(
     pixel_height = _positive_property(layer, "pixel_height")
     width = max(1, round(pixel_width * abs(layer.transform.scale_x) * preview_scale))
     height = max(1, round(pixel_height * abs(layer.transform.scale_y) * preview_scale))
-
     if layer.kind is LayerKind.SHAPE:
         try:
             image = render_shape_image(layer, width, height)
@@ -290,7 +316,6 @@ def _prepare_layer_image(
             raise MissingRasterAssetError(f"Layer {layer.name!r} has no raster content.")
         image = _open_rgba(content, f"Layer {layer.name!r}")
         image = image.resize((width, height), Image.Resampling.LANCZOS)
-
     if layer.transform.scale_x < 0:
         image = image.transpose(Image.Transpose.FLIP_LEFT_RIGHT)
     if layer.transform.scale_y < 0:
