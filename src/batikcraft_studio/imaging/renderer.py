@@ -37,6 +37,13 @@ class RenderedProject:
     scale: float
 
 
+@dataclass(frozen=True, slots=True)
+class _PreparedAffineImage:
+    image: Image.Image
+    offset_x: float
+    offset_y: float
+
+
 def render_project_preview(
     project: Project,
     assets: Mapping[str, bytes],
@@ -92,14 +99,84 @@ def render_project_preview(
         prepared = _prepare_layer_image(layer, content, preview_scale=scale)
         effective_opacity = _effective_layer_opacity(project, layer)
         if effective_opacity != layer.opacity:
-            alpha = prepared.getchannel("A")
+            alpha = prepared.image.getchannel("A")
             inherited = effective_opacity / layer.opacity if layer.opacity else 0.0
-            prepared.putalpha(ImageEnhance.Brightness(alpha).enhance(inherited))
-        left = round(layer.transform.x * scale - prepared.width / 2)
-        top = round(layer.transform.y * scale - prepared.height / 2)
-        result.alpha_composite(prepared, dest=(left, top))
+            prepared.image.putalpha(ImageEnhance.Brightness(alpha).enhance(inherited))
+        left = round(layer.transform.x * scale + prepared.offset_x)
+        top = round(layer.transform.y * scale + prepared.offset_y)
+        result.alpha_composite(prepared.image, dest=(left, top))
 
     return RenderedProject(image=result, scale=scale)
+
+
+def object_shear(item: LayerObject) -> tuple[float, float]:
+    """Return validated shear factors stored in backward-compatible object properties."""
+
+    return _shear_values(item.properties)
+
+
+def transformed_object_corners(
+    item: LayerObject,
+    *,
+    preview_scale: float = 1.0,
+) -> tuple[tuple[float, float], ...]:
+    """Return clockwise transformed object corners in project or preview space."""
+
+    shear_x, shear_y = object_shear(item)
+    return _transformed_corners(
+        width=item.bounds.width,
+        height=item.bounds.height,
+        transform=item.transform,
+        shear_x=shear_x,
+        shear_y=shear_y,
+        preview_scale=preview_scale,
+    )
+
+
+def transform_object_local_point(
+    item: LayerObject,
+    local_x: float,
+    local_y: float,
+    *,
+    preview_scale: float = 1.0,
+) -> tuple[float, float]:
+    """Map an object-local point to project or preview coordinates."""
+
+    shear_x, shear_y = object_shear(item)
+    a, b, c, d = _linear_matrix(
+        item.transform,
+        shear_x,
+        shear_y,
+        preview_scale=preview_scale,
+    )
+    return (
+        item.transform.x * preview_scale + a * local_x + b * local_y,
+        item.transform.y * preview_scale + c * local_x + d * local_y,
+    )
+
+
+def inverse_transform_object_point(
+    item: LayerObject,
+    x: float,
+    y: float,
+) -> tuple[float, float]:
+    """Map one project-space point into the object's untransformed local coordinates."""
+
+    shear_x, shear_y = object_shear(item)
+    a, b, c, d = _linear_matrix(item.transform, shear_x, shear_y)
+    determinant = a * d - b * c
+    if abs(determinant) < 1e-10:
+        raise ProjectRenderError("Object transform is singular.")
+    inverse_a = d / determinant
+    inverse_b = -b / determinant
+    inverse_c = -c / determinant
+    inverse_d = a / determinant
+    delta_x = x - item.transform.x
+    delta_y = y - item.transform.y
+    return (
+        inverse_a * delta_x + inverse_b * delta_y,
+        inverse_c * delta_x + inverse_d * delta_y,
+    )
 
 
 def transformed_object_bounds(
@@ -107,21 +184,24 @@ def transformed_object_bounds(
     *,
     preview_scale: float = 1.0,
 ) -> tuple[float, float, float, float]:
-    """Return an object's axis-aligned transformed bounds around its center."""
+    """Return an object's axis-aligned affine bounds around its center."""
 
-    return _transformed_bounds(
-        width=item.bounds.width,
-        height=item.bounds.height,
-        transform=item.transform,
-        preview_scale=preview_scale,
+    return _bounds_from_points(
+        transformed_object_corners(item, preview_scale=preview_scale)
     )
 
 
 def point_hits_object(item: LayerObject, x: float, y: float) -> bool:
-    """Return whether a project-space point intersects an object's rotated bounds."""
+    """Return whether a project-space point intersects the actual affine rectangle."""
 
-    left, top, right, bottom = transformed_object_bounds(item)
-    return left <= x <= right and top <= y <= bottom
+    try:
+        local_x, local_y = inverse_transform_object_point(item, x, y)
+    except ProjectRenderError:
+        return False
+    return (
+        -item.bounds.width / 2 <= local_x <= item.bounds.width / 2
+        and -item.bounds.height / 2 <= local_y <= item.bounds.height / 2
+    )
 
 
 def transformed_layer_bounds(
@@ -145,11 +225,16 @@ def transformed_layer_bounds(
         )
     width = _positive_property(layer, "pixel_width")
     height = _positive_property(layer, "pixel_height")
-    return _transformed_bounds(
-        width=width,
-        height=height,
-        transform=layer.transform,
-        preview_scale=preview_scale,
+    shear_x, shear_y = _shear_values(layer.properties)
+    return _bounds_from_points(
+        _transformed_corners(
+            width=width,
+            height=height,
+            transform=layer.transform,
+            shear_x=shear_x,
+            shear_y=shear_y,
+            preview_scale=preview_scale,
+        )
     )
 
 
@@ -172,12 +257,12 @@ def _render_object_layer(
         if not item.visible:
             continue
         prepared = _prepare_object_image(item, assets, preview_scale=preview_scale)
-        left = round(item.transform.x * preview_scale - prepared.width / 2)
-        top = round(item.transform.y * preview_scale - prepared.height / 2)
+        left = round(item.transform.x * preview_scale + prepared.offset_x)
+        top = round(item.transform.y * preview_scale + prepared.offset_y)
         if item.kind is ObjectKind.ERASER_STROKE:
-            _erase_from_surface(surface, prepared, left, top)
+            _erase_from_surface(surface, prepared.image, left, top)
         else:
-            surface.alpha_composite(prepared, dest=(left, top))
+            surface.alpha_composite(prepared.image, dest=(left, top))
     return surface
 
 
@@ -186,15 +271,9 @@ def _prepare_object_image(
     assets: Mapping[str, bytes],
     *,
     preview_scale: float,
-) -> Image.Image:
-    width = max(
-        1,
-        round(item.bounds.width * abs(item.transform.scale_x) * preview_scale),
-    )
-    height = max(
-        1,
-        round(item.bounds.height * abs(item.transform.scale_y) * preview_scale),
-    )
+) -> _PreparedAffineImage:
+    source_width = max(1, round(item.bounds.width))
+    source_height = max(1, round(item.bounds.height))
     if item.kind is ObjectKind.SHAPE:
         legacy_shape = Layer(
             name=item.name,
@@ -207,7 +286,7 @@ def _prepare_object_image(
             },
         )
         try:
-            image = render_shape_image(legacy_shape, width, height)
+            image = render_shape_image(legacy_shape, source_width, source_height)
         except ShapeError as exc:
             raise ProjectRenderError(
                 f"Object {item.name!r} contains invalid shape data."
@@ -221,22 +300,20 @@ def _prepare_object_image(
                 f"Object {item.name!r} references missing asset {item.asset_ref!r}."
             )
         image = _open_rgba(content, f"Object {item.name!r}")
-        image = image.resize((width, height), Image.Resampling.LANCZOS)
+        image = image.resize((source_width, source_height), Image.Resampling.LANCZOS)
 
-    if item.transform.scale_x < 0:
-        image = image.transpose(Image.Transpose.FLIP_LEFT_RIGHT)
-    if item.transform.scale_y < 0:
-        image = image.transpose(Image.Transpose.FLIP_TOP_BOTTOM)
-    if item.transform.rotation_degrees:
-        image = image.rotate(
-            -item.transform.rotation_degrees,
-            resample=Image.Resampling.BICUBIC,
-            expand=True,
-        )
+    shear_x, shear_y = object_shear(item)
+    prepared = _apply_affine(
+        image,
+        item.transform,
+        shear_x=shear_x,
+        shear_y=shear_y,
+        preview_scale=preview_scale,
+    )
     if item.opacity < 1.0:
-        alpha = image.getchannel("A")
-        image.putalpha(ImageEnhance.Brightness(alpha).enhance(item.opacity))
-    return image
+        alpha = prepared.image.getchannel("A")
+        prepared.image.putalpha(ImageEnhance.Brightness(alpha).enhance(item.opacity))
+    return prepared
 
 
 def _erase_from_surface(
@@ -272,15 +349,15 @@ def _prepare_layer_image(
     content: bytes | None,
     *,
     preview_scale: float,
-) -> Image.Image:
+) -> _PreparedAffineImage:
     pixel_width = _positive_property(layer, "pixel_width")
     pixel_height = _positive_property(layer, "pixel_height")
-    width = max(1, round(pixel_width * abs(layer.transform.scale_x) * preview_scale))
-    height = max(1, round(pixel_height * abs(layer.transform.scale_y) * preview_scale))
+    source_width = max(1, round(pixel_width))
+    source_height = max(1, round(pixel_height))
 
     if layer.kind is LayerKind.SHAPE:
         try:
-            image = render_shape_image(layer, width, height)
+            image = render_shape_image(layer, source_width, source_height)
         except ShapeError as exc:
             raise ProjectRenderError(
                 f"Layer {layer.name!r} contains invalid shape data."
@@ -289,22 +366,154 @@ def _prepare_layer_image(
         if content is None:
             raise MissingRasterAssetError(f"Layer {layer.name!r} has no raster content.")
         image = _open_rgba(content, f"Layer {layer.name!r}")
-        image = image.resize((width, height), Image.Resampling.LANCZOS)
+        image = image.resize((source_width, source_height), Image.Resampling.LANCZOS)
 
-    if layer.transform.scale_x < 0:
-        image = image.transpose(Image.Transpose.FLIP_LEFT_RIGHT)
-    if layer.transform.scale_y < 0:
-        image = image.transpose(Image.Transpose.FLIP_TOP_BOTTOM)
-    if layer.transform.rotation_degrees:
-        image = image.rotate(
-            -layer.transform.rotation_degrees,
-            resample=Image.Resampling.BICUBIC,
-            expand=True,
-        )
+    shear_x, shear_y = _shear_values(layer.properties)
+    prepared = _apply_affine(
+        image,
+        layer.transform,
+        shear_x=shear_x,
+        shear_y=shear_y,
+        preview_scale=preview_scale,
+    )
     if layer.opacity < 1.0:
-        alpha = image.getchannel("A")
-        image.putalpha(ImageEnhance.Brightness(alpha).enhance(layer.opacity))
-    return image
+        alpha = prepared.image.getchannel("A")
+        prepared.image.putalpha(ImageEnhance.Brightness(alpha).enhance(layer.opacity))
+    return prepared
+
+
+def _apply_affine(
+    image: Image.Image,
+    transform: Transform,
+    *,
+    shear_x: float,
+    shear_y: float,
+    preview_scale: float,
+) -> _PreparedAffineImage:
+    a, b, c, d = _linear_matrix(
+        transform,
+        shear_x,
+        shear_y,
+        preview_scale=preview_scale,
+    )
+    determinant = a * d - b * c
+    if abs(determinant) < 1e-10:
+        raise ProjectRenderError("Transform is singular and cannot be rendered.")
+
+    half_width = image.width / 2
+    half_height = image.height / 2
+    corners = (
+        (a * -half_width + b * -half_height, c * -half_width + d * -half_height),
+        (a * half_width + b * -half_height, c * half_width + d * -half_height),
+        (a * half_width + b * half_height, c * half_width + d * half_height),
+        (a * -half_width + b * half_height, c * -half_width + d * half_height),
+    )
+    min_x = math.floor(min(point[0] for point in corners))
+    min_y = math.floor(min(point[1] for point in corners))
+    max_x = math.ceil(max(point[0] for point in corners))
+    max_y = math.ceil(max(point[1] for point in corners))
+    output_width = max(1, max_x - min_x)
+    output_height = max(1, max_y - min_y)
+
+    inverse_a = d / determinant
+    inverse_b = -b / determinant
+    inverse_c = -c / determinant
+    inverse_d = a / determinant
+    coefficient_x = inverse_a * min_x + inverse_b * min_y + half_width
+    coefficient_y = inverse_c * min_x + inverse_d * min_y + half_height
+    transformed = image.transform(
+        (output_width, output_height),
+        Image.Transform.AFFINE,
+        (
+            inverse_a,
+            inverse_b,
+            coefficient_x,
+            inverse_c,
+            inverse_d,
+            coefficient_y,
+        ),
+        resample=Image.Resampling.BICUBIC,
+        fillcolor=(0, 0, 0, 0),
+    )
+    return _PreparedAffineImage(transformed, float(min_x), float(min_y))
+
+
+def _linear_matrix(
+    transform: Transform,
+    shear_x: float,
+    shear_y: float,
+    *,
+    preview_scale: float = 1.0,
+) -> tuple[float, float, float, float]:
+    scale_x = transform.scale_x * preview_scale
+    scale_y = transform.scale_y * preview_scale
+    unrotated_a = scale_x
+    unrotated_b = shear_x * scale_y
+    unrotated_c = shear_y * scale_x
+    unrotated_d = scale_y
+    angle = math.radians(transform.rotation_degrees)
+    cosine = math.cos(angle)
+    sine = math.sin(angle)
+    return (
+        cosine * unrotated_a - sine * unrotated_c,
+        cosine * unrotated_b - sine * unrotated_d,
+        sine * unrotated_a + cosine * unrotated_c,
+        sine * unrotated_b + cosine * unrotated_d,
+    )
+
+
+def _transformed_corners(
+    *,
+    width: float,
+    height: float,
+    transform: Transform,
+    shear_x: float,
+    shear_y: float,
+    preview_scale: float,
+) -> tuple[tuple[float, float], ...]:
+    a, b, c, d = _linear_matrix(
+        transform,
+        shear_x,
+        shear_y,
+        preview_scale=preview_scale,
+    )
+    center_x = transform.x * preview_scale
+    center_y = transform.y * preview_scale
+    half_width = width / 2
+    half_height = height / 2
+    return tuple(
+        (center_x + a * x + b * y, center_y + c * x + d * y)
+        for x, y in (
+            (-half_width, -half_height),
+            (half_width, -half_height),
+            (half_width, half_height),
+            (-half_width, half_height),
+        )
+    )
+
+
+def _bounds_from_points(
+    points: tuple[tuple[float, float], ...],
+) -> tuple[float, float, float, float]:
+    return (
+        min(point[0] for point in points),
+        min(point[1] for point in points),
+        max(point[0] for point in points),
+        max(point[1] for point in points),
+    )
+
+
+def _shear_values(properties: Mapping[str, object]) -> tuple[float, float]:
+    try:
+        shear_x = float(properties.get("shear_x", 0.0))
+        shear_y = float(properties.get("shear_y", 0.0))
+    except (TypeError, ValueError) as exc:
+        raise ProjectRenderError("Shear values must be numeric.") from exc
+    if not math.isfinite(shear_x) or not math.isfinite(shear_y):
+        raise ProjectRenderError("Shear values must be finite.")
+    if abs(1.0 - shear_x * shear_y) < 1e-10:
+        raise ProjectRenderError("Shear transform is singular.")
+    return shear_x, shear_y
 
 
 def _open_rgba(content: bytes, owner: str) -> Image.Image:
@@ -314,32 +523,6 @@ def _open_rgba(content: bytes, owner: str) -> Image.Image:
             return source.convert("RGBA")
     except (UnidentifiedImageError, OSError) as exc:
         raise ProjectRenderError(f"{owner} contains unreadable image data.") from exc
-
-
-def _transformed_bounds(
-    *,
-    width: float,
-    height: float,
-    transform: Transform,
-    preview_scale: float,
-) -> tuple[float, float, float, float]:
-    scaled_width = width * abs(transform.scale_x) * preview_scale
-    scaled_height = height * abs(transform.scale_y) * preview_scale
-    angle = math.radians(transform.rotation_degrees)
-    bounds_width = abs(scaled_width * math.cos(angle)) + abs(
-        scaled_height * math.sin(angle)
-    )
-    bounds_height = abs(scaled_width * math.sin(angle)) + abs(
-        scaled_height * math.cos(angle)
-    )
-    center_x = transform.x * preview_scale
-    center_y = transform.y * preview_scale
-    return (
-        center_x - bounds_width / 2,
-        center_y - bounds_height / 2,
-        center_x + bounds_width / 2,
-        center_y + bounds_height / 2,
-    )
 
 
 def _positive_property(layer: Layer, key: str) -> float:
