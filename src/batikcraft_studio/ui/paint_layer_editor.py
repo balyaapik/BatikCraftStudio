@@ -7,7 +7,7 @@ import tkinter as tk
 from tkinter import colorchooser, ttk
 
 from batikcraft_studio.application import PaintLayerError, PaintProjectSession, ProjectSessionError
-from batikcraft_studio.domain import LayerKind, ProjectValidationError
+from batikcraft_studio.domain import ProjectValidationError
 from batikcraft_studio.imaging.paint import PaintStrokeError
 
 from .native_layer_editor import NativeLayerEditorWorkspaceView
@@ -40,9 +40,9 @@ class PaintLayerEditorWorkspaceView(NativeLayerEditorWorkspaceView):
         toolbox.columnconfigure(0, weight=1)
 
         tools = (
-            ("select", "select", "Select and move objects", self.activate_select_tool),
-            ("brush", "editor", "Brush tool", self.activate_brush_tool),
-            ("eraser", "delete", "Eraser tool", self.activate_eraser_tool),
+            ("select", "select", "Select and move objects (V)", self.activate_select_tool),
+            ("brush", "editor", "Brush tool (B)", self.activate_brush_tool),
+            ("eraser", "delete", "Eraser tool (E)", self.activate_eraser_tool),
         )
         for row, (key, icon, tooltip, command) in enumerate(tools):
             button = icon_button(
@@ -179,9 +179,9 @@ class PaintLayerEditorWorkspaceView(NativeLayerEditorWorkspaceView):
             justify="left",
         ).grid(row=6, column=0, sticky="w", pady=(8, 0))
 
-        self.bind_all("<Key-b>", lambda _event: self.activate_brush_tool())
-        self.bind_all("<Key-e>", lambda _event: self.activate_eraser_tool())
-        self.bind_all("<Key-v>", lambda _event: self.activate_select_tool())
+        self.bind_all("<Key-b>", lambda event: self._activate_tool_shortcut(event, "brush"))
+        self.bind_all("<Key-e>", lambda event: self._activate_tool_shortcut(event, "eraser"))
+        self.bind_all("<Key-v>", lambda event: self._activate_tool_shortcut(event, "select"))
 
     def activate_select_tool(self) -> None:
         self._set_active_tool("select", "Select tool active")
@@ -202,6 +202,16 @@ class PaintLayerEditorWorkspaceView(NativeLayerEditorWorkspaceView):
             return
         self.brush_color_value.set(selected.upper())
         self.color_swatch.configure(background=selected, activebackground=selected)
+
+    def _activate_tool_shortcut(self, event: tk.Event[tk.Misc], tool: str) -> str | None:
+        if event.widget.winfo_class() in {"Entry", "TEntry", "Spinbox", "TSpinbox"}:
+            return None
+        {
+            "select": self.activate_select_tool,
+            "brush": self.activate_brush_tool,
+            "eraser": self.activate_eraser_tool,
+        }[tool]()
+        return "break"
 
     def _set_active_tool(self, tool: str, status: str) -> None:
         self._active_tool = tool
@@ -287,34 +297,37 @@ class PaintLayerEditorWorkspaceView(NativeLayerEditorWorkspaceView):
 
     def _draw_preview_dot(self, x: float, y: float) -> None:
         radius = self._preview_width() / 2
-        options = self._preview_options()
+        fill, stipple = self._preview_style()
         self.canvas.create_oval(
             x - radius,
             y - radius,
             x + radius,
             y + radius,
+            fill=fill,
+            outline=fill,
+            stipple=stipple,
             tags="paint-preview",
-            **options,
         )
 
     def _draw_preview_line(self, x1: float, y1: float, x2: float, y2: float) -> None:
-        options = self._preview_options()
+        fill, stipple = self._preview_style()
         self.canvas.create_line(
             x1,
             y1,
             x2,
             y2,
+            fill=fill,
+            stipple=stipple,
             width=self._preview_width(),
             capstyle=tk.ROUND,
             joinstyle=tk.ROUND,
             tags="paint-preview",
-            **options,
         )
 
-    def _preview_options(self) -> dict[str, object]:
+    def _preview_style(self) -> tuple[str, str]:
         if self._active_tool == "eraser":
-            return {"fill": "#FFFFFF", "stipple": "gray50", "outline": ""}
-        return {"fill": self.brush_color_value.get(), "outline": ""}
+            return "#FFFFFF", "gray50"
+        return self.brush_color_value.get(), ""
 
     def _preview_width(self) -> int:
         return max(1, round(float(self.brush_size_value.get()) * self._preview_scale))
