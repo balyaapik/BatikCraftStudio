@@ -5,6 +5,9 @@ from batikcraft_studio.application.batik_session import (
     BatikProjectSession,
     CapIsenError,
 )
+from batikcraft_studio.application.interactive_transform_session import (
+    InteractiveTransformProjectSession,
+)
 from batikcraft_studio.application.motif_session import (
     MotifCapError,
     MotifProjectSession,
@@ -30,13 +33,14 @@ from batikcraft_studio.application.shape_session import (
 )
 
 # The public desktop session includes nested folders, multi-object layers, paint-stroke
-# objects, editable Batik assets, humanize, shapes, isen, and motif-pokok commands.
-ProjectSession = EditableObjectProjectSession
+# objects, editable Batik assets, humanize, and live one-undo canvas transforms.
+ProjectSession = InteractiveTransformProjectSession
 
 __all__ = [
     "BatikProjectSession",
     "CapIsenError",
     "EditableObjectProjectSession",
+    "InteractiveTransformProjectSession",
     "LayerLockedError",
     "MotifCapError",
     "MotifProjectSession",
