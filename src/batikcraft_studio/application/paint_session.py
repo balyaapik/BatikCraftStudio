@@ -75,8 +75,11 @@ class PaintProjectSession(ProjectSession):
         brush_size: float,
         color: str,
         erase: bool = False,
+        opacity: float = 1.0,
+        hardness: float = 1.0,
+        smoothing: float = 0.0,
     ) -> Layer:
-        """Commit one complete brush or eraser stroke as one undoable mutation."""
+        """Commit one complete refined stroke as one undoable mutation."""
 
         project = self.require_project()
         layer = self._require_unlocked_layer(layer_id)
@@ -101,7 +104,13 @@ class PaintProjectSession(ProjectSession):
             brush_size=brush_size,
             color=color,
             erase=erase,
+            opacity=opacity,
+            hardness=hardness,
+            smoothing=smoothing,
         )
+        if updated_content == current_content:
+            return layer
+
         updated_layer: Layer | None = None
 
         def mutation() -> None:
@@ -109,6 +118,10 @@ class PaintProjectSession(ProjectSession):
             properties = dict(layer.properties)
             properties["stroke_count"] = int(properties.get("stroke_count", 0)) + 1
             properties["last_tool"] = "eraser" if erase else "brush"
+            properties["last_brush_size"] = float(brush_size)
+            properties["last_brush_opacity"] = float(opacity)
+            properties["last_brush_hardness"] = float(hardness)
+            properties["last_brush_smoothing"] = float(smoothing)
             self._assets[layer.asset_ref] = updated_content
             updated_layer = project.update_layer(layer_id, properties=properties)
 
