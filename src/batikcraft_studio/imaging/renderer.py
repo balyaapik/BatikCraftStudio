@@ -23,6 +23,7 @@ from batikcraft_studio.imaging.affine_object import (
     object_shear,
     point_hits_affine_object,
 )
+from batikcraft_studio.imaging.gradient import apply_gradient_to_image
 from batikcraft_studio.imaging.shape import ShapeError, render_shape_image
 
 
@@ -217,6 +218,12 @@ def _prepare_object_image(
             resample=Image.Resampling.BICUBIC,
             expand=True,
         )
+    # Apply non-destructive gradient overlay (if configured).
+    fill_mode = item.properties.get("fill_mode", "solid")
+    gradient = item.properties.get("gradient")
+    if fill_mode in ("linear_gradient", "radial_gradient") and gradient is not None:
+        image = apply_gradient_to_image(image, dict(gradient), fill_mode)
+
     if item.opacity < 1.0:
         alpha = image.getchannel("A")
         image.putalpha(ImageEnhance.Brightness(alpha).enhance(item.opacity))

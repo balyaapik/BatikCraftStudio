@@ -7,7 +7,7 @@ import hashlib
 import zlib
 from functools import cache
 
-from PIL import Image, ImageColor, ImageTk
+from PIL import Image, ImageColor, ImageDraw, ImageTk
 
 from .fontawesome_tool_assets import (
     TOOL_ICON_ALPHA_B85,
@@ -15,6 +15,9 @@ from .fontawesome_tool_assets import (
 )
 
 _MASTER_SIZE = 24
+_M4I_CUSTOM_ICONS = frozenset(
+    {"position_lock", "position_unlock", "gradient_linear", "gradient_radial", "object_opacity"}
+)
 _DEFAULT_COLORS = {
     "select_tool": "#4F46E5",
     "fill_tool": "#16A34A",
@@ -32,6 +35,12 @@ _DEFAULT_COLORS = {
     "dock_float": "#2563EB",
     "dock_tab": "#7C3AED",
     "dock_restore": "#0F766E",
+    # M4I additions
+    "position_lock": "#D97706",
+    "position_unlock": "#16A34A",
+    "gradient_linear": "#2563EB",
+    "gradient_radial": "#7C3AED",
+    "object_opacity": "#475569",
 }
 
 
@@ -90,11 +99,60 @@ def _decoded_masks() -> dict[str, bytes]:
 
 @cache
 def _source_alpha(name: str) -> Image.Image:
+    if name in _M4I_CUSTOM_ICONS:
+        return _render_m4i_alpha(name)
     try:
         raw = _decoded_masks()[name]
     except KeyError as exc:
         raise ValueError(f"Unknown tool icon: {name}") from exc
     return Image.frombytes("L", (_MASTER_SIZE, _MASTER_SIZE), raw)
+
+
+def _render_m4i_alpha(name: str) -> Image.Image:
+    """Generate alpha masks for M4I custom icons using Pillow geometry."""
+    scale = 4
+    size = _MASTER_SIZE * scale
+    image = Image.new("L", (size, size), 0)
+    draw = ImageDraw.Draw(image)
+    margin = 14
+
+    if name == "position_lock":
+        # Padlock body + shackle
+        draw.rounded_rectangle((28, 44, 68, 82), radius=6, fill=255)
+        draw.arc((32, 18, 64, 54), start=200, end=340, fill=255, width=8)
+        draw.rectangle((44, 54, 52, 68), fill=0)
+    elif name == "position_unlock":
+        # Open padlock
+        draw.rounded_rectangle((28, 44, 68, 82), radius=6, fill=255)
+        draw.arc((32, 12, 64, 48), start=200, end=0, fill=255, width=8)
+    elif name == "gradient_linear":
+        # Horizontal gradient bar with arrow
+        for step in range(8):
+            alpha = int(30 + step * 28)
+            x = 14 + step * 9
+            draw.rectangle((x, 30, x + 8, 66), fill=alpha)
+        draw.line((14, 76, 82, 76), fill=255, width=6)
+    elif name == "gradient_radial":
+        # Concentric circles
+        cx, cy = size // 2, size // 2
+        for r in (38, 28, 18, 8):
+            draw.ellipse((cx - r, cy - r, cx + r, cy + r), outline=255, width=4)
+        draw.ellipse((cx - 5, cy - 5, cx + 5, cy + 5), fill=255)
+    elif name == "object_opacity":
+        # Checkerboard + slider
+        for row in range(3):
+            for col in range(3):
+                if (row + col) % 2 == 0:
+                    x = 16 + col * 18
+                    y = 16 + row * 18
+                    draw.rectangle((x, y, x + 16, y + 16), fill=255)
+        draw.line((20, 76, 76, 76), fill=255, width=6)
+        draw.ellipse((42, 70, 54, 82), fill=255)
+    else:
+        # Fallback: filled square
+        draw.rounded_rectangle((margin, margin, size - margin, size - margin), radius=6, fill=255)
+
+    return image.resize((_MASTER_SIZE, _MASTER_SIZE), Image.Resampling.LANCZOS)
 
 
 __all__ = ["available_tool_icons", "create_tool_icon", "render_tool_icon"]

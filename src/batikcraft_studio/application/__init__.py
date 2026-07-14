@@ -16,6 +16,11 @@ from batikcraft_studio.application.destructive_eraser_session import (
     DestructiveEraserProjectSession,
 )
 from batikcraft_studio.application.direct_style_session import DirectStyleProjectSession
+from batikcraft_studio.application.gradient_session import (
+    FILL_MODE_KEY,
+    GRADIENT_KEY,
+    GradientProjectSession,
+)
 from batikcraft_studio.application.interactive_transform_session import (
     InteractiveTransformProjectSession,
 )
@@ -40,6 +45,11 @@ from batikcraft_studio.application.offline_ai_session import (
 from batikcraft_studio.application.paint_session import (
     PaintLayerError,
     PaintProjectSession,
+)
+from batikcraft_studio.application.position_lock_session import (
+    POSITION_LOCK_KEY,
+    PositionLockedError,
+    PositionLockProjectSession,
 )
 from batikcraft_studio.application.process_session import (
     BATIK_PROCESS_EXTENSION,
@@ -71,8 +81,11 @@ ProjectSession = DestructiveEraserProjectSession
 
 __all__ = [
     "BATIK_PROCESS_EXTENSION",
+    "FILL_MODE_KEY",
+    "GRADIENT_KEY",
     "GROUP_ID_KEY",
     "GROUP_NAME_KEY",
+    "POSITION_LOCK_KEY",
     "BatikProcessProjectSession",
     "BatikProjectSession",
     "BatificationGeneration",
@@ -82,6 +95,7 @@ __all__ = [
     "DestructiveEraserProjectSession",
     "DirectStyleProjectSession",
     "EditableObjectProjectSession",
+    "GradientProjectSession",
     "InteractiveTransformProjectSession",
     "LayerLockedError",
     "MotifCapError",
@@ -97,6 +111,8 @@ __all__ = [
     "OfflineRuntimeSelection",
     "PaintLayerError",
     "PaintProjectSession",
+    "PositionLockedError",
+    "PositionLockProjectSession",
     "ProjectPathRequiredError",
     "ProjectSession",
     "ProjectSessionError",

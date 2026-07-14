@@ -10,6 +10,17 @@ from batikcraft_studio.imaging.batik_asset import (
     humanize_raster_asset,
     load_batik_asset,
 )
+from batikcraft_studio.imaging.cursor_guide import (
+    CursorGuide,
+    compute_cursor_guide,
+    project_to_viewport,
+    viewport_to_project,
+)
+from batikcraft_studio.imaging.gradient import (
+    GradientError,
+    apply_gradient_to_image,
+    gradient_from_bytes,
+)
 from batikcraft_studio.imaging.isen import (
     ISEN_LABELS,
     ISEN_TYPES,
@@ -76,6 +87,8 @@ from batikcraft_studio.imaging.stroke_object import (
 )
 
 __all__ = [
+    "CursorGuide",
+    "GradientError",
     "ASSET_CATEGORIES",
     "ASSET_FORMAT",
     "ASSET_SCHEMA_VERSION",
@@ -111,7 +124,10 @@ __all__ = [
     "SUSUN_TYPES",
     "ShapeError",
     "ShapeGeometry",
+    "apply_gradient_to_image",
     "apply_paint_stroke",
+    "compute_cursor_guide",
+    "gradient_from_bytes",
     "build_shape_geometry",
     "create_transparent_canvas_png",
     "encode_batik_asset",
@@ -128,7 +144,9 @@ __all__ = [
     "render_project_preview",
     "render_shape_image",
     "smooth_stroke_points",
+    "project_to_viewport",
     "symmetry_placements",
+    "viewport_to_project",
     "transformed_layer_bounds",
     "transformed_object_bounds",
     "update_shape_properties",

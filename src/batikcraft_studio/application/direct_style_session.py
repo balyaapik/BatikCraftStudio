@@ -9,8 +9,8 @@ from PIL import Image, ImageColor, ImageDraw, UnidentifiedImageError
 
 from batikcraft_studio.domain import LayerNodeKind, LayerObject, ObjectBounds, ObjectKind
 
+from .gradient_session import GradientProjectSession
 from .session import LayerLockedError, ProjectSessionError
-from .viewport_session import ViewportProjectSession
 
 _STYLE_TARGETS = frozenset({"auto", "fill", "stroke"})
 _TINTABLE_KINDS = frozenset(
@@ -18,7 +18,7 @@ _TINTABLE_KINDS = frozenset(
 )
 
 
-class DirectStyleProjectSession(ViewportProjectSession):
+class DirectStyleProjectSession(GradientProjectSession):
     """Apply palette choices immediately and move tree nodes with one Undo step."""
 
     def apply_color_to_selected(
@@ -378,4 +378,4 @@ def _parse_tree_iid(iid: str) -> tuple[str, str]:
     return node_type, node_id
 
 
-__all__ = ["DirectStyleProjectSession"]
+__all__ = ["DirectStyleProjectSession", "GradientProjectSession"]
