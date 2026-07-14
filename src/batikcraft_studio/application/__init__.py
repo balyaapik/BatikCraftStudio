@@ -8,6 +8,10 @@ from batikcraft_studio.application.motif_session import (
     MotifCapError,
     MotifProjectSession,
 )
+from batikcraft_studio.application.object_session import (
+    ObjectLockedError,
+    ObjectProjectSession,
+)
 from batikcraft_studio.application.paint_session import (
     PaintLayerError,
     PaintProjectSession,
@@ -24,9 +28,9 @@ from batikcraft_studio.application.shape_session import (
     ShapeProjectSession,
 )
 
-# The public desktop session includes raster, paint, shape, isen, and motif-pokok
-# commands while preserving every ProjectSession API from the earlier milestones.
-ProjectSession = MotifProjectSession
+# The public desktop session includes nested folders, multi-object layers, paint-stroke
+# objects, editable Batik assets, humanize, shapes, isen, and motif-pokok commands.
+ProjectSession = ObjectProjectSession
 
 __all__ = [
     "BatikProjectSession",
@@ -35,6 +39,8 @@ __all__ = [
     "MotifCapError",
     "MotifProjectSession",
     "NoActiveProjectError",
+    "ObjectLockedError",
+    "ObjectProjectSession",
     "PaintLayerError",
     "PaintProjectSession",
     "ProjectPathRequiredError",
