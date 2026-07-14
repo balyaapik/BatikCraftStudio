@@ -39,6 +39,11 @@ _TRANSLATIONS = {
         "palette.secondary_set": "Warna sekunder diubah menjadi {color}.",
         "palette.swapped": "Warna utama dan sekunder ditukar.",
         "palette.reset": "Warna utama dan sekunder dikembalikan ke palet batik awal.",
+        "palette.canvas": "Warna Canvas",
+        "palette.canvas_tooltip": "Ubah warna dasar canvas",
+        "palette.choose_canvas": "Pilih Warna Dasar Canvas",
+        "palette.canvas_set": "Warna dasar canvas diubah menjadi {color}.",
+        "palette.object_synced": "Palet mengikuti warna objek: {name}.",
     },
     "en": {
         "dock.tools": "Batik Tools",
@@ -74,6 +79,11 @@ _TRANSLATIONS = {
         "palette.secondary_set": "Secondary color changed to {color}.",
         "palette.swapped": "Primary and secondary colors swapped.",
         "palette.reset": "Primary and secondary colors reset to the initial Batik palette.",
+        "palette.canvas": "Canvas Color",
+        "palette.canvas_tooltip": "Change the canvas base color",
+        "palette.choose_canvas": "Choose Canvas Base Color",
+        "palette.canvas_set": "Canvas base color changed to {color}.",
+        "palette.object_synced": "Palette follows object colors: {name}.",
     },
 }
 
