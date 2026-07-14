@@ -79,7 +79,7 @@ def render_isen_cap(
     if isinstance(size, bool) or not isinstance(size, int) or not 32 <= size <= 1024:
         raise IsenError("Ukuran sumber cap harus berupa bilangan bulat antara 32 dan 1024 piksel.")
 
-    supersample = 4
+    supersample = 4 if size <= 256 else 2 if size <= 512 else 1
     work_size = size * supersample
     image = Image.new("RGBA", (work_size, work_size), (0, 0, 0, 0))
     draw = ImageDraw.Draw(image)
@@ -97,7 +97,8 @@ def render_isen_cap(
     }
     drawers[kind](draw, work_size, ink)
 
-    image = image.resize((size, size), Image.Resampling.LANCZOS)
+    if supersample > 1:
+        image = image.resize((size, size), Image.Resampling.LANCZOS)
     alpha = image.getchannel("A")
     image = Image.new("RGBA", (size, size), (*rgb, 0))
     image.putalpha(alpha)
@@ -234,12 +235,24 @@ def _draw_cecek_sawut(
             _draw_sawut_group(draw, origin_x, origin_y, size * 0.15, color, with_cecek=True)
 
 
-def _draw_ukel(draw: ImageDraw.ImageDraw, size: int, color: tuple[int, int, int, int]) -> None:
+def _draw_ukel(
+    draw: ImageDraw.ImageDraw,
+    size: int,
+    color: tuple[int, int, int, int],
+) -> None:
     for row in range(2):
         for column in range(2):
             center_x = size * (0.28 + column * 0.44)
             center_y = size * (0.28 + row * 0.44)
-            _draw_spiral(draw, center_x, center_y, size * 0.16, color, clockwise=(row + column) % 2 == 0)
+            clockwise = (row + column) % 2 == 0
+            _draw_spiral(
+                draw,
+                center_x,
+                center_y,
+                size * 0.16,
+                color,
+                clockwise=clockwise,
+            )
 
 
 def _draw_galaran(
