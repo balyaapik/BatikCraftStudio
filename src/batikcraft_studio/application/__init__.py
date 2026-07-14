@@ -1,5 +1,6 @@
 """Application services that coordinate domain, persistence, and UI workflows."""
 
+from batikcraft_studio.application.asset_edit_session import EditableObjectProjectSession
 from batikcraft_studio.application.batik_session import (
     BatikProjectSession,
     CapIsenError,
@@ -30,11 +31,12 @@ from batikcraft_studio.application.shape_session import (
 
 # The public desktop session includes nested folders, multi-object layers, paint-stroke
 # objects, editable Batik assets, humanize, shapes, isen, and motif-pokok commands.
-ProjectSession = ObjectProjectSession
+ProjectSession = EditableObjectProjectSession
 
 __all__ = [
     "BatikProjectSession",
     "CapIsenError",
+    "EditableObjectProjectSession",
     "LayerLockedError",
     "MotifCapError",
     "MotifProjectSession",
