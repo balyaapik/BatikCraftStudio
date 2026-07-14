@@ -1,4 +1,4 @@
-"""Metadata editing commands for reusable Batik asset objects."""
+"""Metadata and ordering commands for reusable Batik asset objects."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from .session import ProjectSessionError
 
 
 class EditableObjectProjectSession(ObjectProjectSession):
-    """Expose safe object naming and asset-category edits to the inspector."""
+    """Expose safe object metadata and ordering edits to the inspector."""
 
     def update_object_metadata(
         self,
@@ -43,6 +43,30 @@ class EditableObjectProjectSession(ObjectProjectSession):
         if updated is None:
             raise ProjectSessionError("Pembaruan metadata objek tidak menghasilkan perubahan.")
         return updated
+
+    def move_object_up(self, object_id: str) -> bool:
+        project = self.require_project()
+        self._require_unlocked_object(object_id)
+        layer = project.get_layer(project.object_layer_id(object_id))
+        index = next(
+            number for number, item in enumerate(layer.objects) if item.object_id == object_id
+        )
+        if index >= len(layer.objects) - 1:
+            return False
+        self._commit_mutation(lambda: project.reorder_object(object_id, index + 1))
+        return True
+
+    def move_object_down(self, object_id: str) -> bool:
+        project = self.require_project()
+        self._require_unlocked_object(object_id)
+        layer = project.get_layer(project.object_layer_id(object_id))
+        index = next(
+            number for number, item in enumerate(layer.objects) if item.object_id == object_id
+        )
+        if index <= 0:
+            return False
+        self._commit_mutation(lambda: project.reorder_object(object_id, index - 1))
+        return True
 
 
 __all__ = ["EditableObjectProjectSession"]
