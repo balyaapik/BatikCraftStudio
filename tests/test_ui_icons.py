@@ -28,11 +28,11 @@ def test_render_icon_applies_requested_color_without_changing_alpha() -> None:
     red = render_icon("save", size=32, color="#E11D48")
     blue = render_icon("save", size=32, color="#2563EB")
 
-    assert red.getchannel("A").tobytes() == blue.getchannel("A").tobytes()
-    opaque_pixel = next(
-        (pixel for pixel in red.getdata() if pixel[3] == 255),
-        None,
-    )
+    red_alpha = red.getchannel("A").tobytes()
+    assert red_alpha == blue.getchannel("A").tobytes()
+
+    opaque_index = red_alpha.index(255)
+    opaque_pixel = red.getpixel((opaque_index % red.width, opaque_index // red.width))
     assert opaque_pixel == (225, 29, 72, 255)
 
 
