@@ -38,13 +38,14 @@ class StructuredBatificationDialog(tk.Toplevel):
         self.secondary_value = tk.StringVar(value=secondary_color)
         self.seed_value = tk.StringVar(value="2026")
 
-        self.title(
-            tr(
-                "ai.dialog.group_title"
-                if mode == "group"
-                else "ai.dialog.object_title"
-            )
+        title_key = (
+            "ai.dialog.group_title"
+            if mode == "group"
+            else "ai.dialog.selection_title"
+            if mode == "selection"
+            else "ai.dialog.object_title"
         )
+        self.title(tr(title_key))
         self.resizable(False, False)
         self.transient(parent.winfo_toplevel())
         self.protocol("WM_DELETE_WINDOW", self._cancel)
@@ -60,13 +61,29 @@ class StructuredBatificationDialog(tk.Toplevel):
         body.grid(row=0, column=0, sticky="nsew")
         body.columnconfigure(1, weight=1)
 
+        offline_model = self._provider_id.startswith("offline-lora:")
+        provider_label = tr(
+            "offline.dialog.provider_model"
+            if offline_model
+            else "ai.dialog.provider_local"
+        )
+        note_key = (
+            "offline.dialog.model_note"
+            if offline_model
+            else "ai.dialog.foundation_note"
+        )
+
         row = 0
         ttk.Label(body, text=tr("ai.dialog.provider")).grid(
-            row=row, column=0, sticky="w", padx=(0, 10), pady=4
+            row=row,
+            column=0,
+            sticky="w",
+            padx=(0, 10),
+            pady=4,
         )
         ttk.Label(
             body,
-            text=f"{tr('ai.dialog.provider_local')}\n{self._provider_id}",
+            text=f"{provider_label}\n{self._provider_id}",
             style="Muted.TLabel",
             wraplength=360,
             justify="left",
@@ -74,7 +91,11 @@ class StructuredBatificationDialog(tk.Toplevel):
         row += 1
 
         ttk.Label(body, text=tr("ai.dialog.style")).grid(
-            row=row, column=0, sticky="w", padx=(0, 10), pady=4
+            row=row,
+            column=0,
+            sticky="w",
+            padx=(0, 10),
+            pady=4,
         )
         styles = tuple(style.value for style in BatificationStyle)
         style_combo = ttk.Combobox(
@@ -88,7 +109,11 @@ class StructuredBatificationDialog(tk.Toplevel):
         row += 1
 
         ttk.Label(body, text=tr("ai.dialog.strength")).grid(
-            row=row, column=0, sticky="w", padx=(0, 10), pady=4
+            row=row,
+            column=0,
+            sticky="w",
+            padx=(0, 10),
+            pady=4,
         )
         tk.Scale(
             body,
@@ -103,7 +128,11 @@ class StructuredBatificationDialog(tk.Toplevel):
         row += 1
 
         ttk.Label(body, text=tr("ai.dialog.density")).grid(
-            row=row, column=0, sticky="w", padx=(0, 10), pady=4
+            row=row,
+            column=0,
+            sticky="w",
+            padx=(0, 10),
+            pady=4,
         )
         tk.Scale(
             body,
@@ -136,7 +165,11 @@ class StructuredBatificationDialog(tk.Toplevel):
         row += 1
 
         ttk.Label(body, text=tr("ai.dialog.seed")).grid(
-            row=row, column=0, sticky="w", padx=(0, 10), pady=4
+            row=row,
+            column=0,
+            sticky="w",
+            padx=(0, 10),
+            pady=4,
         )
         ttk.Spinbox(
             body,
@@ -148,7 +181,11 @@ class StructuredBatificationDialog(tk.Toplevel):
         row += 1
 
         ttk.Label(body, text=tr("ai.dialog.prompt")).grid(
-            row=row, column=0, sticky="nw", padx=(0, 10), pady=4
+            row=row,
+            column=0,
+            sticky="nw",
+            padx=(0, 10),
+            pady=4,
         )
         self.prompt_text = tk.Text(body, width=42, height=4, wrap="word")
         self.prompt_text.grid(row=row, column=1, sticky="ew", pady=4)
@@ -156,11 +193,17 @@ class StructuredBatificationDialog(tk.Toplevel):
 
         ttk.Label(
             body,
-            text=tr("ai.dialog.foundation_note"),
+            text=tr(note_key),
             style="Muted.TLabel",
             wraplength=500,
             justify="left",
-        ).grid(row=row, column=0, columnspan=2, sticky="ew", pady=(8, 12))
+        ).grid(
+            row=row,
+            column=0,
+            columnspan=2,
+            sticky="ew",
+            pady=(8, 12),
+        )
         row += 1
 
         actions = ttk.Frame(body)
@@ -184,7 +227,11 @@ class StructuredBatificationDialog(tk.Toplevel):
         variable: tk.StringVar,
     ) -> None:
         ttk.Label(parent, text=tr(label_key)).grid(
-            row=row, column=0, sticky="w", padx=(0, 10), pady=4
+            row=row,
+            column=0,
+            sticky="w",
+            padx=(0, 10),
+            pady=4,
         )
         holder = ttk.Frame(parent)
         holder.grid(row=row, column=1, sticky="w", pady=4)
@@ -198,7 +245,11 @@ class StructuredBatificationDialog(tk.Toplevel):
         preview.configure(command=lambda: self._choose_color(variable, preview))
         preview.pack(side="left", padx=(6, 0))
 
-    def _choose_color(self, variable: tk.StringVar, preview: tk.Button) -> None:
+    def _choose_color(
+        self,
+        variable: tk.StringVar,
+        preview: tk.Button,
+    ) -> None:
         _rgb, selected = colorchooser.askcolor(
             color=variable.get(),
             parent=self,
@@ -235,8 +286,14 @@ class StructuredBatificationDialog(tk.Toplevel):
 
     def _center(self, parent: tk.Misc) -> None:
         top = parent.winfo_toplevel()
-        x = top.winfo_rootx() + max(0, (top.winfo_width() - self.winfo_width()) // 2)
-        y = top.winfo_rooty() + max(0, (top.winfo_height() - self.winfo_height()) // 2)
+        x = top.winfo_rootx() + max(
+            0,
+            (top.winfo_width() - self.winfo_width()) // 2,
+        )
+        y = top.winfo_rooty() + max(
+            0,
+            (top.winfo_height() - self.winfo_height()) // 2,
+        )
         self.geometry(f"+{x}+{y}")
 
 
