@@ -1,4 +1,4 @@
-"""Application lifecycle and root-window configuration."""
+"""Application lifecycle, compact menu bar, and project commands."""
 
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ from .ui.theme import configure_theme
 
 
 class BatikCraftApplication:
-    """Own the Tk root, global menu, project session, and clean shutdown behavior."""
+    """Own the Tk root, asset-first menu, project session, and clean shutdown."""
 
     def __init__(self) -> None:
         self.root = tk.Tk()
@@ -32,7 +32,15 @@ class BatikCraftApplication:
 
         configure_theme(self.root)
         self.session = ProjectSession()
-        self.main_window = MainWindow(self.root, self.session)
+        self.main_window = MainWindow(
+            self.root,
+            self.session,
+            file_commands={
+                "new": self.new_project,
+                "open": self.open_project,
+                "save": self.save_project,
+            },
+        )
         self._build_menu()
         self.root.protocol("WM_DELETE_WINDOW", self.request_close)
 
@@ -50,10 +58,19 @@ class BatikCraftApplication:
             accelerator="Ctrl+O",
             command=self.open_project,
         )
+        file_menu.add_separator()
         file_menu.add_command(
-            label="Import Image…",
+            label="Import Asset…",
             accelerator="Ctrl+I",
             command=self.main_window.editor_import_image,
+        )
+        file_menu.add_command(
+            label="Install Asset Pack…",
+            command=self.main_window.install_asset_pack,
+        )
+        file_menu.add_command(
+            label="Export Selected Asset…",
+            command=self.main_window.export_selected_asset,
         )
         file_menu.add_separator()
         file_menu.add_command(
@@ -88,31 +105,133 @@ class BatikCraftApplication:
         )
         edit_menu.add_separator()
         edit_menu.add_command(
-            label="Duplicate Layer",
+            label="Duplicate Selected",
             accelerator="Ctrl+D",
             command=self.main_window.editor_duplicate,
         )
         edit_menu.add_command(
-            label="Delete Layer",
+            label="Delete Selected",
+            accelerator="Delete",
             command=self.main_window.editor_delete,
+        )
+        edit_menu.add_command(
+            label="Transform…",
+            command=self.main_window.open_transform_settings,
         )
         menu_bar.add_cascade(label="Edit", menu=edit_menu)
 
+        layer_menu = tk.Menu(menu_bar)
+        layer_menu.add_command(label="New Folder", command=self.main_window.new_folder)
+        layer_menu.add_command(
+            label="New Object Sublayer",
+            command=self.main_window.new_object_layer,
+        )
+        layer_menu.add_command(
+            label="New Canting Layer",
+            command=self.main_window.new_paint_layer,
+        )
+        layer_menu.add_separator()
+        layer_menu.add_command(
+            label="Show / Hide Selected",
+            command=self.main_window.toggle_visibility,
+        )
+        layer_menu.add_command(
+            label="Lock / Unlock Selected",
+            command=self.main_window.toggle_lock,
+        )
+        menu_bar.add_cascade(label="Layer", menu=layer_menu)
+
+        draw_menu = tk.Menu(menu_bar)
+        draw_menu.add_command(
+            label="Select Tool",
+            accelerator="V",
+            command=self.main_window.activate_select_tool,
+        )
+        draw_menu.add_separator()
+        draw_menu.add_command(
+            label="Brush…",
+            accelerator="B",
+            command=self.main_window.open_brush_settings,
+        )
+        draw_menu.add_command(
+            label="Eraser…",
+            accelerator="E",
+            command=self.main_window.open_eraser_settings,
+        )
+        shape_menu = tk.Menu(draw_menu)
+        for label, key, accelerator in (
+            ("Line…", "line", "L"),
+            ("Rectangle…", "rectangle", "R"),
+            ("Ellipse…", "ellipse", "O"),
+            ("Polygon…", "polygon", "P"),
+        ):
+            shape_menu.add_command(
+                label=label,
+                accelerator=accelerator,
+                command=lambda kind=key: self.main_window.open_shape_settings(kind),
+            )
+        draw_menu.add_cascade(label="Shape", menu=shape_menu)
+        draw_menu.add_separator()
+        draw_menu.add_command(
+            label="Cap Motif…",
+            accelerator="M",
+            command=self.main_window.open_motif_settings,
+        )
+        draw_menu.add_command(
+            label="Cap Isen-Isen…",
+            accelerator="C",
+            command=self.main_window.open_isen_settings,
+        )
+        menu_bar.add_cascade(label="Draw", menu=draw_menu)
+
+        asset_menu = tk.Menu(menu_bar)
+        asset_menu.add_command(
+            label="Focus Asset Library",
+            accelerator="Ctrl+L",
+            command=self.main_window.focus_asset_library,
+        )
+        asset_menu.add_separator()
+        asset_menu.add_command(
+            label="Install Asset Pack…",
+            command=self.main_window.install_asset_pack,
+        )
+        asset_menu.add_command(
+            label="Remove Selected Pack…",
+            command=self.main_window.uninstall_asset_pack,
+        )
+        asset_menu.add_command(
+            label="Import Single Asset…",
+            command=self.main_window.editor_import_image,
+        )
+        asset_menu.add_command(
+            label="Export Selected Asset…",
+            command=self.main_window.export_selected_asset,
+        )
+        asset_menu.add_separator()
+        asset_menu.add_command(
+            label="Edit Asset Metadata…",
+            command=self.main_window.open_asset_metadata_settings,
+        )
+        asset_menu.add_command(
+            label="Humanize…",
+            command=self.main_window.open_humanize_settings,
+        )
+        asset_menu.add_command(
+            label="Reset Humanize",
+            command=self.main_window.reset_humanize,
+        )
+        menu_bar.add_cascade(label="Asset", menu=asset_menu)
+
         view_menu = tk.Menu(menu_bar)
         view_menu.add_command(
-            label="Focus Navigation",
+            label="Focus Asset Library",
             accelerator="Ctrl+L",
-            command=self.main_window.focus_navigation,
+            command=self.main_window.focus_asset_library,
         )
-        for index, workspace in enumerate(
-            ("dashboard", "editor", "batikification", "preview", "publish"),
-            start=1,
-        ):
-            view_menu.add_command(
-                label=f"Workspace {index}",
-                accelerator=f"Ctrl+{index}",
-                command=lambda key=workspace: self.main_window.show_workspace(key),
-            )
+        view_menu.add_command(
+            label="Focus Canvas",
+            command=lambda: self.main_window._editor().canvas.focus_set(),
+        )
         menu_bar.add_cascade(label="View", menu=view_menu)
 
         help_menu = tk.Menu(menu_bar)
@@ -131,13 +250,14 @@ class BatikCraftApplication:
             ("<Control-y>", self.main_window.editor_redo),
             ("<Control-Shift-Z>", self.main_window.editor_redo),
             ("<Control-d>", self.main_window.editor_duplicate),
+            ("<Control-l>", self.main_window.focus_asset_library),
+            ("<Delete>", self.main_window.editor_delete),
         )
         for sequence, command in bindings:
             self.root.bind_all(
                 sequence,
                 lambda _event, action=command: self._run_shortcut(action),
             )
-        self.root.bind_all("<Control-l>", lambda _event: self.main_window.focus_navigation())
 
     def new_project(self) -> None:
         if not self._confirm_project_transition("create a new project"):
@@ -238,7 +358,7 @@ class BatikCraftApplication:
             return
         self.session.close_project()
         self.main_window.refresh_project_context()
-        self.main_window.show_workspace("dashboard")
+        self.main_window.show_workspace("editor")
         self.main_window.flash_status("Project closed.")
 
     def _confirm_project_transition(self, action: str) -> bool:
@@ -283,9 +403,8 @@ class BatikCraftApplication:
             f"About {APP_NAME}",
             (
                 f"{APP_NAME} {APP_VERSION}\n\n"
-                "A native workspace for manual and AI-assisted batik motif creation.\n\n"
-                "The application is being implemented incrementally so each feature "
-                "can be reviewed and refined with IBM Bob."
+                "Asset-first native batik composer with offline pack management, "
+                "object layers, and optional drawing tools."
             ),
             parent=self.root,
         )
