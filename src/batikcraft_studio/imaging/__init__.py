@@ -1,5 +1,17 @@
-"""Public imaging API for raster, paint, shape, and project preview workflows."""
+"""Public imaging API for raster, paint, shape, batik, and preview workflows."""
 
+from batikcraft_studio.imaging.isen import (
+    ISEN_LABELS,
+    ISEN_TYPES,
+    MASTER_CAP_SIZE,
+    SUSUN_LABELS,
+    SUSUN_TYPES,
+    CapPlacement,
+    IsenError,
+    render_isen_cap,
+    symmetry_placements,
+    validate_cap_size,
+)
 from batikcraft_studio.imaging.paint import (
     MAX_BRUSH_SIZE,
     PaintStrokeError,
@@ -36,6 +48,9 @@ from batikcraft_studio.imaging.shape import (
 )
 
 __all__ = [
+    "ISEN_LABELS",
+    "ISEN_TYPES",
+    "MASTER_CAP_SIZE",
     "MAX_BRUSH_SIZE",
     "MAX_POLYGON_SIDES",
     "MAX_RASTER_DIMENSION",
@@ -49,6 +64,10 @@ __all__ = [
     "RasterImageError",
     "RenderedProject",
     "SHAPE_TYPES",
+    "SUSUN_LABELS",
+    "SUSUN_TYPES",
+    "CapPlacement",
+    "IsenError",
     "ShapeError",
     "ShapeGeometry",
     "apply_paint_stroke",
@@ -57,9 +76,12 @@ __all__ = [
     "normalize_raster_image",
     "parse_shape_properties",
     "point_hits_layer",
+    "render_isen_cap",
     "render_project_preview",
     "render_shape_image",
     "smooth_stroke_points",
+    "symmetry_placements",
     "transformed_layer_bounds",
     "update_shape_properties",
+    "validate_cap_size",
 ]
