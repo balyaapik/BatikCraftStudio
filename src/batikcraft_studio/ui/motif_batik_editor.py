@@ -15,7 +15,6 @@ from batikcraft_studio.imaging.motif import (
 
 from .selectable_batik_editor import SelectableBatikEditorWorkspaceView
 from .theme import COLORS
-from .tooltip import ToolTip
 from .widgets import icon_button
 
 _MOTIF_BY_LABEL = {label: key for key, label in MOTIF_LABELS.items()}
@@ -103,7 +102,8 @@ class MotifBatikEditorWorkspaceView(SelectableBatikEditorWorkspaceView):
 
         color_grid = ttk.Frame(parent, style="Dock.TFrame")
         color_grid.grid(row=21, column=0, sticky="ew", pady=(3, 8))
-        color_grid.columnconfigure((0, 1), weight=1)
+        color_grid.columnconfigure(0, weight=1)
+        color_grid.columnconfigure(1, weight=1)
         ttk.Label(color_grid, text="Garis motif", style="Muted.TLabel").grid(
             row=0,
             column=0,
