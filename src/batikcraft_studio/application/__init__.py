@@ -20,6 +20,10 @@ from batikcraft_studio.application.object_session import (
     ObjectLockedError,
     ObjectProjectSession,
 )
+from batikcraft_studio.application.offline_ai_session import (
+    OfflineAIProjectSession,
+    OfflineRuntimeSelection,
+)
 from batikcraft_studio.application.paint_session import (
     PaintLayerError,
     PaintProjectSession,
@@ -40,9 +44,9 @@ from batikcraft_studio.application.structured_batification_session import (
     StructuredBatificationProjectSession,
 )
 
-# The public desktop session includes nested folders, object clipboard, WYSIWYG transforms,
-# and source-preserving Structured Batification generations.
-ProjectSession = StructuredBatificationProjectSession
+# The public desktop session includes model packs, rectangle selection, and local-only LoRA
+# inference in addition to the source-preserving Milestone 4A workflow.
+ProjectSession = OfflineAIProjectSession
 
 __all__ = [
     "BatikProjectSession",
@@ -58,6 +62,8 @@ __all__ = [
     "ObjectClipboardSnapshot",
     "ObjectLockedError",
     "ObjectProjectSession",
+    "OfflineAIProjectSession",
+    "OfflineRuntimeSelection",
     "PaintLayerError",
     "PaintProjectSession",
     "ProjectPathRequiredError",
