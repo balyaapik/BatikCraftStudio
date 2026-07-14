@@ -107,24 +107,24 @@ def _prepare_layer_image(
     *,
     preview_scale: float,
 ) -> Image.Image:
+    pixel_width = _positive_property(layer, "pixel_width")
+    pixel_height = _positive_property(layer, "pixel_height")
     width = max(
         1,
-        round(_positive_property(layer, "pixel_width") * abs(layer.transform.scale_x) * preview_scale),
+        round(pixel_width * abs(layer.transform.scale_x) * preview_scale),
     )
     height = max(
         1,
-        round(
-            _positive_property(layer, "pixel_height")
-            * abs(layer.transform.scale_y)
-            * preview_scale
-        ),
+        round(pixel_height * abs(layer.transform.scale_y) * preview_scale),
     )
 
     if layer.kind is LayerKind.SHAPE:
         try:
             image = render_shape_image(layer, width, height)
         except ShapeError as exc:
-            raise ProjectRenderError(f"Layer {layer.name!r} contains invalid shape data.") from exc
+            raise ProjectRenderError(
+                f"Layer {layer.name!r} contains invalid shape data."
+            ) from exc
     else:
         if content is None:
             raise MissingRasterAssetError(f"Layer {layer.name!r} has no raster content.")
