@@ -10,8 +10,8 @@ from batikcraft_studio.application import ProjectSession
 from batikcraft_studio.config import WorkspaceDefinition
 
 from .icons import create_icon
+from .precise_transform_editor import PreciseTransformEditorWorkspaceView
 from .theme import COLORS
-from .wysiwyg_transform_editor import WysiwygTransformEditorWorkspaceView
 
 StatusCallback = Callable[[str], None]
 RefreshCallback = Callable[[], None]
@@ -58,10 +58,10 @@ def create_workspace_view(
     set_status: StatusCallback,
     session: ProjectSession,
     refresh_context: RefreshCallback,
-) -> WysiwygTransformEditorWorkspaceView:
-    """Always return the asset-first editor with WYSIWYG affine handles."""
+) -> PreciseTransformEditorWorkspaceView:
+    """Return the asset-first editor with renderer-matched WYSIWYG handles."""
 
-    return WysiwygTransformEditorWorkspaceView(
+    return PreciseTransformEditorWorkspaceView(
         parent,
         definition=definition,
         set_status=set_status,
