@@ -16,7 +16,6 @@ from batikcraft_studio.i18n import tr
 
 from .canvas_structure_i18n import install_canvas_structure_translations
 from .process_editor import BatikProcessEditorWorkspaceView
-from .theme import COLORS
 
 install_canvas_structure_translations()
 
