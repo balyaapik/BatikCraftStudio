@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import tkinter as tk
-
 from batikcraft_studio.i18n import tr
 
 from .structured_batification_app import StructuredBatificationApplication
