@@ -24,3 +24,11 @@ class LayerNotFoundError(ProjectDomainError, LookupError):
 
 class DuplicateLayerError(ProjectDomainError, ValueError):
     """Raised when a project receives a layer with an existing ID."""
+
+
+class ObjectNotFoundError(ProjectDomainError, LookupError):
+    """Raised when an object ID does not exist in a project."""
+
+
+class DuplicateObjectError(ProjectDomainError, ValueError):
+    """Raised when a project receives an object with an existing ID."""
