@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import math
 import re
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from enum import StrEnum
 from types import MappingProxyType
@@ -13,7 +13,8 @@ from uuid import UUID, uuid4
 
 from batikcraft_studio.domain.errors import ProjectValidationError
 
-CURRENT_SCHEMA_VERSION = "1.0"
+CURRENT_SCHEMA_VERSION = "1.1"
+LEGACY_SCHEMA_VERSIONS = ("1.0",)
 MAX_CANVAS_DIMENSION = 16_384
 _HEX_COLOR_PATTERN = re.compile(r"^#[0-9A-Fa-f]{6}$")
 
@@ -58,6 +59,25 @@ class LayerKind(StrEnum):
     PAINT = "paint"
     SHAPE = "shape"
     BATIKIFIED_OBJECT = "batikified_object"
+    GROUP = "group"
+
+
+class LayerNodeKind(StrEnum):
+    """Whether a layer-tree node is an editable layer or a folder/group."""
+
+    LAYER = "layer"
+    GROUP = "group"
+
+
+class ObjectKind(StrEnum):
+    """Editable object categories stored inside a layer container."""
+
+    RASTER = "raster"
+    PAINT_STROKE = "paint_stroke"
+    ERASER_STROKE = "eraser_stroke"
+    SHAPE = "shape"
+    MOTIF = "motif"
+    ISEN = "isen"
 
 
 @dataclass(frozen=True, slots=True)
@@ -131,7 +151,7 @@ class CanvasSpec:
 
 @dataclass(frozen=True, slots=True)
 class Transform:
-    """Non-destructive placement information for a workspace layer."""
+    """Non-destructive placement information for a layer or object."""
 
     x: float = 0.0
     y: float = 0.0
@@ -150,17 +170,108 @@ class Transform:
             "scale_y": _validate_finite(self.scale_y, "scale_y"),
         }
         if values["scale_x"] == 0 or values["scale_y"] == 0:
-            raise ProjectValidationError("Layer scales must not be zero.")
+            raise ProjectValidationError("Layer and object scales must not be zero.")
         for name, value in values.items():
             object.__setattr__(self, name, value)
 
 
 @dataclass(frozen=True, slots=True)
-class Layer:
-    """Immutable workspace layer descriptor.
+class ObjectBounds:
+    """Untransformed width and height of an editable object."""
 
-    Binary image content is intentionally represented by ``asset_ref``. Actual file
-    persistence belongs to Milestone 2B.
+    width: float
+    height: float
+
+    def __post_init__(self) -> None:
+        width = _validate_finite(self.width, "object bounds width")
+        height = _validate_finite(self.height, "object bounds height")
+        if width <= 0 or height <= 0:
+            raise ProjectValidationError("Object bounds must be positive.")
+        object.__setattr__(self, "width", width)
+        object.__setattr__(self, "height", height)
+
+
+@dataclass(frozen=True, slots=True)
+class LayerObject:
+    """One independently selectable object stored inside a layer."""
+
+    name: str
+    kind: ObjectKind = ObjectKind.RASTER
+    object_id: str = field(default_factory=lambda: str(uuid4()))
+    asset_ref: str | None = None
+    visible: bool = True
+    locked: bool = False
+    opacity: float = 1.0
+    transform: Transform = field(default_factory=Transform)
+    bounds: ObjectBounds = field(default_factory=lambda: ObjectBounds(1, 1))
+    properties: Mapping[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        name = _validate_non_blank(self.name, "object name", 120)
+        object_id = _validate_uuid(self.object_id, "object_id")
+        try:
+            kind = ObjectKind(self.kind)
+        except (TypeError, ValueError) as exc:
+            raise ProjectValidationError(f"Unsupported object kind: {self.kind!r}.") from exc
+        if not isinstance(self.visible, bool):
+            raise ProjectValidationError("object visible must be a boolean.")
+        if not isinstance(self.locked, bool):
+            raise ProjectValidationError("object locked must be a boolean.")
+        if not isinstance(self.transform, Transform):
+            raise ProjectValidationError("object transform must be a Transform value object.")
+        if not isinstance(self.bounds, ObjectBounds):
+            raise ProjectValidationError("object bounds must be an ObjectBounds value object.")
+        if not isinstance(self.properties, Mapping):
+            raise ProjectValidationError("object properties must be a mapping.")
+        for key in self.properties:
+            _validate_non_blank(key, "object property key", 120)
+
+        opacity = _validate_finite(self.opacity, "object opacity")
+        if not 0.0 <= opacity <= 1.0:
+            raise ProjectValidationError("object opacity must be between 0.0 and 1.0.")
+        if self.asset_ref is not None:
+            object.__setattr__(
+                self,
+                "asset_ref",
+                _validate_non_blank(self.asset_ref, "object asset_ref", 500),
+            )
+
+        object.__setattr__(self, "name", name)
+        object.__setattr__(self, "kind", kind)
+        object.__setattr__(self, "object_id", object_id)
+        object.__setattr__(self, "opacity", opacity)
+        object.__setattr__(self, "properties", MappingProxyType(dict(self.properties)))
+
+    def with_updates(self, **changes: Any) -> LayerObject:
+        """Return a validated copy with selected fields replaced."""
+
+        if "object_id" in changes:
+            raise ProjectValidationError("object_id cannot be changed after creation.")
+        allowed = {
+            "name",
+            "kind",
+            "asset_ref",
+            "visible",
+            "locked",
+            "opacity",
+            "transform",
+            "bounds",
+            "properties",
+        }
+        unknown = set(changes).difference(allowed)
+        if unknown:
+            joined = ", ".join(sorted(unknown))
+            raise ProjectValidationError(f"Unknown object update fields: {joined}.")
+        return replace(self, **changes)
+
+
+@dataclass(frozen=True, slots=True)
+class Layer:
+    """Immutable layer-tree node.
+
+    A regular layer may contain many :class:`LayerObject` values. Legacy projects may
+    still use the layer-level ``asset_ref`` and transform fields; the renderer supports
+    both forms during migration. Group nodes contain child layers through ``parent_id``.
     """
 
     name: str
@@ -172,14 +283,18 @@ class Layer:
     opacity: float = 1.0
     transform: Transform = field(default_factory=Transform)
     properties: Mapping[str, Any] = field(default_factory=dict)
+    node_kind: LayerNodeKind = LayerNodeKind.LAYER
+    parent_id: str | None = None
+    objects: tuple[LayerObject, ...] = ()
 
     def __post_init__(self) -> None:
         name = _validate_non_blank(self.name, "layer name", 120)
         layer_id = _validate_uuid(self.layer_id, "layer_id")
         try:
             kind = LayerKind(self.kind)
+            node_kind = LayerNodeKind(self.node_kind)
         except (TypeError, ValueError) as exc:
-            raise ProjectValidationError(f"Unsupported layer kind: {self.kind!r}.") from exc
+            raise ProjectValidationError("Unsupported layer or node kind.") from exc
         if not isinstance(self.visible, bool):
             raise ProjectValidationError("visible must be a boolean.")
         if not isinstance(self.locked, bool):
@@ -195,20 +310,49 @@ class Layer:
         if not 0.0 <= opacity <= 1.0:
             raise ProjectValidationError("opacity must be between 0.0 and 1.0.")
         if self.asset_ref is not None:
-            asset_ref = _validate_non_blank(self.asset_ref, "asset_ref", 500)
-            object.__setattr__(self, "asset_ref", asset_ref)
+            object.__setattr__(
+                self,
+                "asset_ref",
+                _validate_non_blank(self.asset_ref, "asset_ref", 500),
+            )
+        parent_id = self.parent_id
+        if parent_id is not None:
+            parent_id = _validate_uuid(parent_id, "parent_id")
+            if parent_id == layer_id:
+                raise ProjectValidationError("A layer cannot be its own parent.")
+
+        if isinstance(self.objects, (str, bytes, bytearray)) or not isinstance(
+            self.objects, Sequence
+        ):
+            raise ProjectValidationError("objects must be a sequence of LayerObject values.")
+        objects = tuple(self.objects)
+        if any(not isinstance(item, LayerObject) for item in objects):
+            raise ProjectValidationError("objects must contain only LayerObject values.")
+        object_ids = [item.object_id for item in objects]
+        if len(object_ids) != len(set(object_ids)):
+            raise ProjectValidationError("Object IDs must be unique within a layer.")
+
+        if node_kind is LayerNodeKind.GROUP:
+            if kind is not LayerKind.GROUP:
+                kind = LayerKind.GROUP
+            if self.asset_ref is not None or objects:
+                raise ProjectValidationError("Group nodes cannot contain assets or objects.")
+        elif kind is LayerKind.GROUP:
+            raise ProjectValidationError("LayerKind.GROUP requires a group node.")
 
         object.__setattr__(self, "name", name)
         object.__setattr__(self, "kind", kind)
+        object.__setattr__(self, "node_kind", node_kind)
         object.__setattr__(self, "layer_id", layer_id)
+        object.__setattr__(self, "parent_id", parent_id)
         object.__setattr__(self, "opacity", opacity)
+        object.__setattr__(self, "objects", objects)
         object.__setattr__(self, "properties", MappingProxyType(dict(self.properties)))
 
     def with_updates(self, **changes: Any) -> Layer:
         """Return a validated copy with selected fields replaced."""
 
-        forbidden = {"layer_id"}.intersection(changes)
-        if forbidden:
+        if "layer_id" in changes:
             raise ProjectValidationError("layer_id cannot be changed after creation.")
         allowed = {
             "name",
@@ -219,6 +363,9 @@ class Layer:
             "opacity",
             "transform",
             "properties",
+            "node_kind",
+            "parent_id",
+            "objects",
         }
         unknown = set(changes).difference(allowed)
         if unknown:
