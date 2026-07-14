@@ -22,7 +22,7 @@ from batikcraft_studio.imaging.isen import (
     validate_cap_size,
 )
 
-from .session import ProjectSessionError
+from .session import LayerLockedError, ProjectSessionError
 from .shape_session import ShapeProjectSession
 
 
@@ -58,60 +58,57 @@ class BatikProjectSession(ShapeProjectSession):
         except IsenError as exc:
             raise CapIsenError(str(exc)) from exc
 
-        target = self._ensure_batik_object_layer(
-            role="isen-isen",
-            name="Isen-Isen",
-            target_layer_id=target_layer_id,
-        )
+        target, add_target = self._prepare_isen_layer(target_layer_id)
         label = ISEN_LABELS[isen_type]
-        sequence = (
-            sum(
-                item.properties.get("motif_role") == "isen-isen"
-                and item.properties.get("isen_type") == isen_type
-                for layer in project.layers
-                for item in layer.objects
-            )
-            + 1
+        sequence = 1 + sum(
+            item.properties.get("motif_role") == "isen-isen"
+            and item.properties.get("isen_type") == isen_type
+            for layer in project.layers
+            for item in layer.objects
         )
         asset_ref = f"assets/{uuid4()}.png"
         display_scale = cap_size / MASTER_CAP_SIZE
-        objects: list[LayerObject] = []
-        for index, placement in enumerate(placements, start=1):
-            suffix = f" {index}" if len(placements) > 1 else ""
-            objects.append(
-                LayerObject(
-                    name=f"{label} {sequence}{suffix}"[:120],
-                    kind=ObjectKind.ISEN,
-                    asset_ref=asset_ref,
-                    transform=Transform(
-                        x=placement.x,
-                        y=placement.y,
-                        rotation_degrees=placement.rotation_degrees,
-                        scale_x=-display_scale if placement.mirror_x else display_scale,
-                        scale_y=-display_scale if placement.mirror_y else display_scale,
-                    ),
-                    bounds=ObjectBounds(MASTER_CAP_SIZE, MASTER_CAP_SIZE),
-                    properties={
-                        "source_format": "CAP_ISEN",
-                        "motif_role": "isen-isen",
-                        "isen_type": isen_type,
-                        "isen_label": label,
-                        "ukuran_cap": cap_size,
-                        "warna_isen": warna.upper(),
-                        "pola_susun": susun,
-                        "susun_index": index,
-                        "susun_count": len(placements),
-                    },
-                )
+        objects = tuple(
+            LayerObject(
+                name=(
+                    f"{label} {sequence} {index}"
+                    if len(placements) > 1
+                    else f"{label} {sequence}"
+                )[:120],
+                kind=ObjectKind.ISEN,
+                asset_ref=asset_ref,
+                transform=Transform(
+                    x=placement.x,
+                    y=placement.y,
+                    rotation_degrees=placement.rotation_degrees,
+                    scale_x=-display_scale if placement.mirror_x else display_scale,
+                    scale_y=-display_scale if placement.mirror_y else display_scale,
+                ),
+                bounds=ObjectBounds(MASTER_CAP_SIZE, MASTER_CAP_SIZE),
+                properties={
+                    "source_format": "CAP_ISEN",
+                    "motif_role": "isen-isen",
+                    "isen_type": isen_type,
+                    "isen_label": label,
+                    "ukuran_cap": cap_size,
+                    "warna_isen": warna.upper(),
+                    "pola_susun": susun,
+                    "susun_index": index,
+                    "susun_count": len(placements),
+                },
             )
+            for index, placement in enumerate(placements, start=1)
+        )
 
         def mutation() -> None:
+            if add_target:
+                project.add_layer(target, select=False)
             self._assets[asset_ref] = content
             for item in objects:
                 project.add_object(target.layer_id, item, select=True)
 
         self._commit_mutation(mutation)
-        return tuple(objects)
+        return objects
 
     def cap_isen_di_tengah(
         self,
@@ -122,8 +119,6 @@ class BatikProjectSession(ShapeProjectSession):
         susun: str = "tunggal",
         target_layer_id: str | None = None,
     ) -> tuple[LayerObject, ...]:
-        """Apply an isen arrangement at the center of the project canvas."""
-
         project = self.require_project()
         return self.cap_isen(
             isen_type,
@@ -134,21 +129,15 @@ class BatikProjectSession(ShapeProjectSession):
             target_layer_id=target_layer_id,
         )
 
-    def _ensure_batik_object_layer(
-        self,
-        *,
-        role: str,
-        name: str,
-        target_layer_id: str | None,
-    ) -> Layer:
+    def _prepare_isen_layer(self, target_layer_id: str | None) -> tuple[Layer, bool]:
         project = self.require_project()
         if target_layer_id is not None:
             target = project.get_layer(target_layer_id)
             if target.node_kind is LayerNodeKind.GROUP:
-                raise CapIsenError("Cap tidak dapat dimasukkan langsung ke folder.")
+                raise CapIsenError("Cap Isen tidak dapat dimasukkan langsung ke folder.")
             if project.is_layer_effectively_locked(target.layer_id):
-                raise CapIsenError(f"Lapis {target.name!r} sedang dikunci.")
-            return target
+                raise LayerLockedError(f"Lapis {target.name!r} sedang dikunci.")
+            return target, False
         if project.active_layer_id is not None:
             active = project.get_layer(project.active_layer_id)
             if (
@@ -157,23 +146,26 @@ class BatikProjectSession(ShapeProjectSession):
                 and not project.is_layer_effectively_locked(active.layer_id)
                 and active.properties.get("object_container") is True
             ):
-                return active
+                return active, False
         for layer in project.layers:
             if (
-                layer.properties.get("object_role") == role
+                layer.properties.get("object_role") == "isen-isen"
                 and layer.node_kind is LayerNodeKind.LAYER
                 and not project.is_layer_effectively_locked(layer.layer_id)
             ):
-                project.set_active_layer(layer.layer_id)
-                return layer
-        layer = Layer(
-            name=name,
-            kind=LayerKind.BATIKIFIED_OBJECT,
-            node_kind=LayerNodeKind.LAYER,
-            properties={"object_container": True, "object_role": role},
+                return layer, False
+        return (
+            Layer(
+                name="Isen-Isen",
+                kind=LayerKind.BATIKIFIED_OBJECT,
+                node_kind=LayerNodeKind.LAYER,
+                properties={
+                    "object_container": True,
+                    "object_role": "isen-isen",
+                },
+            ),
+            True,
         )
-        project.add_layer(layer)
-        return layer
 
 
 __all__ = ["BatikProjectSession", "CapIsenError"]
