@@ -10,7 +10,7 @@ from batikcraft_studio.application import ProjectSession
 from batikcraft_studio.config import WorkspaceDefinition
 
 from .icons import create_icon
-from .selectable_batik_editor import SelectableBatikEditorWorkspaceView
+from .motif_batik_editor import MotifBatikEditorWorkspaceView
 from .theme import COLORS
 
 StatusCallback = Callable[[str], None]
@@ -77,9 +77,9 @@ def create_workspace_view(
     set_status: StatusCallback,
     session: ProjectSession,
     refresh_context: RefreshCallback,
-) -> WorkspaceView | SelectableBatikEditorWorkspaceView:
+) -> WorkspaceView | MotifBatikEditorWorkspaceView:
     if definition.key == "editor":
-        return SelectableBatikEditorWorkspaceView(
+        return MotifBatikEditorWorkspaceView(
             parent,
             definition=definition,
             set_status=set_status,
