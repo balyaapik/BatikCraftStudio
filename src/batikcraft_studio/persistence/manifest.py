@@ -4,16 +4,21 @@ from __future__ import annotations
 
 import math
 import re
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
 from batikcraft_studio.domain import (
     CURRENT_SCHEMA_VERSION,
+    LEGACY_SCHEMA_VERSIONS,
     CanvasSpec,
     Layer,
     LayerKind,
+    LayerNodeKind,
+    LayerObject,
+    ObjectBounds,
+    ObjectKind,
     Project,
     ProjectMetadata,
     ProjectValidationError,
@@ -42,7 +47,9 @@ class AssetRecord:
         if isinstance(self.size, bool) or not isinstance(self.size, int) or self.size < 0:
             raise ArchiveValidationError("Asset size must be a non-negative integer.")
         if not isinstance(self.sha256, str) or not _SHA256_PATTERN.fullmatch(self.sha256):
-            raise ArchiveValidationError("Asset sha256 must be 64 lowercase hexadecimal characters.")
+            raise ArchiveValidationError(
+                "Asset sha256 must be 64 lowercase hexadecimal characters."
+            )
         object.__setattr__(self, "path", normalized)
 
 
@@ -54,17 +61,16 @@ def project_to_manifest(project: Project, assets: Sequence[AssetRecord]) -> dict
     project.assert_valid()
     records = _validate_asset_records(assets)
     asset_paths = {record.path for record in records}
-    for layer in project.layers:
-        if layer.asset_ref is not None:
-            normalized_ref = normalize_archive_path(layer.asset_ref)
-            if normalized_ref not in asset_paths:
-                raise ArchiveValidationError(
-                    f"Layer {layer.layer_id} references missing asset {normalized_ref!r}."
-                )
+    for owner, asset_ref in _iter_asset_refs(project):
+        normalized_ref = normalize_archive_path(asset_ref)
+        if normalized_ref not in asset_paths:
+            raise ArchiveValidationError(
+                f"{owner} references missing asset {normalized_ref!r}."
+            )
 
     return {
         "format": FORMAT_NAME,
-        "schema_version": project.schema_version,
+        "schema_version": CURRENT_SCHEMA_VERSION,
         "project": {
             "id": project.project_id,
             "metadata": {
@@ -79,6 +85,7 @@ def project_to_manifest(project: Project, assets: Sequence[AssetRecord]) -> dict
                 "background_color": project.canvas.background_color,
             },
             "active_layer_id": project.active_layer_id,
+            "active_object_id": project.active_object_id,
             "created_at": project.created_at.isoformat(),
             "updated_at": project.updated_at.isoformat(),
             "revision": project.revision,
@@ -92,37 +99,42 @@ def project_to_manifest(project: Project, assets: Sequence[AssetRecord]) -> dict
 
 
 def project_from_manifest(data: object) -> tuple[Project, tuple[AssetRecord, ...]]:
-    """Build a validated, clean project and its declared asset records."""
+    """Build a validated project and migrate supported legacy manifests in memory."""
 
     root = _expect_mapping(data, "manifest")
     _expect_keys(root, {"format", "schema_version", "project", "assets"}, "manifest")
     if root["format"] != FORMAT_NAME:
         raise ArchiveValidationError(f"Unsupported project format: {root['format']!r}.")
-    schema_version = root["schema_version"]
-    if schema_version != CURRENT_SCHEMA_VERSION:
+    source_schema = root["schema_version"]
+    supported = {CURRENT_SCHEMA_VERSION, *LEGACY_SCHEMA_VERSIONS}
+    if source_schema not in supported:
         raise UnsupportedSchemaVersionError(
-            f"Unsupported schema_version {schema_version!r}; expected {CURRENT_SCHEMA_VERSION!r}."
+            f"Unsupported schema_version {source_schema!r}; supported: "
+            f"{', '.join(sorted(supported))}."
         )
+    is_legacy = source_schema in LEGACY_SCHEMA_VERSIONS
 
     asset_items = _expect_sequence(root["assets"], "assets")
-    records = tuple(_asset_record_from_data(item, index) for index, item in enumerate(asset_items))
+    records = tuple(
+        _asset_record_from_data(item, index) for index, item in enumerate(asset_items)
+    )
     records = _validate_asset_records(records)
 
     project_data = _expect_mapping(root["project"], "project")
-    _expect_keys(
-        project_data,
-        {
-            "id",
-            "metadata",
-            "canvas",
-            "active_layer_id",
-            "created_at",
-            "updated_at",
-            "revision",
-            "layers",
-        },
-        "project",
-    )
+    project_keys = {
+        "id",
+        "metadata",
+        "canvas",
+        "active_layer_id",
+        "created_at",
+        "updated_at",
+        "revision",
+        "layers",
+    }
+    if not is_legacy:
+        project_keys.add("active_object_id")
+    _expect_keys(project_data, project_keys, "project")
+
     metadata_data = _expect_mapping(project_data["metadata"], "project.metadata")
     _expect_keys(
         metadata_data,
@@ -149,15 +161,19 @@ def project_from_manifest(data: object) -> tuple[Project, tuple[AssetRecord, ...
             height=canvas_data["height"],
             background_color=canvas_data["background_color"],
         )
-        layers = tuple(_layer_from_data(item, index) for index, item in enumerate(layer_items))
+        layers = tuple(
+            _layer_from_data(item, index, legacy=is_legacy)
+            for index, item in enumerate(layer_items)
+        )
         revision = project_data["revision"]
         project = Project(
             metadata=metadata,
             canvas=canvas,
             layers=layers,
             project_id=project_data["id"],
-            schema_version=schema_version,
+            schema_version=CURRENT_SCHEMA_VERSION,
             active_layer_id=project_data["active_layer_id"],
+            active_object_id=None if is_legacy else project_data["active_object_id"],
             created_at=_parse_datetime(project_data["created_at"], "project.created_at"),
             updated_at=_parse_datetime(project_data["updated_at"], "project.updated_at"),
             revision=revision,
@@ -167,14 +183,25 @@ def project_from_manifest(data: object) -> tuple[Project, tuple[AssetRecord, ...
         raise ArchiveValidationError(f"Invalid project domain data: {exc}") from exc
 
     declared_paths = {record.path for record in records}
+    for owner, asset_ref in _iter_asset_refs(project):
+        normalized_ref = normalize_archive_path(asset_ref)
+        if normalized_ref not in declared_paths:
+            raise ArchiveValidationError(
+                f"{owner} references undeclared asset {normalized_ref!r}."
+            )
+    return project, records
+
+
+def _iter_asset_refs(project: Project) -> Iterable[tuple[str, str]]:
     for layer in project.layers:
         if layer.asset_ref is not None:
-            normalized_ref = normalize_archive_path(layer.asset_ref)
-            if normalized_ref not in declared_paths:
-                raise ArchiveValidationError(
-                    f"Layer {layer.layer_id} references undeclared asset {normalized_ref!r}."
-                )
-    return project, records
+            yield f"Layer {layer.layer_id}", layer.asset_ref
+        for item in layer.objects:
+            if item.asset_ref is not None:
+                yield f"Object {item.object_id}", item.asset_ref
+            source_ref = item.properties.get("source_asset_ref")
+            if isinstance(source_ref, str) and source_ref:
+                yield f"Object {item.object_id} source", source_ref
 
 
 def _layer_to_data(layer: Layer) -> dict[str, Any]:
@@ -182,23 +209,93 @@ def _layer_to_data(layer: Layer) -> dict[str, Any]:
         "id": layer.layer_id,
         "name": layer.name,
         "kind": layer.kind.value,
+        "node_kind": layer.node_kind.value,
+        "parent_id": layer.parent_id,
         "asset_ref": layer.asset_ref,
         "visible": layer.visible,
         "locked": layer.locked,
         "opacity": layer.opacity,
-        "transform": {
-            "x": layer.transform.x,
-            "y": layer.transform.y,
-            "rotation_degrees": layer.transform.rotation_degrees,
-            "scale_x": layer.transform.scale_x,
-            "scale_y": layer.transform.scale_y,
-        },
+        "transform": _transform_to_data(layer.transform),
         "properties": _json_value(layer.properties, f"layer {layer.layer_id} properties"),
+        "objects": [_object_to_data(item) for item in layer.objects],
     }
 
 
-def _layer_from_data(data: object, index: int) -> Layer:
+def _object_to_data(item: LayerObject) -> dict[str, Any]:
+    return {
+        "id": item.object_id,
+        "name": item.name,
+        "kind": item.kind.value,
+        "asset_ref": item.asset_ref,
+        "visible": item.visible,
+        "locked": item.locked,
+        "opacity": item.opacity,
+        "transform": _transform_to_data(item.transform),
+        "bounds": {"width": item.bounds.width, "height": item.bounds.height},
+        "properties": _json_value(item.properties, f"object {item.object_id} properties"),
+    }
+
+
+def _transform_to_data(transform: Transform) -> dict[str, float]:
+    return {
+        "x": transform.x,
+        "y": transform.y,
+        "rotation_degrees": transform.rotation_degrees,
+        "scale_x": transform.scale_x,
+        "scale_y": transform.scale_y,
+    }
+
+
+def _layer_from_data(data: object, index: int, *, legacy: bool) -> Layer:
     location = f"project.layers[{index}]"
+    item = _expect_mapping(data, location)
+    legacy_keys = {
+        "id",
+        "name",
+        "kind",
+        "asset_ref",
+        "visible",
+        "locked",
+        "opacity",
+        "transform",
+        "properties",
+    }
+    current_keys = legacy_keys | {"node_kind", "parent_id", "objects"}
+    _expect_keys(item, legacy_keys if legacy else current_keys, location)
+    transform = _transform_from_data(item["transform"], f"{location}.transform")
+    properties = _expect_mapping(item["properties"], f"{location}.properties")
+    try:
+        objects: tuple[LayerObject, ...] = ()
+        node_kind = LayerNodeKind.LAYER
+        parent_id = None
+        if not legacy:
+            object_items = _expect_sequence(item["objects"], f"{location}.objects")
+            objects = tuple(
+                _object_from_data(object_data, location, object_index)
+                for object_index, object_data in enumerate(object_items)
+            )
+            node_kind = LayerNodeKind(item["node_kind"])
+            parent_id = item["parent_id"]
+        return Layer(
+            layer_id=item["id"],
+            name=item["name"],
+            kind=LayerKind(item["kind"]),
+            node_kind=node_kind,
+            parent_id=parent_id,
+            asset_ref=item["asset_ref"],
+            visible=item["visible"],
+            locked=item["locked"],
+            opacity=item["opacity"],
+            transform=transform,
+            properties=dict(properties),
+            objects=objects,
+        )
+    except (ProjectValidationError, TypeError, ValueError) as exc:
+        raise ArchiveValidationError(f"Invalid {location}: {exc}") from exc
+
+
+def _object_from_data(data: object, layer_location: str, index: int) -> LayerObject:
+    location = f"{layer_location}.objects[{index}]"
     item = _expect_mapping(data, location)
     _expect_keys(
         item,
@@ -211,37 +308,49 @@ def _layer_from_data(data: object, index: int) -> Layer:
             "locked",
             "opacity",
             "transform",
+            "bounds",
             "properties",
         },
         location,
     )
-    transform_data = _expect_mapping(item["transform"], f"{location}.transform")
-    _expect_keys(
-        transform_data,
-        {"x", "y", "rotation_degrees", "scale_x", "scale_y"},
-        f"{location}.transform",
-    )
+    transform = _transform_from_data(item["transform"], f"{location}.transform")
+    bounds_data = _expect_mapping(item["bounds"], f"{location}.bounds")
+    _expect_keys(bounds_data, {"width", "height"}, f"{location}.bounds")
     properties = _expect_mapping(item["properties"], f"{location}.properties")
     try:
-        return Layer(
-            layer_id=item["id"],
+        return LayerObject(
+            object_id=item["id"],
             name=item["name"],
-            kind=LayerKind(item["kind"]),
+            kind=ObjectKind(item["kind"]),
             asset_ref=item["asset_ref"],
             visible=item["visible"],
             locked=item["locked"],
             opacity=item["opacity"],
-            transform=Transform(
-                x=transform_data["x"],
-                y=transform_data["y"],
-                rotation_degrees=transform_data["rotation_degrees"],
-                scale_x=transform_data["scale_x"],
-                scale_y=transform_data["scale_y"],
+            transform=transform,
+            bounds=ObjectBounds(
+                width=bounds_data["width"],
+                height=bounds_data["height"],
             ),
             properties=dict(properties),
         )
     except (ProjectValidationError, TypeError, ValueError) as exc:
         raise ArchiveValidationError(f"Invalid {location}: {exc}") from exc
+
+
+def _transform_from_data(data: object, location: str) -> Transform:
+    transform_data = _expect_mapping(data, location)
+    _expect_keys(
+        transform_data,
+        {"x", "y", "rotation_degrees", "scale_x", "scale_y"},
+        location,
+    )
+    return Transform(
+        x=transform_data["x"],
+        y=transform_data["y"],
+        rotation_degrees=transform_data["rotation_degrees"],
+        scale_x=transform_data["scale_x"],
+        scale_y=transform_data["scale_y"],
+    )
 
 
 def _asset_record_from_data(data: object, index: int) -> AssetRecord:
