@@ -2,9 +2,9 @@
 
 BatikCraft Studio adalah aplikasi desktop native berbasis Python dan Tkinter untuk
 merakit, menggambar, dan menyunting motif batik dari pustaka asset offline yang dapat
-dikembangkan dari dataset Kaggle.
+dibangun dari dataset Kaggle.
 
-> Status: Milestone 3F — Pustaka Asset dan UI Ringkas.
+> Status: Milestone 3G — Kaggle Asset Pack Builder.
 
 ## Fokus Produk
 
@@ -14,7 +14,7 @@ Aplikasi desktop menangani proses penciptaan motif:
 - mencari serta menggabungkan banyak asset menjadi komposisi baru;
 - mengelola Folder, Subfolder, Sublapis, dan banyak objek dalam satu lapis;
 - mengubah posisi, ukuran, rotasi, opacity, susunan, metadata, dan humanize;
-- menggambar dengan Brush, Eraser, Shape, Cap Motif, dan Cap Isen bila diperlukan;
+- menggambar melalui menu Brush, Eraser, Shape, Cap Motif, dan Cap Isen;
 - menyimpan proyek editable;
 - menyiapkan asset final untuk pattern, AI, publikasi, dan lisensi.
 
@@ -28,32 +28,27 @@ Editor utama hanya memiliki tiga area permanen:
 Pustaka Asset | Canvas | Susunan Lapis
 ```
 
-Pengaturan menggambar tidak lagi memenuhi dock dengan tab. Menu **Draw**, **Edit**, dan
-**Asset** membuka jendela kecil yang hanya tampil ketika diperlukan.
+Pengaturan menggambar tidak memenuhi dock dengan tab. Menu **Draw**, **Edit**, dan
+**Asset** membuka jendela kecil ketika diperlukan.
 
 ## Fitur yang Sudah Berfungsi
 
 - shell Tkinter native dengan toolbar ikon offline dan menu bar;
-- format proyek `.batikcraft` berbasis ZIP dengan validasi integritas;
+- format proyek `.batikcraft` dengan validasi integritas;
 - format asset portable `.batikasset`;
 - format pustaka `.batikpack` dengan manifest, tags, kategori, thumbnail, dan version;
-- install/replace/uninstall pack secara atomik;
-- pencarian serta filter asset berdasarkan nama, ID, tag, kategori, dan pack;
-- preview asset dan double-click untuk menempatkan asset pada canvas;
-- asset library global per-user, sehingga ribuan asset tidak disalin ke setiap proyek;
-- renderer Pillow untuk raster, shape, paint object, motif, dan isen;
-- Folder, Subfolder, Sublapis, dan object tree;
-- banyak objek dalam satu layer;
-- selection dan transform per objek;
-- visibility, lock, ordering, duplicate, delete, dan Undo/Redo;
-- Brush dan Eraser sebagai objek cropped, bukan raster seluas kanvas;
-- Brush opacity, hardness, smoothing, preset ukuran, dan circular cursor;
+- install, replace, uninstall, search, filter, preview, dan double-click placement;
+- asset library global per-user agar ribuan asset tidak disalin ke setiap proyek;
+- Folder, Subfolder, Sublapis, banyak objek per layer, dan object-sized selection;
+- visibility, lock, ordering, duplicate, delete, transform, dan Undo/Redo;
+- Brush dan Eraser sebagai cropped objects;
 - Line, Rectangle, Ellipse, dan Polygon non-destruktif;
-- Motif Pokok Kawung, Truntum, Ceplok, dan Lereng sebagai fallback procedural;
-- Cecek, Cecek Telu, Sawut, Cecek Sawut, Ukel, Galaran, Sisik, dan Cacah Gori;
-- pengisian isen otomatis dan pola susun Cermin/Putar;
-- Humanize non-destruktif dengan seed, wobble tepi, celah malam, dan variasi tekanan;
-- migrasi baca project schema `1.0` ke schema `1.1`;
+- fallback procedural Motif Pokok dan Isen-Isen;
+- Humanize non-destruktif;
+- notebook Kaggle untuk discovery, deduplication, extraction, alpha cleaning, review,
+  thumbnail, `.batikasset`, manifest, dan `.batikpack`;
+- builder pack reusable yang divalidasi oleh installer aplikasi;
+- migrasi project schema `1.0` ke `1.1`;
 - CI menggunakan Ruff dan Pytest.
 
 ## Struktur Dokumen
@@ -72,18 +67,11 @@ Folder
 ```
 
 Folder mengatur susunan. Sublapis menampung banyak objek. Objek adalah unit selection
-terkecil. Asset dari pustaka baru disalin ke proyek ketika benar-benar ditempatkan pada
-canvas.
+terkecil. Asset library baru disalin ke proyek ketika benar-benar ditempatkan pada canvas.
 
 ## Asset Pack
 
-Paket asset memakai ekstensi:
-
-```text
-.batikpack
-```
-
-Struktur dasarnya:
+Paket asset memakai ekstensi `.batikpack`:
 
 ```text
 manifest.json
@@ -93,7 +81,7 @@ thumbnails/
   asset-001.png
 ```
 
-Kategori yang didukung:
+Kategori resmi:
 
 - `motif-pokok`;
 - `isen-isen`;
@@ -107,7 +95,43 @@ Windows menyimpan pack terpasang di:
 %LOCALAPPDATA%\BatikCraftStudio\asset-library
 ```
 
-Panduan format lengkap tersedia di `docs/MILESTONE_3F_ASSET_LIBRARY.md`.
+## Kaggle Asset Builder
+
+Notebook:
+
+```text
+notebooks/kaggle_batik_asset_pack_builder.ipynb
+```
+
+Modul ekstraksi notebook:
+
+```text
+notebooks/kaggle_asset_pipeline.py
+```
+
+Builder format yang juga dipakai test aplikasi:
+
+```text
+src/batikcraft_studio/assets/builder.py
+```
+
+Pipeline:
+
+```text
+dataset batik
+→ exact dan visual deduplication
+→ full/component/grid candidates
+→ alpha cleaning
+→ category/tag suggestion
+→ contact sheets + review.csv
+→ human curation
+→ canonical .batikasset + thumbnail
+→ manifest.json
+→ validated .batikpack
+```
+
+Segmentasi tidak dianggap 100% otomatis. Motif historis, Isen-Isen, dan bagian kain
+yang saling menyatu tetap memerlukan kurasi manusia.
 
 ## Roadmap
 
@@ -117,10 +141,7 @@ Panduan format lengkap tersedia di `docs/MILESTONE_3F_ASSET_LIBRARY.md`.
 
 ### Milestone 2 — Project and Workspace Core ✅
 
-- project domain;
-- serializer `.batikcraft`;
-- atomic save dan integrity validation;
-- raster object editing dan Undo/Redo.
+- project domain, serializer `.batikcraft`, atomic save, raster editing, dan Undo/Redo.
 
 ### Milestone 3 — Manual and Asset-Based Motif Tools
 
@@ -146,28 +167,19 @@ Panduan format lengkap tersedia di `docs/MILESTONE_3F_ASSET_LIBRARY.md`.
 
 #### 3E — Object Tree, Asset, dan Humanize ✅
 
-- Folder/Sublapis/Objek;
-- selection mengikuti bounds objek;
-- `.batikasset`;
-- metadata asset dan Humanize non-destruktif.
+- Folder/Sublapis/Objek, `.batikasset`, metadata, dan Humanize.
 
 #### 3F — Pustaka Asset dan UI Ringkas ✅
 
-- `.batikpack`;
-- install, replace, uninstall, search, filter, dan preview;
-- Pustaka Asset permanen;
-- layout Asset Library → Canvas → Susunan Lapis;
-- tool settings melalui jendela kecil dari menu bar;
-- rail workspace dan dock tab menggambar dihapus dari workflow utama.
+- `.batikpack`, pack management, Pustaka Asset permanen, dan menu-driven tool windows.
 
-#### 3G — Kaggle Asset Pack Builder
+#### 3G — Kaggle Asset Pack Builder ✅
 
-- scan dataset;
-- segmentasi/crop kandidat komponen batik;
-- pembersihan alpha;
-- klasifikasi dan tagging;
-- review/curation queue;
-- export `.batikasset`, thumbnail, manifest, dan `.batikpack`.
+- discovery, duplicate filtering, segmentation/crop, alpha cleaning;
+- category/tag suggestion;
+- contact sheets dan review queue;
+- curated export ke `.batikasset`, thumbnail, manifest, dan `.batikpack`;
+- validation menggunakan installer aplikasi.
 
 #### Tahap Manual Berikutnya
 
@@ -175,7 +187,8 @@ Panduan format lengkap tersedia di `docs/MILESTONE_3F_ASSET_LIBRARY.md`.
 - vector path dan node editing;
 - pressure curve per titik stroke;
 - simetri canting real-time;
-- recolor region asset.
+- recolor region asset;
+- curation manager langsung di aplikasi.
 
 ### Milestone 4 — Object Batikfication MVP
 
@@ -186,14 +199,11 @@ Panduan format lengkap tersedia di `docs/MILESTONE_3F_ASSET_LIBRARY.md`.
 
 ### Milestone 5 — Pattern Engine
 
-- straight, mirror, half-drop, half-brick, dan rotational repeat;
-- seamless preview dan export tile.
+- straight, mirror, half-drop, half-brick, rotational repeat, dan seamless export.
 
 ### Milestone 6 — AI Integration
 
-- model/checkpoint loader;
-- image, mask, edge, style, palette, dan seed conditioning;
-- worker thread, progress, cancellation, dan recovery.
+- model loader, conditioning, worker thread, progress, cancellation, dan recovery.
 
 ### Milestone 7 — Licensing and Website Bridge
 
@@ -209,12 +219,6 @@ Windows PowerShell:
 
 ```powershell
 .venv\Scripts\Activate.ps1
-```
-
-Linux/macOS:
-
-```bash
-source .venv/bin/activate
 ```
 
 Instal dan jalankan:
@@ -233,11 +237,10 @@ python -m batikcraft_studio
 4. Pilih Sublapis tujuan pada panel kanan.
 5. Double-click asset untuk memasukkannya ke canvas.
 6. Pilih dan susun objek melalui canvas atau tree.
-7. Buka **Edit → Transform…** untuk transform numerik.
-8. Buka **Asset → Edit Asset Metadata…** atau **Humanize…** bila diperlukan.
-9. Buka **Draw** hanya ketika perlu Brush, Eraser, Shape, Motif, atau Isen.
-10. Gunakan `Ctrl+Z` dan `Ctrl+Y` untuk Undo/Redo.
-11. Simpan sebagai `.batikcraft`.
+7. Gunakan **Edit → Transform…** untuk transform numerik.
+8. Gunakan **Asset → Metadata/Humanize** bila diperlukan.
+9. Gunakan **Draw** hanya ketika perlu menggambar.
+10. Simpan sebagai `.batikcraft`.
 
 ## Validasi
 
@@ -246,22 +249,9 @@ ruff check .
 pytest
 ```
 
-## Prinsip Pengembangan
-
-- setiap milestone dibuat melalui branch dan pull request;
-- UI, application, domain, persistence, imaging, asset library, dan integration dipisahkan;
-- domain dan persistence tidak mengimpor Tkinter;
-- sumber asset asli dipertahankan untuk operasi non-destruktif;
-- library besar diindeks dari manifest, bukan membuka seluruh PNG saat startup;
-- fitur non-AI tetap berfungsi tanpa model;
-- AI tidak boleh membekukan Tkinter main thread.
-
 ## Dokumentasi
 
-- `docs/ARCHITECTURE.md` — batas modul dan arah dependensi;
-- `docs/PROJECT_DOMAIN.md` — invariant project domain;
-- `docs/PROJECT_FORMAT.md` — format archive dan keamanan;
+- `docs/PROJECT_FORMAT.md` — format project;
 - `docs/MILESTONE_3E_OBJECT_TREE_ASSETS.md` — object tree dan Humanize;
 - `docs/MILESTONE_3F_ASSET_LIBRARY.md` — pack management dan UI ringkas;
-- `docs/BOB_PROMPTS.md` — prompt bertahap;
-- `docs/BOB_DEVELOPMENT_LOG.md` — development log.
+- `docs/MILESTONE_3G_KAGGLE_ASSET_BUILDER.md` — ekstraksi, kurasi, dan export Kaggle.
