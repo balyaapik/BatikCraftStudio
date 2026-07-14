@@ -9,9 +9,9 @@ from tkinter import ttk
 from batikcraft_studio.application import ProjectSession
 from batikcraft_studio.config import WorkspaceDefinition
 
-from .compact_asset_editor import CompactAssetEditorWorkspaceView
 from .icons import create_icon
 from .theme import COLORS
+from .wysiwyg_transform_editor import WysiwygTransformEditorWorkspaceView
 
 StatusCallback = Callable[[str], None]
 RefreshCallback = Callable[[], None]
@@ -58,10 +58,10 @@ def create_workspace_view(
     set_status: StatusCallback,
     session: ProjectSession,
     refresh_context: RefreshCallback,
-) -> CompactAssetEditorWorkspaceView:
-    """Always return the single asset-first editor workspace."""
+) -> WysiwygTransformEditorWorkspaceView:
+    """Always return the asset-first WYSIWYG editor workspace."""
 
-    return CompactAssetEditorWorkspaceView(
+    return WysiwygTransformEditorWorkspaceView(
         parent,
         definition=definition,
         set_status=set_status,
