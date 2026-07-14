@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import tkinter as tk
+from collections.abc import Callable
 from io import BytesIO
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
@@ -104,6 +105,12 @@ class CompactAssetEditorWorkspaceView(ProfessionalObjectTreeEditorWorkspaceView)
         layers.columnconfigure(0, weight=1)
         layers.rowconfigure(1, weight=1)
         self._build_layer_panel(layers)
+        layer_children = layers.winfo_children()
+        if layer_children:
+            try:
+                layer_children[0].configure(text=tr("tree.title"))
+            except tk.TclError:
+                pass
         body.add(layers, weight=1)
 
     def _build_library_panel(self, parent: ttk.Frame) -> None:
@@ -229,10 +236,7 @@ class CompactAssetEditorWorkspaceView(ProfessionalObjectTreeEditorWorkspaceView)
         )
 
         self._tree_context_menu = tk.Menu(self, tearoff=False)
-        self._tree_context_menu.add_cascade(
-            label=tr("tree.new"),
-            menu=self._new_tree_menu,
-        )
+        self._tree_context_menu.add_cascade(label=tr("tree.new"), menu=self._new_tree_menu)
         self._move_folder_menu = tk.Menu(self._tree_context_menu, tearoff=False)
         self._tree_context_menu.add_cascade(
             label=tr("tree.move_to_folder"),
@@ -252,18 +256,14 @@ class CompactAssetEditorWorkspaceView(ProfessionalObjectTreeEditorWorkspaceView)
             label=tr("tree.visibility"),
             command=self.toggle_visibility,
         )
-        self._tree_context_menu.add_command(
-            label=tr("tree.lock"),
-            command=self.toggle_lock,
-        )
+        self._tree_context_menu.add_command(label=tr("tree.lock"), command=self.toggle_lock)
 
     def refresh_library(self) -> None:
         if not hasattr(self, "library_list"):
             return
         pack_display = self.library_pack_value.get()
         pack_id = self._library_pack_lookup.get(pack_display)
-        category_display = self.library_category_value.get()
-        category = self._category_display_to_id.get(category_display)
+        category = self._category_display_to_id.get(self.library_category_value.get())
         try:
             records = self.asset_library.search(
                 self.library_query_value.get(),
@@ -306,9 +306,7 @@ class CompactAssetEditorWorkspaceView(ProfessionalObjectTreeEditorWorkspaceView)
 
     def _refresh_pack_combo(self) -> None:
         current = self.library_pack_value.get()
-        self._library_pack_lookup = {
-            pack.name: pack.pack_id for pack in self.asset_library.packs
-        }
+        self._library_pack_lookup = {pack.name: pack.pack_id for pack in self.asset_library.packs}
         values = (self._all_packs_label, *self._library_pack_lookup)
         self.library_pack_combo.configure(values=values)
         if current not in values:
@@ -317,9 +315,7 @@ class CompactAssetEditorWorkspaceView(ProfessionalObjectTreeEditorWorkspaceView)
     def reload_asset_library(self) -> None:
         self.asset_library.refresh()
         self.refresh_library()
-        self.set_status(
-            tr("library.reloaded", count=self.asset_library.asset_count)
-        )
+        self.set_status(tr("library.reloaded", count=self.asset_library.asset_count))
 
     def install_asset_pack_dialog(self) -> None:
         selected = filedialog.askopenfilename(
@@ -357,9 +353,7 @@ class CompactAssetEditorWorkspaceView(ProfessionalObjectTreeEditorWorkspaceView)
                 return
         self.refresh_library()
         self.library_pack_value.set(pack.name)
-        self.set_status(
-            tr("library.installed", name=pack.name, count=len(pack.assets))
-        )
+        self.set_status(tr("library.installed", name=pack.name, count=len(pack.assets)))
 
     def uninstall_selected_pack(self) -> None:
         display = self.library_pack_value.get()
@@ -401,10 +395,7 @@ class CompactAssetEditorWorkspaceView(ProfessionalObjectTreeEditorWorkspaceView)
             return
         try:
             content = self.asset_library.read_asset(record)
-            target = self._target_layer_for_object(
-                "assets",
-                tr("library.target_layer"),
-            )
+            target = self._target_layer_for_object("assets", tr("library.target_layer"))
             item = self._object_session.import_batik_asset(
                 Path(record.relative_path).name,
                 content,
