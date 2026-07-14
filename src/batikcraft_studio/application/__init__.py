@@ -5,6 +5,9 @@ from batikcraft_studio.application.batik_session import (
     BatikProjectSession,
     CapIsenError,
 )
+from batikcraft_studio.application.canvas_structure_session import (
+    CanvasStructureProjectSession,
+)
 from batikcraft_studio.application.clipboard_session import (
     ClipboardProjectSession,
     ObjectClipboardSnapshot,
@@ -54,9 +57,9 @@ from batikcraft_studio.application.structured_batification_session import (
     StructuredBatificationProjectSession,
 )
 
-# The public desktop session now includes process documentation on top of offline AI and
-# multi-object editing. Process data lives in a hidden non-rendering group node.
-ProjectSession = BatikProcessProjectSession
+# The public desktop session treats layers as multi-object containers, nests layers in folders,
+# and retains process documentation, offline AI, and multi-object editing.
+ProjectSession = CanvasStructureProjectSession
 
 __all__ = [
     "BATIK_PROCESS_EXTENSION",
@@ -65,6 +68,7 @@ __all__ = [
     "BatikProcessProjectSession",
     "BatikProjectSession",
     "BatificationGeneration",
+    "CanvasStructureProjectSession",
     "CapIsenError",
     "ClipboardProjectSession",
     "EditableObjectProjectSession",

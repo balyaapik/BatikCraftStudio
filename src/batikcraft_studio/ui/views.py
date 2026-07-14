@@ -9,8 +9,8 @@ from tkinter import ttk
 from batikcraft_studio.application import ProjectSession
 from batikcraft_studio.config import WorkspaceDefinition
 
+from .canvas_structure_editor import CanvasStructureEditorWorkspaceView
 from .icons import create_icon
-from .process_editor import BatikProcessEditorWorkspaceView
 from .theme import COLORS
 
 StatusCallback = Callable[[str], None]
@@ -63,10 +63,10 @@ def create_workspace_view(
     set_status: StatusCallback,
     session: ProjectSession,
     refresh_context: RefreshCallback,
-) -> BatikProcessEditorWorkspaceView:
-    """Return the editor with process planning and context grouping."""
+) -> CanvasStructureEditorWorkspaceView:
+    """Return the ruler-enabled object-first layer editor."""
 
-    return BatikProcessEditorWorkspaceView(
+    return CanvasStructureEditorWorkspaceView(
         parent,
         definition=definition,
         set_status=set_status,
