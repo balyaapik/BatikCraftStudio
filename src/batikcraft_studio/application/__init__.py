@@ -5,6 +5,10 @@ from batikcraft_studio.application.batik_session import (
     BatikProjectSession,
     CapIsenError,
 )
+from batikcraft_studio.application.clipboard_session import (
+    ClipboardProjectSession,
+    ObjectClipboardSnapshot,
+)
 from batikcraft_studio.application.interactive_transform_session import (
     InteractiveTransformProjectSession,
 )
@@ -33,18 +37,20 @@ from batikcraft_studio.application.shape_session import (
 )
 
 # The public desktop session includes nested folders, multi-object layers, paint-stroke
-# objects, editable Batik assets, humanize, and live one-undo canvas transforms.
-ProjectSession = InteractiveTransformProjectSession
+# objects, editable Batik assets, WYSIWYG transforms, and an internal object clipboard.
+ProjectSession = ClipboardProjectSession
 
 __all__ = [
     "BatikProjectSession",
     "CapIsenError",
+    "ClipboardProjectSession",
     "EditableObjectProjectSession",
     "InteractiveTransformProjectSession",
     "LayerLockedError",
     "MotifCapError",
     "MotifProjectSession",
     "NoActiveProjectError",
+    "ObjectClipboardSnapshot",
     "ObjectLockedError",
     "ObjectProjectSession",
     "PaintLayerError",

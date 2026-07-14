@@ -1,9 +1,14 @@
-"""Keyboard helpers shared by global editor shortcuts."""
+"""Keyboard helpers and stable editor shortcut sequences."""
 
 from __future__ import annotations
 
 from collections.abc import Callable
 from typing import Any
+
+OBJECT_COPY_SEQUENCE = "<Control-c>"
+OBJECT_PASTE_SEQUENCE = "<Control-v>"
+SELECT_TOOL_SEQUENCE = "<Shift-Key-V>"
+ISEN_TOOL_SEQUENCE = "<Shift-Key-C>"
 
 _TEXT_INPUT_CLASSES = frozenset(
     {
@@ -40,4 +45,11 @@ def run_single_key_shortcut(event: Any, command: Callable[[], object]) -> str | 
     return "break"
 
 
-__all__ = ["event_targets_text_input", "run_single_key_shortcut"]
+__all__ = [
+    "ISEN_TOOL_SEQUENCE",
+    "OBJECT_COPY_SEQUENCE",
+    "OBJECT_PASTE_SEQUENCE",
+    "SELECT_TOOL_SEQUENCE",
+    "event_targets_text_input",
+    "run_single_key_shortcut",
+]
