@@ -6,7 +6,6 @@ import tkinter as tk
 from tkinter import ttk
 
 from batikcraft_studio.application import PaintLayerError, ProjectSessionError
-from batikcraft_studio.domain import ProjectValidationError
 from batikcraft_studio.imaging.paint import PaintStrokeError
 
 from .paint_layer_editor import PaintLayerEditorWorkspaceView
