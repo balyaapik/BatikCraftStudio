@@ -6,7 +6,6 @@ from dataclasses import replace
 from pathlib import Path
 from uuid import uuid4
 
-from batikcraft_studio.application import session as base_session
 from batikcraft_studio.domain import (
     Layer,
     LayerKind,
@@ -27,7 +26,11 @@ from batikcraft_studio.imaging.batik_asset import (
 from batikcraft_studio.imaging.raster import normalize_raster_image
 
 from .motif_session import MotifProjectSession
-from .session import LayerLockedError, ProjectSessionError
+from .session import (
+    LayerLockedError,
+    ProjectSessionError,
+    _SessionState,
+)
 
 
 class ObjectLockedError(ProjectSessionError):
@@ -95,12 +98,17 @@ class ObjectProjectSession(MotifProjectSession):
         root = project.get_layer(layer_id)
         if project.is_layer_effectively_locked(layer_id):
             raise LayerLockedError(f"Lapis {root.name!r} sedang dikunci.")
-        targets = (*project.descendants_of(layer_id), root)
+        descendants = project.descendants_of(layer_id)
+        targets = (*descendants, root)
         removed: list[Layer] = []
 
         def mutation() -> None:
             for layer in reversed(targets):
+                if project.children_of(layer.layer_id):
+                    continue
                 removed.append(project.remove_layer(layer.layer_id))
+            if project.get_layer(root.layer_id):
+                removed.append(project.remove_layer(root.layer_id))
             self._remove_unreferenced_assets()
 
         self._commit_mutation(mutation)
@@ -177,13 +185,12 @@ class ObjectProjectSession(MotifProjectSession):
             project.canvas.width * 0.55 / asset.width,
             project.canvas.height * 0.55 / asset.height,
         )
-        kind = (
-            ObjectKind.MOTIF
-            if asset.category == "motif-pokok"
-            else ObjectKind.ISEN
-            if asset.category == "isen-isen"
-            else ObjectKind.RASTER
-        )
+        if asset.category == "motif-pokok":
+            kind = ObjectKind.MOTIF
+        elif asset.category == "isen-isen":
+            kind = ObjectKind.ISEN
+        else:
+            kind = ObjectKind.RASTER
         item = LayerObject(
             name=asset.name,
             kind=kind,
@@ -216,8 +223,19 @@ class ObjectProjectSession(MotifProjectSession):
         item = project.get_object(object_id)
         source_ref = item.properties.get("source_asset_ref") or item.asset_ref
         if not isinstance(source_ref, str) or source_ref not in self._assets:
-            raise ProjectSessionError("Objek tidak memiliki sumber asset yang dapat diekspor.")
+            raise ProjectSessionError(
+                "Objek tidak memiliki sumber asset yang dapat diekspor."
+            )
         category = str(item.properties.get("asset_category", "ornamen"))
+        excluded = {
+            "source_asset_ref",
+            "humanized_asset_ref",
+            "humanized",
+            "humanize_seed",
+            "humanize_edge_wobble",
+            "humanize_ink_breaks",
+            "humanize_opacity_variation",
+        }
         asset = EditableBatikAsset(
             name=item.name,
             category=category,
@@ -227,16 +245,7 @@ class ObjectProjectSession(MotifProjectSession):
             metadata={
                 key: value
                 for key, value in item.properties.items()
-                if key
-                not in {
-                    "source_asset_ref",
-                    "humanized_asset_ref",
-                    "humanized",
-                    "humanize_seed",
-                    "humanize_edge_wobble",
-                    "humanize_ink_breaks",
-                    "humanize_opacity_variation",
-                }
+                if key not in excluded
             },
         )
         try:
@@ -304,7 +313,9 @@ class ObjectProjectSession(MotifProjectSession):
         item = self._require_unlocked_object(object_id)
         source_ref = item.properties.get("source_asset_ref")
         if not isinstance(source_ref, str) or source_ref not in self._assets:
-            raise ProjectSessionError("Objek tidak memiliki asset sumber untuk dipulihkan.")
+            raise ProjectSessionError(
+                "Objek tidak memiliki asset sumber untuk dipulihkan."
+            )
         previous_ref = item.asset_ref
         properties = dict(item.properties)
         properties["humanized"] = False
@@ -383,9 +394,9 @@ class ObjectProjectSession(MotifProjectSession):
 
     def set_object_visibility(self, object_id: str, visible: bool) -> LayerObject:
         project = self.require_project()
-        item = project.get_object(object_id)
-        if item.visible == visible:
-            return item
+        current = project.get_object(object_id)
+        if current.visible == visible:
+            return current
         updated: LayerObject | None = None
 
         def mutation() -> None:
@@ -399,7 +410,9 @@ class ObjectProjectSession(MotifProjectSession):
 
     def set_object_locked(self, object_id: str, locked: bool) -> LayerObject:
         project = self.require_project()
-        item = project.get_object(object_id)
+        current = project.get_object(object_id)
+        if current.locked == locked:
+            return current
         updated: LayerObject | None = None
 
         def mutation() -> None:
@@ -415,8 +428,9 @@ class ObjectProjectSession(MotifProjectSession):
         project = self.require_project()
         source = project.get_object(object_id)
         layer_id = project.object_layer_id(object_id)
+        suffix = " salinan"
         duplicate = LayerObject(
-            name=f"{source.name[:114].rstrip()} salinan",
+            name=f"{source.name[: 120 - len(suffix)].rstrip()}{suffix}",
             kind=source.kind,
             asset_ref=source.asset_ref,
             visible=source.visible,
@@ -430,7 +444,9 @@ class ObjectProjectSession(MotifProjectSession):
             bounds=source.bounds,
             properties=dict(source.properties),
         )
-        self._commit_mutation(lambda: project.add_object(layer_id, duplicate, select=True))
+        self._commit_mutation(
+            lambda: project.add_object(layer_id, duplicate, select=True)
+        )
         return duplicate
 
     def delete_object(self, object_id: str) -> LayerObject:
@@ -511,14 +527,14 @@ class ObjectProjectSession(MotifProjectSession):
         for asset_ref in tuple(self._assets):
             self._remove_asset_if_unreferenced(asset_ref)
 
-    def _capture_state(self) -> base_session._SessionState:
-        return base_session._SessionState(
+    def _capture_state(self) -> _SessionState:
+        return _SessionState(
             project=_clone_object_project(self._project),
             path=self._path,
             assets=tuple(sorted(self._assets.items())),
         )
 
-    def _restore_state(self, state: base_session._SessionState) -> None:
+    def _restore_state(self, state: _SessionState) -> None:
         self._project = _clone_object_project(state.project)
         self._path = state.path
         self._assets = dict(state.assets)
