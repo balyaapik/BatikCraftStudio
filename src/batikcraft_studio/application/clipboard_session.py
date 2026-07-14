@@ -17,6 +17,8 @@ from batikcraft_studio.domain import (
 from .interactive_transform_session import InteractiveTransformProjectSession
 from .session import LayerLockedError, ProjectSessionError
 
+_NON_CLONED_PROPERTY_KEYS = {"object_group_id", "object_group_name"}
+
 
 @dataclass(frozen=True, slots=True)
 class ObjectClipboardSnapshot:
@@ -99,6 +101,7 @@ class ClipboardProjectSession(InteractiveTransformProjectSession):
         properties = {
             key: remapped_assets.get(value, value)
             for key, value in source.properties.items()
+            if key not in _NON_CLONED_PROPERTY_KEYS
         }
         pasted = LayerObject(
             name=_copy_name(source.name),
