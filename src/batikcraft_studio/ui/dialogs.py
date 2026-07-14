@@ -28,7 +28,7 @@ class NewProjectDialog(simpledialog.Dialog):
         self.creator_var = tk.StringVar()
         self.width_var = tk.StringVar(value="2048")
         self.height_var = tk.StringVar(value="2048")
-        self.background_var = tk.StringVar(value="#F4E9D8")
+        self.background_var = tk.StringVar(value="#FFFFFF")
         super().__init__(parent, title=tr("dialog.new_project.title"))
 
     def body(self, master: tk.Misc) -> tk.Widget:
