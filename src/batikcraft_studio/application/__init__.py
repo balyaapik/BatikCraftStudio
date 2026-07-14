@@ -56,10 +56,14 @@ from batikcraft_studio.application.structured_batification_session import (
     BatificationGeneration,
     StructuredBatificationProjectSession,
 )
+from batikcraft_studio.application.viewport_session import (
+    MultiObjectClipboardSnapshot,
+    ViewportProjectSession,
+)
 
-# The public desktop session treats layers as multi-object containers, nests layers in folders,
-# and retains process documentation, offline AI, and multi-object editing.
-ProjectSession = CanvasStructureProjectSession
+# The public desktop session includes zoom-aware batch clipboard actions on top of object-first
+# layers, nested folders, process documentation, offline AI, and multi-object editing.
+ProjectSession = ViewportProjectSession
 
 __all__ = [
     "BATIK_PROCESS_EXTENSION",
@@ -76,6 +80,7 @@ __all__ = [
     "LayerLockedError",
     "MotifCapError",
     "MotifProjectSession",
+    "MultiObjectClipboardSnapshot",
     "MultiObjectProjectSession",
     "MultiObjectSelection",
     "NoActiveProjectError",
@@ -93,4 +98,5 @@ __all__ = [
     "ShapeLayerError",
     "ShapeProjectSession",
     "StructuredBatificationProjectSession",
+    "ViewportProjectSession",
 ]
