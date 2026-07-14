@@ -10,7 +10,7 @@ from batikcraft_studio.application import ProjectSession
 from batikcraft_studio.config import WorkspaceDefinition
 
 from .icons import create_icon
-from .multi_object_editor import MultiObjectEditorWorkspaceView
+from .process_editor import BatikProcessEditorWorkspaceView
 from .theme import COLORS
 
 StatusCallback = Callable[[str], None]
@@ -63,10 +63,10 @@ def create_workspace_view(
     set_status: StatusCallback,
     session: ProjectSession,
     refresh_context: RefreshCallback,
-) -> MultiObjectEditorWorkspaceView:
-    """Return the editor with offline AI and multi-object grouping."""
+) -> BatikProcessEditorWorkspaceView:
+    """Return the editor with process planning and context grouping."""
 
-    return MultiObjectEditorWorkspaceView(
+    return BatikProcessEditorWorkspaceView(
         parent,
         definition=definition,
         set_status=set_status,
