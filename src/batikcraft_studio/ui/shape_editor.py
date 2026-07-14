@@ -6,11 +6,7 @@ import math
 import tkinter as tk
 from tkinter import colorchooser, ttk
 
-from batikcraft_studio.application import (
-    ProjectSessionError,
-    ShapeLayerError,
-    ShapeProjectSession,
-)
+from batikcraft_studio.application import ShapeLayerError, ShapeProjectSession
 from batikcraft_studio.domain import LayerKind
 from batikcraft_studio.imaging.shape import ShapeError, build_shape_geometry
 
@@ -51,7 +47,6 @@ class ShapeEditorWorkspaceView(RefinedPaintLayerEditorWorkspaceView):
         toolbox.grid(row=0, column=0, sticky="ns")
         toolbox.grid_propagate(False)
         toolbox.columnconfigure(0, weight=1)
-
         tools = (
             ("select", "select", "Select and move objects (V)", self.activate_select_tool),
             ("brush", "editor", "Brush tool (B)", self.activate_brush_tool),
@@ -87,7 +82,6 @@ class ShapeEditorWorkspaceView(RefinedPaintLayerEditorWorkspaceView):
             )
             button.grid(row=row, column=0, sticky="ew", pady=1)
             self._tool_buttons[key] = button
-
         icon_button(
             toolbox,
             icon="import",
@@ -98,7 +92,6 @@ class ShapeEditorWorkspaceView(RefinedPaintLayerEditorWorkspaceView):
 
         body = ttk.PanedWindow(self, orient=tk.HORIZONTAL)
         body.grid(row=0, column=1, sticky="nsew")
-
         canvas_shell = ttk.Frame(body, style="App.TFrame")
         canvas_shell.columnconfigure(0, weight=1)
         canvas_shell.rowconfigure(0, weight=1)
@@ -128,7 +121,10 @@ class ShapeEditorWorkspaceView(RefinedPaintLayerEditorWorkspaceView):
         dock.rowconfigure(0, weight=1)
         notebook = ttk.Notebook(dock)
         notebook.grid(row=0, column=0, sticky="nsew")
+        self._add_dock_tabs(notebook)
+        body.add(dock, weight=1)
 
+    def _add_dock_tabs(self, notebook: ttk.Notebook) -> None:
         layers_tab = ttk.Frame(notebook, style="Dock.TFrame", padding=(8, 8))
         layers_tab.columnconfigure(0, weight=1)
         layers_tab.rowconfigure(1, weight=1)
@@ -149,7 +145,6 @@ class ShapeEditorWorkspaceView(RefinedPaintLayerEditorWorkspaceView):
         shape_tab.columnconfigure(0, weight=1)
         self._build_shape_panel(shape_tab)
         notebook.add(shape_tab, text="Shape")
-        body.add(dock, weight=1)
 
     def _build_layer_panel(self, parent: ttk.Frame) -> None:
         super()._build_layer_panel(parent)
@@ -164,11 +159,23 @@ class ShapeEditorWorkspaceView(RefinedPaintLayerEditorWorkspaceView):
             )
         self._layer_context_menu.add_cascade(label="New Layer", menu=new_layer_menu)
         self._layer_context_menu.add_separator()
-        self._layer_context_menu.add_command(label="Duplicate Layer", command=self.duplicate_active)
-        self._layer_context_menu.add_command(label="Delete Layer", command=self.delete_active)
+        self._layer_context_menu.add_command(
+            label="Duplicate Layer",
+            command=self.duplicate_active,
+        )
+        self._layer_context_menu.add_command(
+            label="Delete Layer",
+            command=self.delete_active,
+        )
         self._layer_context_menu.add_separator()
-        self._layer_context_menu.add_command(label="Hide Layer", command=self.toggle_visibility)
-        self._layer_context_menu.add_command(label="Lock Layer", command=self.toggle_lock)
+        self._layer_context_menu.add_command(
+            label="Hide Layer",
+            command=self.toggle_visibility,
+        )
+        self._layer_context_menu.add_command(
+            label="Lock Layer",
+            command=self.toggle_lock,
+        )
         self.layer_list.bind("<Button-3>", self._show_layer_context_menu)
 
     def _build_shape_panel(self, parent: ttk.Frame) -> None:
@@ -182,7 +189,38 @@ class ShapeEditorWorkspaceView(RefinedPaintLayerEditorWorkspaceView):
             textvariable=self.shape_type_text,
             style="Muted.TLabel",
         ).grid(row=1, column=0, sticky="w", pady=(3, 10))
+        self._build_shape_geometry_controls(parent)
+        self._build_shape_color_controls(parent)
+        self._build_shape_style_controls(parent)
+        icon_button(
+            parent,
+            icon="apply",
+            tooltip="Apply shape properties",
+            command=self.apply_shape_properties,
+            size=19,
+        ).grid(row=6, column=0, sticky="e", pady=(10, 0))
+        ttk.Label(
+            parent,
+            text=(
+                "L Line   R Rectangle   O Ellipse   P Polygon\n"
+                "Shift constrains   Alt draws from center"
+            ),
+            style="Muted.TLabel",
+            justify="left",
+        ).grid(row=7, column=0, sticky="w", pady=(12, 0))
+        for sequence, tool in (
+            ("<Key-l>", "line"),
+            ("<Key-r>", "rectangle"),
+            ("<Key-o>", "ellipse"),
+            ("<Key-p>", "polygon"),
+        ):
+            self.bind_all(
+                sequence,
+                lambda event, kind=tool: self._activate_shape_shortcut(event, kind),
+            )
+        self._shape_widgets_ready = True
 
+    def _build_shape_geometry_controls(self, parent: ttk.Frame) -> None:
         geometry = ttk.Frame(parent, style="Dock.TFrame")
         geometry.grid(row=2, column=0, sticky="ew")
         geometry.columnconfigure(1, weight=1)
@@ -204,6 +242,7 @@ class ShapeEditorWorkspaceView(RefinedPaintLayerEditorWorkspaceView):
                 width=8,
             ).grid(row=row, column=1, sticky="ew", padx=(8, 0), pady=3)
 
+    def _build_shape_color_controls(self, parent: ttk.Frame) -> None:
         fill_row = ttk.Frame(parent, style="Dock.TFrame")
         fill_row.grid(row=3, column=0, sticky="ew", pady=(10, 4))
         fill_row.columnconfigure(1, weight=1)
@@ -212,18 +251,13 @@ class ShapeEditorWorkspaceView(RefinedPaintLayerEditorWorkspaceView):
             text="Fill",
             variable=self.shape_fill_enabled,
         ).grid(row=0, column=0, sticky="w")
-        self.fill_swatch = tk.Button(
+        self.fill_swatch = self._color_swatch(
             fill_row,
-            background=self.shape_fill_color.get(),
-            activebackground=self.shape_fill_color.get(),
-            relief=tk.FLAT,
-            borderwidth=1,
-            height=1,
-            command=self._choose_shape_fill,
-            cursor="hand2",
+            self.shape_fill_color,
+            self._choose_shape_fill,
+            "Choose shape fill color",
         )
         self.fill_swatch.grid(row=0, column=1, sticky="ew", padx=(8, 0))
-        ToolTip(self.fill_swatch, "Choose shape fill color")
 
         stroke_row = ttk.Frame(parent, style="Dock.TFrame")
         stroke_row.grid(row=4, column=0, sticky="ew", pady=4)
@@ -233,28 +267,23 @@ class ShapeEditorWorkspaceView(RefinedPaintLayerEditorWorkspaceView):
             text="Stroke",
             variable=self.shape_stroke_enabled,
         ).grid(row=0, column=0, sticky="w")
-        self.stroke_swatch = tk.Button(
+        self.stroke_swatch = self._color_swatch(
             stroke_row,
-            background=self.shape_stroke_color.get(),
-            activebackground=self.shape_stroke_color.get(),
-            relief=tk.FLAT,
-            borderwidth=1,
-            height=1,
-            command=self._choose_shape_stroke,
-            cursor="hand2",
+            self.shape_stroke_color,
+            self._choose_shape_stroke,
+            "Choose shape stroke color",
         )
         self.stroke_swatch.grid(row=0, column=1, sticky="ew", padx=(8, 0))
-        ToolTip(self.stroke_swatch, "Choose shape stroke color")
 
+    def _build_shape_style_controls(self, parent: ttk.Frame) -> None:
         style_grid = ttk.Frame(parent, style="Dock.TFrame")
         style_grid.grid(row=5, column=0, sticky="ew", pady=(6, 0))
         style_grid.columnconfigure(1, weight=1)
-        for row, (label, variable, start, end) in enumerate(
-            (
-                ("Stroke width", self.shape_stroke_width, 0.5, 128),
-                ("Polygon sides", self.shape_polygon_sides, 3, 12),
-            )
-        ):
+        fields = (
+            ("Stroke width", self.shape_stroke_width, 0.5, 128),
+            ("Polygon sides", self.shape_polygon_sides, 3, 12),
+        )
+        for row, (label, variable, start, end) in enumerate(fields):
             ttk.Label(style_grid, text=label, style="Muted.TLabel").grid(
                 row=row,
                 column=0,
@@ -270,34 +299,25 @@ class ShapeEditorWorkspaceView(RefinedPaintLayerEditorWorkspaceView):
                 width=8,
             ).grid(row=row, column=1, sticky="ew", padx=(8, 0), pady=3)
 
-        icon_button(
+    def _color_swatch(
+        self,
+        parent: tk.Misc,
+        variable: tk.StringVar,
+        command: object,
+        tooltip: str,
+    ) -> tk.Button:
+        button = tk.Button(
             parent,
-            icon="apply",
-            tooltip="Apply shape properties",
-            command=self.apply_shape_properties,
-            size=19,
-        ).grid(row=6, column=0, sticky="e", pady=(10, 0))
-        ttk.Label(
-            parent,
-            text=(
-                "L Line   R Rectangle   O Ellipse   P Polygon\n"
-                "Shift constrains   Alt draws from center"
-            ),
-            style="Muted.TLabel",
-            justify="left",
-        ).grid(row=7, column=0, sticky="w", pady=(12, 0))
-
-        for sequence, tool in (
-            ("<Key-l>", "line"),
-            ("<Key-r>", "rectangle"),
-            ("<Key-o>", "ellipse"),
-            ("<Key-p>", "polygon"),
-        ):
-            self.bind_all(
-                sequence,
-                lambda event, kind=tool: self._activate_shape_shortcut(event, kind),
-            )
-        self._shape_widgets_ready = True
+            background=variable.get(),
+            activebackground=variable.get(),
+            relief=tk.FLAT,
+            borderwidth=1,
+            height=1,
+            command=command,
+            cursor="hand2",
+        )
+        ToolTip(button, tooltip)
+        return button
 
     def _show_layer_context_menu(self, event: tk.Event[tk.Listbox]) -> str:
         index = self.layer_list.nearest(event.y)
@@ -307,7 +327,6 @@ class ShapeEditorWorkspaceView(RefinedPaintLayerEditorWorkspaceView):
             self.layer_list.selection_set(index)
             self.layer_list.activate(index)
             self._on_layer_list_select(event)
-
         project_open = self.session.has_project
         active = self._active_layer()
         self._layer_context_menu.entryconfigure(
@@ -496,15 +515,47 @@ class ShapeEditorWorkspaceView(RefinedPaintLayerEditorWorkspaceView):
         properties = geometry.properties
         geometry_width = float(properties["geometry_width"])
         geometry_height = float(properties["geometry_height"])
-        left = self._preview_left + (geometry.center_x - geometry_width / 2) * self._preview_scale
-        top = self._preview_top + (geometry.center_y - geometry_height / 2) * self._preview_scale
-        right = self._preview_left + (geometry.center_x + geometry_width / 2) * self._preview_scale
-        bottom = self._preview_top + (geometry.center_y + geometry_height / 2) * self._preview_scale
+        left = self._preview_left + (
+            geometry.center_x - geometry_width / 2
+        ) * self._preview_scale
+        top = self._preview_top + (
+            geometry.center_y - geometry_height / 2
+        ) * self._preview_scale
+        right = self._preview_left + (
+            geometry.center_x + geometry_width / 2
+        ) * self._preview_scale
+        bottom = self._preview_top + (
+            geometry.center_y + geometry_height / 2
+        ) * self._preview_scale
         stroke = self.shape_stroke_color.get()
         fill = self.shape_fill_color.get() if self.shape_fill_enabled.get() else ""
         width = max(1, round(float(self.shape_stroke_width.get()) * self._preview_scale))
         self.canvas.delete("shape-preview")
+        self._create_shape_preview(
+            properties,
+            left,
+            top,
+            right,
+            bottom,
+            stroke,
+            fill,
+            width,
+        )
+        self.canvas.tag_raise("shape-preview")
 
+    def _create_shape_preview(
+        self,
+        properties: object,
+        left: float,
+        top: float,
+        right: float,
+        bottom: float,
+        stroke: str,
+        fill: str,
+        width: int,
+    ) -> None:
+        if not isinstance(properties, dict) and not hasattr(properties, "get"):
+            return
         if self._active_tool == "line":
             orientation = str(properties["line_orientation"])
             points = self._line_preview_points(left, top, right, bottom, orientation)
@@ -514,30 +565,18 @@ class ShapeEditorWorkspaceView(RefinedPaintLayerEditorWorkspaceView):
                 width=width,
                 tags="shape-preview",
             )
-        elif self._active_tool == "rectangle":
-            self.canvas.create_rectangle(
-                left,
-                top,
-                right,
-                bottom,
-                fill=fill,
-                outline=stroke if self.shape_stroke_enabled.get() else "",
-                width=width,
-                stipple="gray25" if fill else "",
-                tags="shape-preview",
-            )
+            return
+        common = {
+            "fill": fill,
+            "outline": stroke if self.shape_stroke_enabled.get() else "",
+            "width": width,
+            "stipple": "gray25" if fill else "",
+            "tags": "shape-preview",
+        }
+        if self._active_tool == "rectangle":
+            self.canvas.create_rectangle(left, top, right, bottom, **common)
         elif self._active_tool == "ellipse":
-            self.canvas.create_oval(
-                left,
-                top,
-                right,
-                bottom,
-                fill=fill,
-                outline=stroke if self.shape_stroke_enabled.get() else "",
-                width=width,
-                stipple="gray25" if fill else "",
-                tags="shape-preview",
-            )
+            self.canvas.create_oval(left, top, right, bottom, **common)
         else:
             points = self._polygon_preview_points(
                 left,
@@ -546,15 +585,7 @@ class ShapeEditorWorkspaceView(RefinedPaintLayerEditorWorkspaceView):
                 bottom,
                 int(self.shape_polygon_sides.get()),
             )
-            self.canvas.create_polygon(
-                *points,
-                fill=fill,
-                outline=stroke if self.shape_stroke_enabled.get() else "",
-                width=width,
-                stipple="gray25" if fill else "",
-                tags="shape-preview",
-            )
-        self.canvas.tag_raise("shape-preview")
+            self.canvas.create_polygon(*points, **common)
 
     def _shape_style(self, shape_type: str) -> dict[str, object]:
         line = shape_type == "line"
@@ -639,15 +670,19 @@ class ShapeEditorWorkspaceView(RefinedPaintLayerEditorWorkspaceView):
         bottom: float,
         sides: int,
     ) -> tuple[float, ...]:
+        count = max(3, min(12, sides))
         center_x = (left + right) / 2
         center_y = (top + bottom) / 2
         radius_x = (right - left) / 2
         radius_y = (bottom - top) / 2
         coordinates: list[float] = []
-        for index in range(max(3, min(12, sides))):
-            angle = -math.pi / 2 + index * math.tau / sides
+        for index in range(count):
+            angle = -math.pi / 2 + index * math.tau / count
             coordinates.extend(
-                (center_x + math.cos(angle) * radius_x, center_y + math.sin(angle) * radius_y)
+                (
+                    center_x + math.cos(angle) * radius_x,
+                    center_y + math.sin(angle) * radius_y,
+                )
             )
         return tuple(coordinates)
 
