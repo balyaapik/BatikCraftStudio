@@ -3,12 +3,11 @@
 from __future__ import annotations
 
 from io import BytesIO
-from pathlib import Path
 from uuid import uuid4
 
 from PIL import Image, ImageColor, ImageDraw, UnidentifiedImageError
 
-from batikcraft_studio.domain import LayerNodeKind, LayerObject, ObjectKind, ObjectBounds
+from batikcraft_studio.domain import LayerNodeKind, LayerObject, ObjectBounds, ObjectKind
 
 from .session import LayerLockedError, ProjectSessionError
 from .viewport_session import ViewportProjectSession
@@ -44,14 +43,15 @@ class DirectStyleProjectSession(ViewportProjectSession):
         project = self.require_project()
         shape_updates: dict[str, tuple[dict[str, object], ObjectBounds]] = {}
         raster_updates: dict[str, tuple[str, bytes, dict[str, object], str | None]] = {}
-        skipped = 0
         for item in selected:
             self._require_unlocked_object(item.object_id)
             if item.kind is ObjectKind.SHAPE:
                 closed = self.is_closed_shape(item)
-                resolved = "fill" if target == "auto" and closed else "stroke" if target == "auto" else target
+                if target == "auto":
+                    resolved = "fill" if closed else "stroke"
+                else:
+                    resolved = target
                 if resolved == "fill" and not closed:
-                    skipped += 1
                     continue
                 properties = self._updated_shape_object_properties(
                     item,
@@ -74,11 +74,9 @@ class DirectStyleProjectSession(ViewportProjectSession):
                 # A closed freehand line receives its fill as a separate editable object.
                 continue
             if target == "fill" or item.kind not in _TINTABLE_KINDS or item.asset_ref is None:
-                skipped += 1
                 continue
             content = self._assets.get(item.asset_ref)
             if content is None:
-                skipped += 1
                 continue
             asset_ref = f"assets/{uuid4()}.png"
             properties = dict(item.properties)
@@ -110,7 +108,10 @@ class DirectStyleProjectSession(ViewportProjectSession):
             previous_refs: list[str | None] = []
             for object_id, (properties, bounds) in shape_updates.items():
                 project.update_object(object_id, properties=properties, bounds=bounds)
-            for object_id, (asset_ref, content, properties, previous_ref) in raster_updates.items():
+            for (
+                object_id,
+                (asset_ref, content, properties, previous_ref),
+            ) in raster_updates.items():
                 self._assets[asset_ref] = content
                 project.update_object(
                     object_id,
@@ -124,8 +125,6 @@ class DirectStyleProjectSession(ViewportProjectSession):
         self._commit_mutation(mutation)
         ids = (*shape_updates, *raster_updates)
         self.set_selected_objects(list(ids))
-        if skipped and not ids:
-            raise ProjectSessionError("Tidak ada objek yang dapat diberi warna.")
         return tuple(project.get_object(object_id) for object_id in ids)
 
     def fill_closed_object(self, object_id: str, color: str) -> tuple[LayerObject, ...]:
@@ -147,7 +146,11 @@ class DirectStyleProjectSession(ViewportProjectSession):
                 float(properties["pixel_height"]),
             )
             self._commit_mutation(
-                lambda: project.update_object(item.object_id, properties=properties, bounds=bounds)
+                lambda: project.update_object(
+                    item.object_id,
+                    properties=properties,
+                    bounds=bounds,
+                )
             )
             self.set_selected_objects([item.object_id])
             return (project.get_object(item.object_id),)
@@ -164,7 +167,9 @@ class DirectStyleProjectSession(ViewportProjectSession):
         layer_id = project.object_layer_id(item.object_id)
         layer = project.get_layer(layer_id)
         index = next(
-            position for position, candidate in enumerate(layer.objects) if candidate.object_id == item.object_id
+            position
+            for position, candidate in enumerate(layer.objects)
+            if candidate.object_id == item.object_id
         )
         fill_object = LayerObject(
             name=f"Isi {item.name}"[:120],
@@ -227,7 +232,9 @@ class DirectStyleProjectSession(ViewportProjectSession):
             else:
                 target_layer = project.get_layer(target_id)
                 if target_layer.node_kind is LayerNodeKind.GROUP:
-                    raise ProjectSessionError("Objek harus dijatuhkan pada layer, bukan folder.")
+                    raise ProjectSessionError(
+                        "Objek harus dijatuhkan pada layer, bukan folder."
+                    )
                 target_layer_id = target_layer.layer_id
                 target_index = len(target_layer.objects)
             if project.is_layer_effectively_locked(target_layer_id):
@@ -254,17 +261,22 @@ class DirectStyleProjectSession(ViewportProjectSession):
             if target_layer.node_kind is LayerNodeKind.GROUP:
                 parent_id = target_layer.layer_id
                 descendants = project.descendants_of(target_layer.layer_id)
-                target_index = (
-                    max((project.layers.index(layer) for layer in descendants), default=project.layers.index(target_layer))
-                    + 1
+                last_descendant = max(
+                    (
+                        project.layers.index(layer)
+                        for layer in descendants
+                    ),
+                    default=project.layers.index(target_layer),
                 )
+                target_index = last_descendant + 1
             else:
                 parent_id = target_layer.parent_id
                 target_index = project.layers.index(target_layer)
 
         def mutation() -> None:
             project.set_layer_parent(source_layer.layer_id, parent_id)
-            current_index = project.layers.index(project.get_layer(source_layer.layer_id))
+            current = project.get_layer(source_layer.layer_id)
+            current_index = project.layers.index(current)
             adjusted = target_index - 1 if current_index < target_index else target_index
             adjusted = max(0, min(adjusted, len(project.layers) - 1))
             project.reorder_layer(source_layer.layer_id, adjusted)
@@ -276,7 +288,9 @@ class DirectStyleProjectSession(ViewportProjectSession):
 
     def _update_selected_shape_style(self, **changes: object) -> tuple[LayerObject, ...]:
         project = self.require_project()
-        targets = tuple(item for item in self.selected_objects if item.kind is ObjectKind.SHAPE)
+        targets = tuple(
+            item for item in self.selected_objects if item.kind is ObjectKind.SHAPE
+        )
         if not targets and project.active_object_id is not None:
             candidate = project.get_object(project.active_object_id)
             if candidate.kind is ObjectKind.SHAPE:
@@ -308,7 +322,9 @@ def _normalize_color(value: str) -> str:
     try:
         rgb = ImageColor.getrgb(value)
     except (TypeError, ValueError) as exc:
-        raise ProjectSessionError("Warna harus berupa warna CSS atau #RRGGBB yang valid.") from exc
+        raise ProjectSessionError(
+            "Warna harus berupa warna CSS atau #RRGGBB yang valid."
+        ) from exc
     return "#{:02X}{:02X}{:02X}".format(*rgb[:3])
 
 
