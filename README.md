@@ -203,18 +203,12 @@ Linux/macOS:
 source .venv/bin/activate
 ```
 
-Instal dan jalankan:
+Instal dan jalankan dari root repository:
 
 ```bash
 python -m pip install --upgrade pip
-python -m pip install -e "[dev]"
-python -m batikcraft_studio
-```
-
-Untuk editable install dari root repository gunakan:
-
-```bash
 python -m pip install -e ".[dev]"
+python -m batikcraft_studio
 ```
 
 ## Workflow Editor
