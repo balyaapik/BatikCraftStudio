@@ -18,12 +18,12 @@ from .object_colors import (
     declared_object_colors,
     dominant_raster_colors,
 )
+from .precise_transform_editor import PreciseTransformEditorWorkspaceView
 from .tooltip import ToolTip
 from .widgets import icon_button
-from .wysiwyg_transform_editor import WysiwygTransformEditorWorkspaceView
 
 
-class PolishedBatikEditorWorkspaceView(WysiwygTransformEditorWorkspaceView):
+class PolishedBatikEditorWorkspaceView(PreciseTransformEditorWorkspaceView):
     """Use compact icons and keep the palette synchronized with selected artwork."""
 
     def __init__(self, *args: object, **kwargs: object) -> None:
