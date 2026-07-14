@@ -49,7 +49,7 @@ def test_shift_constraint_makes_square_and_snaps_line_to_45_degrees() -> None:
     line = build_shape_geometry(
         "line",
         (0, 0),
-        (80, 30),
+        (80, 60),
         constrain=True,
     )
 
