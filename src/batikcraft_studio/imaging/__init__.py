@@ -1,5 +1,15 @@
-"""Public imaging API for raster, paint, shape, batik, motif, and preview workflows."""
+"""Public imaging API for raster, paint, object, Batik, and preview workflows."""
 
+from batikcraft_studio.imaging.batik_asset import (
+    ASSET_CATEGORIES,
+    ASSET_FORMAT,
+    ASSET_SCHEMA_VERSION,
+    BatikAssetError,
+    EditableBatikAsset,
+    encode_batik_asset,
+    humanize_raster_asset,
+    load_batik_asset,
+)
 from batikcraft_studio.imaging.isen import (
     ISEN_LABELS,
     ISEN_TYPES,
@@ -43,8 +53,10 @@ from batikcraft_studio.imaging.renderer import (
     ProjectRenderError,
     RenderedProject,
     point_hits_layer,
+    point_hits_object,
     render_project_preview,
     transformed_layer_bounds,
+    transformed_object_bounds,
 )
 from batikcraft_studio.imaging.shape import (
     MAX_POLYGON_SIDES,
@@ -58,8 +70,15 @@ from batikcraft_studio.imaging.shape import (
     render_shape_image,
     update_shape_properties,
 )
+from batikcraft_studio.imaging.stroke_object import (
+    CroppedStroke,
+    render_cropped_stroke,
+)
 
 __all__ = [
+    "ASSET_CATEGORIES",
+    "ASSET_FORMAT",
+    "ASSET_SCHEMA_VERSION",
     "DEFAULT_MOTIF_ISEN",
     "ISEN_LABELS",
     "ISEN_TYPES",
@@ -75,6 +94,11 @@ __all__ = [
     "MIN_POLYGON_SIDES",
     "MOTIF_LABELS",
     "MOTIF_TYPES",
+    "BatikAssetError",
+    "CapPlacement",
+    "CroppedStroke",
+    "EditableBatikAsset",
+    "IsenError",
     "MissingRasterAssetError",
     "MotifError",
     "PaintStrokeError",
@@ -85,17 +109,20 @@ __all__ = [
     "SHAPE_TYPES",
     "SUSUN_LABELS",
     "SUSUN_TYPES",
-    "CapPlacement",
-    "IsenError",
     "ShapeError",
     "ShapeGeometry",
     "apply_paint_stroke",
     "build_shape_geometry",
     "create_transparent_canvas_png",
+    "encode_batik_asset",
+    "humanize_raster_asset",
+    "load_batik_asset",
     "motif_description",
     "normalize_raster_image",
     "parse_shape_properties",
     "point_hits_layer",
+    "point_hits_object",
+    "render_cropped_stroke",
     "render_isen_cap",
     "render_motif_cap",
     "render_project_preview",
@@ -103,6 +130,7 @@ __all__ = [
     "smooth_stroke_points",
     "symmetry_placements",
     "transformed_layer_bounds",
+    "transformed_object_bounds",
     "update_shape_properties",
     "validate_cap_size",
     "validate_motif_size",
