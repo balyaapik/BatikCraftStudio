@@ -9,7 +9,7 @@ from tkinter import ttk
 from batikcraft_studio.application import ProjectSession
 from batikcraft_studio.config import WorkspaceDefinition
 
-from .direct_style_editor import DirectStyleEditorWorkspaceView
+from .context_tool_editor import ContextToolEditorWorkspaceView
 from .icons import create_icon
 from .theme import COLORS
 
@@ -63,10 +63,10 @@ def create_workspace_view(
     set_status: StatusCallback,
     session: ProjectSession,
     refresh_context: RefreshCallback,
-) -> DirectStyleEditorWorkspaceView:
-    """Return the direct-style zoomable object-first editor."""
+) -> ContextToolEditorWorkspaceView:
+    """Return the contextual-tool object-first editor."""
 
-    return DirectStyleEditorWorkspaceView(
+    return ContextToolEditorWorkspaceView(
         parent,
         definition=definition,
         set_status=set_status,
