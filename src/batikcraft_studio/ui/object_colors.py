@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 from collections import Counter
+from collections.abc import Mapping
 from io import BytesIO
 
 from PIL import Image, UnidentifiedImageError
@@ -80,8 +81,10 @@ def dominant_raster_colors(
         return (None, None)
 
     image.thumbnail((112, 112), Image.Resampling.LANCZOS)
+    raw = image.tobytes()
     counts: Counter[tuple[int, int, int]] = Counter()
-    for red, green, blue, alpha in image.getdata():
+    for index in range(0, len(raw), 4):
+        red, green, blue, alpha = raw[index : index + 4]
         if alpha < 40:
             continue
         counts[(_bin(red), _bin(green), _bin(blue))] += max(1, alpha // 48)
@@ -101,11 +104,12 @@ def dominant_raster_colors(
     return (_rgb_hex(primary), _rgb_hex(secondary) if secondary is not None else None)
 
 
-def _property_color(properties: object, *keys: str) -> str | None:
-    if not hasattr(properties, "get"):
-        return None
+def _property_color(
+    properties: Mapping[str, object],
+    *keys: str,
+) -> str | None:
     for key in keys:
-        value = properties.get(key)  # type: ignore[union-attr]
+        value = properties.get(key)
         if isinstance(value, str) and _HEX_COLOR.fullmatch(value.strip()):
             return value.strip().upper()
     return None
@@ -119,7 +123,11 @@ def _hex_rgb(value: str) -> tuple[int, int, int] | None:
     if not isinstance(value, str) or not _HEX_COLOR.fullmatch(value.strip()):
         return None
     normalized = value.strip().lstrip("#")
-    return tuple(int(normalized[index : index + 2], 16) for index in (0, 2, 4))  # type: ignore[return-value]
+    return (
+        int(normalized[0:2], 16),
+        int(normalized[2:4], 16),
+        int(normalized[4:6], 16),
+    )
 
 
 def _rgb_hex(color: tuple[int, int, int]) -> str:
