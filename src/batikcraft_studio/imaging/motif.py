@@ -46,7 +46,9 @@ def render_motif_cap(
     motif_rgb = _validate_color(motif_color, "Warna motif")
     isen_rgb = _validate_color(isen_color, "Warna isen")
     if isinstance(size, bool) or not isinstance(size, int) or not 128 <= size <= 512:
-        raise MotifError("Ukuran sumber motif harus berupa bilangan bulat antara 128 dan 512 piksel.")
+        raise MotifError(
+            "Ukuran sumber motif harus berupa bilangan bulat antara 128 dan 512 piksel."
+        )
 
     selected_isen = isen_type or DEFAULT_MOTIF_ISEN[kind]
     if selected_isen not in ISEN_TYPES:
