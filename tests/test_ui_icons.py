@@ -6,6 +6,7 @@ from PIL import Image
 from batikcraft_studio.ui.icons import (
     FONT_AWESOME_LICENSE,
     FONT_AWESOME_VERSION,
+    MASTER_ICON_SIZE,
     available_icons,
     default_icon_color,
     font_awesome_metadata,
@@ -40,17 +41,26 @@ def test_default_palette_uses_brighter_workspace_colors_on_dark_rail() -> None:
     assert default_icon_color("delete") == "#DC2626"
 
 
-def test_font_awesome_metadata_matches_bundled_assets() -> None:
+def test_font_awesome_metadata_matches_embedded_assets() -> None:
     metadata = font_awesome_metadata()
 
     assert metadata["font_awesome_version"] == FONT_AWESOME_VERSION
     assert metadata["license"] == FONT_AWESOME_LICENSE
+    assert metadata["storage"] == "embedded-base85-alpha"
+    assert metadata["master_size"] == MASTER_ICON_SIZE
     assert set(metadata["icons"]) == set(available_icons())
     with pytest.raises(TypeError):
         metadata["license"] = "changed"  # type: ignore[index]
 
 
-def test_icon_source_is_high_resolution_before_downsampling() -> None:
+def test_all_embedded_icon_data_decodes_without_external_archive() -> None:
+    rendered = [render_icon(name, size=20) for name in available_icons()]
+
+    assert len(rendered) == len(available_icons())
+    assert all(image.getbbox() is not None for image in rendered)
+
+
+def test_icon_source_can_be_resampled_for_different_ui_sizes() -> None:
     small = render_icon("editor", size=20)
     large = render_icon("editor", size=128)
 

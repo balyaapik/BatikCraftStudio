@@ -1,28 +1,32 @@
 """Offline Font Awesome icons for the native Tkinter interface.
 
-The bundled archive contains raster masks generated from selected Font Awesome
-Free 7.3.0 SVG icons. Rendering happens locally with Pillow; the application
-never downloads icons and does not depend on an installed icon font.
+Selected Font Awesome Free 7.3.0 masks are embedded as compressed Base85 text.
+Rendering happens locally with Pillow; the application never downloads icons
+and does not depend on an installed icon font or a binary ZIP resource.
 """
 
 from __future__ import annotations
 
-import json
-import zipfile
-from functools import cache, lru_cache
-from importlib.resources import files
-from io import BytesIO
+import base64
+import hashlib
+import zlib
+from functools import cache
 from types import MappingProxyType
 from typing import Any
 
 from PIL import Image, ImageColor, ImageTk
 
-FONT_AWESOME_VERSION = "7.3.0"
-FONT_AWESOME_LICENSE = "CC BY 4.0"
-_ARCHIVE_NAME = "fontawesome_masks.zip"
+from .fontawesome_assets import (
+    FONT_AWESOME_LICENSE,
+    FONT_AWESOME_SOURCE,
+    FONT_AWESOME_VERSION,
+    ICON_ALPHA_B85,
+    ICON_DATA_SHA256,
+    MASTER_ICON_SIZE,
+)
+
 _MIN_ICON_SIZE = 12
 
-# Restrained action colors for light toolbar surfaces.
 _ICON_COLORS: dict[str, str] = {
     "new": "#7C3AED",
     "open": "#B45309",
@@ -45,7 +49,6 @@ _ICON_COLORS: dict[str, str] = {
     "select": "#4F46E5",
 }
 
-# Brighter workspace colors retain contrast against the dark navigation rail.
 _RAIL_ICON_COLORS: dict[str, str] = {
     "dashboard": "#FBBF24",
     "editor": "#38BDF8",
@@ -73,11 +76,18 @@ def default_icon_color(name: str, *, on_dark: bool = False) -> str:
 
 
 def font_awesome_metadata() -> MappingProxyType[str, Any]:
-    """Return read-only attribution metadata embedded with the icon archive."""
+    """Return read-only attribution metadata for the embedded icon artwork."""
 
-    metadata = dict(_metadata())
-    metadata["icons"] = tuple(metadata["icons"])
-    return MappingProxyType(metadata)
+    return MappingProxyType(
+        {
+            "font_awesome_version": FONT_AWESOME_VERSION,
+            "license": FONT_AWESOME_LICENSE,
+            "source": FONT_AWESOME_SOURCE,
+            "storage": "embedded-base85-alpha",
+            "master_size": MASTER_ICON_SIZE,
+            "icons": ICON_NAMES,
+        }
+    )
 
 
 def render_icon(
@@ -86,7 +96,7 @@ def render_icon(
     size: int = 20,
     color: str | None = None,
 ) -> Image.Image:
-    """Render one sharp, colored RGBA icon from a bundled high-resolution mask."""
+    """Render one sharp, colored RGBA icon from an embedded alpha mask."""
 
     _validate_icon_name(name)
     if not isinstance(size, int) or isinstance(size, bool) or size < _MIN_ICON_SIZE:
@@ -94,7 +104,10 @@ def render_icon(
 
     icon_color = color or default_icon_color(name)
     try:
-        red, green, blue = ImageColor.getrgb(icon_color)
+        rgb = ImageColor.getrgb(icon_color)
+        if len(rgb) != 3:
+            raise ValueError
+        red, green, blue = rgb
     except (TypeError, ValueError) as exc:
         raise ValueError(f"Invalid icon color: {icon_color!r}.") from exc
 
@@ -125,42 +138,37 @@ def _validate_icon_name(name: str) -> None:
         raise ValueError(f"Unknown icon: {name}")
 
 
-@lru_cache(maxsize=1)
-def _archive_bytes() -> bytes:
-    resource = files("batikcraft_studio.ui").joinpath("assets", _ARCHIVE_NAME)
-    return resource.read_bytes()
+@cache
+def _decoded_alpha_masks() -> MappingProxyType[str, bytes]:
+    expected_length = MASTER_ICON_SIZE * MASTER_ICON_SIZE
+    decoded: dict[str, bytes] = {}
+    digest = hashlib.sha256()
 
-
-@lru_cache(maxsize=1)
-def _metadata() -> dict[str, Any]:
-    try:
-        with zipfile.ZipFile(BytesIO(_archive_bytes()), mode="r") as archive:
-            data = json.loads(archive.read("manifest.json").decode("utf-8"))
-    except (KeyError, UnicodeDecodeError, json.JSONDecodeError, zipfile.BadZipFile) as exc:
-        raise RuntimeError("Bundled Font Awesome metadata is corrupt.") from exc
-
-    if data.get("font_awesome_version") != FONT_AWESOME_VERSION:
-        raise RuntimeError("Bundled Font Awesome version does not match the application.")
-    if data.get("license") != FONT_AWESOME_LICENSE:
-        raise RuntimeError("Bundled Font Awesome license metadata is invalid.")
-    if set(data.get("icons", ())) != set(ICON_NAMES):
+    if set(ICON_ALPHA_B85) != set(ICON_NAMES):
         raise RuntimeError("Bundled Font Awesome icon manifest is incomplete.")
-    return data
+
+    for name in sorted(ICON_NAMES):
+        encoded = ICON_ALPHA_B85[name]
+        try:
+            compressed = base64.b85decode(encoded)
+            alpha = zlib.decompress(compressed)
+        except (ValueError, zlib.error) as exc:
+            raise RuntimeError(f"Bundled Font Awesome icon data is corrupt: {name}.") from exc
+        if len(alpha) != expected_length:
+            raise RuntimeError(f"Bundled Font Awesome icon has an invalid size: {name}.")
+        decoded[name] = alpha
+        digest.update(alpha)
+
+    if digest.hexdigest() != ICON_DATA_SHA256:
+        raise RuntimeError("Bundled Font Awesome icon checksum failed.")
+    return MappingProxyType(decoded)
 
 
 @cache
 def _source_alpha(name: str) -> Image.Image:
-    # Validate both public names and archive metadata before reading binary data.
     _validate_icon_name(name)
-    _metadata()
-    try:
-        with zipfile.ZipFile(BytesIO(_archive_bytes()), mode="r") as archive:
-            content = archive.read(f"{name}.png")
-        with Image.open(BytesIO(content)) as image:
-            source = image.convert("RGBA")
-    except (KeyError, OSError, zipfile.BadZipFile) as exc:
-        raise RuntimeError(f"Bundled Font Awesome icon is corrupt: {name}.") from exc
-
-    if source.size != (256, 256):
-        raise RuntimeError(f"Bundled Font Awesome icon has an invalid size: {name}.")
-    return source.getchannel("A").copy()
+    return Image.frombytes(
+        "L",
+        (MASTER_ICON_SIZE, MASTER_ICON_SIZE),
+        _decoded_alpha_masks()[name],
+    )
