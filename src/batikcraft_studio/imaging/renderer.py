@@ -1,4 +1,4 @@
-"""Pillow renderer for raster-backed BatikCraft project layers."""
+"""Pillow renderer for raster-backed and non-destructive shape layers."""
 
 from __future__ import annotations
 
@@ -9,7 +9,8 @@ from io import BytesIO
 
 from PIL import Image, ImageColor, ImageEnhance, UnidentifiedImageError
 
-from batikcraft_studio.domain import Layer, Project
+from batikcraft_studio.domain import Layer, LayerKind, Project
+from batikcraft_studio.imaging.shape import ShapeError, render_shape_image
 
 
 class ProjectRenderError(RuntimeError):
@@ -35,7 +36,7 @@ def render_project_preview(
     max_width: int,
     max_height: int,
 ) -> RenderedProject:
-    """Render visible raster layers into a bounded RGBA project preview."""
+    """Render visible raster, paint, and shape layers into a bounded preview."""
 
     if max_width < 1 or max_height < 1:
         raise ProjectRenderError("Preview dimensions must be positive.")
@@ -50,13 +51,17 @@ def render_project_preview(
     result = Image.new("RGBA", (preview_width, preview_height), background)
 
     for layer in project.layers:
-        if not layer.visible or layer.asset_ref is None:
+        if not layer.visible:
             continue
-        content = assets.get(layer.asset_ref)
-        if content is None:
-            raise MissingRasterAssetError(
-                f"Layer {layer.name!r} references missing asset {layer.asset_ref!r}."
-            )
+        content: bytes | None = None
+        if layer.kind is not LayerKind.SHAPE:
+            if layer.asset_ref is None:
+                continue
+            content = assets.get(layer.asset_ref)
+            if content is None:
+                raise MissingRasterAssetError(
+                    f"Layer {layer.name!r} references missing asset {layer.asset_ref!r}."
+                )
         prepared = _prepare_layer_image(layer, content, preview_scale=scale)
         left = round(layer.transform.x * scale - prepared.width / 2)
         top = round(layer.transform.y * scale - prepared.height / 2)
@@ -96,16 +101,42 @@ def point_hits_layer(layer: Layer, x: float, y: float) -> bool:
     return left <= x <= right and top <= y <= bottom
 
 
-def _prepare_layer_image(layer: Layer, content: bytes, *, preview_scale: float) -> Image.Image:
-    try:
-        with Image.open(BytesIO(content)) as source:
-            image = source.convert("RGBA")
-    except (UnidentifiedImageError, OSError) as exc:
-        raise ProjectRenderError(f"Layer {layer.name!r} contains unreadable image data.") from exc
+def _prepare_layer_image(
+    layer: Layer,
+    content: bytes | None,
+    *,
+    preview_scale: float,
+) -> Image.Image:
+    width = max(
+        1,
+        round(_positive_property(layer, "pixel_width") * abs(layer.transform.scale_x) * preview_scale),
+    )
+    height = max(
+        1,
+        round(
+            _positive_property(layer, "pixel_height")
+            * abs(layer.transform.scale_y)
+            * preview_scale
+        ),
+    )
 
-    width = max(1, round(image.width * abs(layer.transform.scale_x) * preview_scale))
-    height = max(1, round(image.height * abs(layer.transform.scale_y) * preview_scale))
-    image = image.resize((width, height), Image.Resampling.LANCZOS)
+    if layer.kind is LayerKind.SHAPE:
+        try:
+            image = render_shape_image(layer, width, height)
+        except ShapeError as exc:
+            raise ProjectRenderError(f"Layer {layer.name!r} contains invalid shape data.") from exc
+    else:
+        if content is None:
+            raise MissingRasterAssetError(f"Layer {layer.name!r} has no raster content.")
+        try:
+            with Image.open(BytesIO(content)) as source:
+                image = source.convert("RGBA")
+        except (UnidentifiedImageError, OSError) as exc:
+            raise ProjectRenderError(
+                f"Layer {layer.name!r} contains unreadable image data."
+            ) from exc
+        image = image.resize((width, height), Image.Resampling.LANCZOS)
+
     if layer.transform.scale_x < 0:
         image = image.transpose(Image.Transpose.FLIP_LEFT_RIGHT)
     if layer.transform.scale_y < 0:
