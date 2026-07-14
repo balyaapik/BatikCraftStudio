@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from batikcraft_studio.i18n import register_translations
+from batikcraft_studio import i18n as _i18n
 
 _TRANSLATIONS = {
     "id": {
@@ -47,7 +47,10 @@ _TRANSLATIONS = {
 
 
 def install_direct_style_translations() -> None:
-    register_translations(_TRANSLATIONS)
+    """Install direct-style labels into the shared translation catalog."""
+
+    for language, catalog in _TRANSLATIONS.items():
+        _i18n._TRANSLATIONS[language].update(catalog)  # type: ignore[attr-defined]
 
 
 __all__ = ["install_direct_style_translations"]
