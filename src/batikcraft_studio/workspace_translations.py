@@ -44,6 +44,10 @@ _TRANSLATIONS = {
         "palette.choose_canvas": "Pilih Warna Dasar Canvas",
         "palette.canvas_set": "Warna dasar canvas diubah menjadi {color}.",
         "palette.object_synced": "Palet mengikuti warna objek: {name}.",
+        "edit.copy": "Salin Objek",
+        "edit.paste": "Tempel Objek",
+        "clipboard.copied": "Objek disalin: {name}.",
+        "clipboard.pasted": "Objek ditempel: {name}.",
     },
     "en": {
         "dock.tools": "Batik Tools",
@@ -84,6 +88,10 @@ _TRANSLATIONS = {
         "palette.choose_canvas": "Choose Canvas Base Color",
         "palette.canvas_set": "Canvas base color changed to {color}.",
         "palette.object_synced": "Palette follows object colors: {name}.",
+        "edit.copy": "Copy Object",
+        "edit.paste": "Paste Object",
+        "clipboard.copied": "Copied object: {name}.",
+        "clipboard.pasted": "Pasted object: {name}.",
     },
 }
 
