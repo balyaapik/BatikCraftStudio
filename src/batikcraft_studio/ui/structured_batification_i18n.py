@@ -27,7 +27,10 @@ _TRANSLATIONS = {
         "ai.dialog.seed": "Seed",
         "ai.dialog.prompt": "Arahan gaya / prompt",
         "ai.dialog.render": "Render Terstruktur",
-        "ai.dialog.foundation_note": "Fondasi ini menjaga source, render, dan filler sebagai objek terpisah. Provider AI final dapat dipasang kemudian tanpa mengubah struktur proyek.",
+        "ai.dialog.foundation_note": (
+            "Fondasi ini menjaga source, render, dan filler sebagai objek terpisah. "
+            "Provider AI final dapat dipasang kemudian tanpa mengubah struktur proyek."
+        ),
         "ai.style.classic": "Klasik",
         "ai.style.pesisir": "Pesisir",
         "ai.style.indigo": "Indigo",
@@ -40,7 +43,10 @@ _TRANSLATIONS = {
         "ai.status.latest_shown": "Render terbaru versi {version} ditampilkan.",
         "ai.status.reset": "Batification direset ke sumber editable.",
         "ai.reset.title": "Reset Batification",
-        "ai.reset.confirm": "Hapus semua versi render dan komponen AI untuk sumber ini? Tindakan ini dapat diurungkan dengan Ctrl+Z.",
+        "ai.reset.confirm": (
+            "Hapus semua versi render dan komponen AI untuk sumber ini? "
+            "Tindakan ini dapat diurungkan dengan Ctrl+Z."
+        ),
     },
     "en": {
         "menu.ai": "Batik AI",
@@ -64,7 +70,10 @@ _TRANSLATIONS = {
         "ai.dialog.seed": "Seed",
         "ai.dialog.prompt": "Style direction / prompt",
         "ai.dialog.render": "Structured Render",
-        "ai.dialog.foundation_note": "This foundation keeps source, render, and filler as separate objects. A final AI provider can be connected later without changing project structure.",
+        "ai.dialog.foundation_note": (
+            "This foundation keeps source, render, and filler as separate objects. "
+            "A final AI provider can be connected later without changing project structure."
+        ),
         "ai.style.classic": "Classic",
         "ai.style.pesisir": "Coastal",
         "ai.style.indigo": "Indigo",
@@ -77,7 +86,10 @@ _TRANSLATIONS = {
         "ai.status.latest_shown": "Latest render version {version} shown.",
         "ai.status.reset": "Batification reset to the editable source.",
         "ai.reset.title": "Reset Batification",
-        "ai.reset.confirm": "Remove all render versions and AI components for this source? This action can be undone with Ctrl+Z.",
+        "ai.reset.confirm": (
+            "Remove all render versions and AI components for this source? "
+            "This action can be undone with Ctrl+Z."
+        ),
     },
 }
 
