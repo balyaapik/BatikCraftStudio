@@ -35,13 +35,18 @@ from batikcraft_studio.application.shape_session import (
     ShapeLayerError,
     ShapeProjectSession,
 )
+from batikcraft_studio.application.structured_batification_session import (
+    BatificationGeneration,
+    StructuredBatificationProjectSession,
+)
 
-# The public desktop session includes nested folders, multi-object layers, paint-stroke
-# objects, editable Batik assets, WYSIWYG transforms, and an internal object clipboard.
-ProjectSession = ClipboardProjectSession
+# The public desktop session includes nested folders, object clipboard, WYSIWYG transforms,
+# and source-preserving Structured Batification generations.
+ProjectSession = StructuredBatificationProjectSession
 
 __all__ = [
     "BatikProjectSession",
+    "BatificationGeneration",
     "CapIsenError",
     "ClipboardProjectSession",
     "EditableObjectProjectSession",
@@ -61,4 +66,5 @@ __all__ = [
     "ProjectSessionSnapshot",
     "ShapeLayerError",
     "ShapeProjectSession",
+    "StructuredBatificationProjectSession",
 ]
