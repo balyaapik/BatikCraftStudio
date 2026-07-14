@@ -77,9 +77,12 @@ _TRANSLATIONS = {
     },
 }
 
-# The core catalog intentionally remains dependency-free and tiny. This extension is
-# imported by the professional workspace before any of these keys are rendered.
-for _language, _catalog in _TRANSLATIONS.items():
-    _i18n._TRANSLATIONS[_language].update(_catalog)  # type: ignore[attr-defined]
 
-__all__: list[str] = []
+def install_workspace_translations() -> None:
+    """Add professional-workspace labels to the dependency-free core catalog."""
+
+    for language, catalog in _TRANSLATIONS.items():
+        _i18n._TRANSLATIONS[language].update(catalog)  # type: ignore[attr-defined]
+
+
+__all__ = ["install_workspace_translations"]
