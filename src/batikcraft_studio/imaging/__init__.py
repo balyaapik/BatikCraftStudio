@@ -1,4 +1,4 @@
-"""Public imaging API for raster, paint, shape, batik, and preview workflows."""
+"""Public imaging API for raster, paint, shape, batik, motif, and preview workflows."""
 
 from batikcraft_studio.imaging.isen import (
     ISEN_LABELS,
@@ -11,6 +11,18 @@ from batikcraft_studio.imaging.isen import (
     render_isen_cap,
     symmetry_placements,
     validate_cap_size,
+)
+from batikcraft_studio.imaging.motif import (
+    DEFAULT_MOTIF_ISEN,
+    MASTER_MOTIF_SIZE,
+    MAX_MOTIF_SIZE,
+    MIN_MOTIF_SIZE,
+    MOTIF_LABELS,
+    MOTIF_TYPES,
+    MotifError,
+    motif_description,
+    render_motif_cap,
+    validate_motif_size,
 )
 from batikcraft_studio.imaging.paint import (
     MAX_BRUSH_SIZE,
@@ -48,16 +60,23 @@ from batikcraft_studio.imaging.shape import (
 )
 
 __all__ = [
+    "DEFAULT_MOTIF_ISEN",
     "ISEN_LABELS",
     "ISEN_TYPES",
     "MASTER_CAP_SIZE",
+    "MASTER_MOTIF_SIZE",
     "MAX_BRUSH_SIZE",
+    "MAX_MOTIF_SIZE",
     "MAX_POLYGON_SIDES",
     "MAX_RASTER_DIMENSION",
     "MAX_RASTER_PIXELS",
     "MAX_SHAPE_STROKE_WIDTH",
+    "MIN_MOTIF_SIZE",
     "MIN_POLYGON_SIDES",
+    "MOTIF_LABELS",
+    "MOTIF_TYPES",
     "MissingRasterAssetError",
+    "MotifError",
     "PaintStrokeError",
     "ProjectRenderError",
     "RasterAsset",
@@ -73,10 +92,12 @@ __all__ = [
     "apply_paint_stroke",
     "build_shape_geometry",
     "create_transparent_canvas_png",
+    "motif_description",
     "normalize_raster_image",
     "parse_shape_properties",
     "point_hits_layer",
     "render_isen_cap",
+    "render_motif_cap",
     "render_project_preview",
     "render_shape_image",
     "smooth_stroke_points",
@@ -84,4 +105,5 @@ __all__ = [
     "transformed_layer_bounds",
     "update_shape_properties",
     "validate_cap_size",
+    "validate_motif_size",
 ]
