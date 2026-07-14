@@ -21,6 +21,17 @@ class InteractiveTransformProjectSession(EditableObjectProjectSession):
     def interactive_transform_active(self) -> bool:
         return self._interactive_before is not None
 
+    def set_canvas_background(self, color: str) -> str:
+        """Update the project canvas color as one undoable mutation."""
+
+        project = self.require_project()
+        previous = project.canvas.background_color
+        value = str(color).strip().upper()
+        if value == previous:
+            return previous
+        self._commit_mutation(lambda: project.update_canvas(background_color=value))
+        return project.canvas.background_color
+
     def begin_interactive_object_transform(self, object_id: str) -> LayerObject:
         if self._interactive_before is not None:
             self.cancel_interactive_object_transform()
