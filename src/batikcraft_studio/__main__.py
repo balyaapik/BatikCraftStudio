@@ -7,7 +7,7 @@ import sys
 import tkinter as tk
 from tkinter import messagebox
 
-from .app import BatikCraftApplication
+from .clipboard_app import ClipboardBatikCraftApplication
 from .config import APP_NAME
 
 
@@ -24,7 +24,7 @@ def main() -> int:
     _configure_logging()
 
     try:
-        application = BatikCraftApplication()
+        application = ClipboardBatikCraftApplication()
         application.run()
     except tk.TclError as exc:
         logging.exception("Tkinter could not initialize")
