@@ -1,4 +1,4 @@
-"""Single-workspace native shell for the asset-first BatikCraft editor."""
+"""Single-workspace bilingual shell for the asset-first BatikCraft editor."""
 
 from __future__ import annotations
 
@@ -8,6 +8,7 @@ from tkinter import ttk
 
 from batikcraft_studio.application import ProjectSession
 from batikcraft_studio.config import APP_NAME, get_workspace
+from batikcraft_studio.i18n import tr
 
 from .compact_asset_editor import CompactAssetEditorWorkspaceView
 from .theme import COLORS
@@ -18,7 +19,7 @@ Command = Callable[[], object]
 
 
 class MainWindow(ttk.Frame):
-    """Top-level shell with one editor, a compact toolbar, and status bar."""
+    """Top-level shell with one editor, compact toolbar, and status bar."""
 
     def __init__(
         self,
@@ -33,9 +34,9 @@ class MainWindow(ttk.Frame):
         self.file_commands = dict(file_commands or {})
         self.active_workspace_key = "editor"
         self.active_view: CompactAssetEditorWorkspaceView | None = None
-        self.status_text = tk.StringVar(value="Ready")
-        self.project_title_text = tk.StringVar(value="No project")
-        self.project_meta_text = tk.StringVar(value="Create or open a .batikcraft project")
+        self.status_text = tk.StringVar(value=tr("status.ready"))
+        self.project_title_text = tk.StringVar(value=tr("status.no_project"))
+        self.project_meta_text = tk.StringVar(value=tr("status.create_or_open"))
         self.project_path_text = tk.StringVar(value="")
 
         self._build_layout()
@@ -66,16 +67,16 @@ class MainWindow(ttk.Frame):
 
         actions = ttk.Frame(toolbar, style="Toolbar.TFrame")
         actions.grid(row=0, column=0, sticky="w")
-        for icon, tooltip, command in (
-            ("new", "New project (Ctrl+N)", self.file_commands.get("new")),
-            ("open", "Open project (Ctrl+O)", self.file_commands.get("open")),
-            ("save", "Save project (Ctrl+S)", self.file_commands.get("save")),
+        for icon, tooltip_key, command in (
+            ("new", "toolbar.new", self.file_commands.get("new")),
+            ("open", "toolbar.open", self.file_commands.get("open")),
+            ("save", "toolbar.save", self.file_commands.get("save")),
         ):
             if command is not None:
                 icon_button(
                     actions,
                     icon=icon,
-                    tooltip=tooltip,
+                    tooltip=tr(tooltip_key),
                     command=command,
                 ).pack(side="left", padx=1)
 
@@ -87,17 +88,17 @@ class MainWindow(ttk.Frame):
         )
         edit_actions = ttk.Frame(toolbar, style="Toolbar.TFrame")
         edit_actions.grid(row=0, column=2, sticky="w")
-        for icon, tooltip, command in (
-            ("import", "Import asset (Ctrl+I)", self.editor_import_image),
-            ("undo", "Undo (Ctrl+Z)", self.editor_undo),
-            ("redo", "Redo (Ctrl+Y)", self.editor_redo),
-            ("duplicate", "Duplicate selected object (Ctrl+D)", self.editor_duplicate),
-            ("delete", "Delete selected item", self.editor_delete),
+        for icon, tooltip_key, command in (
+            ("import", "toolbar.import", self.editor_import_image),
+            ("undo", "toolbar.undo", self.editor_undo),
+            ("redo", "toolbar.redo", self.editor_redo),
+            ("duplicate", "toolbar.duplicate", self.editor_duplicate),
+            ("delete", "toolbar.delete", self.editor_delete),
         ):
             icon_button(
                 edit_actions,
                 icon=icon,
-                tooltip=tooltip,
+                tooltip=tr(tooltip_key),
                 command=command,
             ).pack(side="left", padx=1)
 
@@ -112,7 +113,7 @@ class MainWindow(ttk.Frame):
         icon_button(
             library_actions,
             icon="batikification",
-            tooltip="Focus Asset Library",
+            tooltip=tr("toolbar.library"),
             command=self.focus_asset_library,
         ).pack(side="left", padx=1)
 
@@ -150,23 +151,28 @@ class MainWindow(ttk.Frame):
             self.active_view.grid(row=0, column=0, sticky="nsew")
         self.active_workspace_key = "editor"
         self._update_window_title()
-        self.set_status("Motif Editor")
+        self.set_status(tr("status.editor"))
 
     def refresh_project_context(self) -> None:
         """Refresh compact project information and editor content."""
 
         snapshot = self.session.snapshot()
         if not snapshot.has_project:
-            self.project_title_text.set("No project")
-            self.project_meta_text.set("Create or open a .batikcraft project")
+            self.project_title_text.set(tr("status.no_project"))
+            self.project_meta_text.set(tr("status.create_or_open"))
             self.project_path_text.set("")
         else:
             dirty = " *" if snapshot.dirty else ""
             self.project_title_text.set(f"{snapshot.title}{dirty}")
             object_count = self.session.require_project().object_count
             self.project_meta_text.set(
-                f"{snapshot.width} × {snapshot.height}px  |  "
-                f"{snapshot.layer_count} lapis  |  {object_count} objek"
+                tr(
+                    "status.layers_objects",
+                    width=snapshot.width,
+                    height=snapshot.height,
+                    layers=snapshot.layer_count,
+                    objects=object_count,
+                )
             )
             path = snapshot.display_path
             self.project_path_text.set(path if len(path) <= 48 else f"…{path[-47:]}")
@@ -258,11 +264,9 @@ class MainWindow(ttk.Frame):
 
     def flash_status(self, message: str, duration_ms: int = 3500) -> None:
         self.set_status(message)
-        self.after(duration_ms, lambda: self.set_status("Ready"))
+        self.after(duration_ms, lambda: self.set_status(tr("status.ready")))
 
     def focus_navigation(self) -> None:
-        """Backward-compatible alias for focusing the asset library."""
-
         self.focus_asset_library()
 
     def set_busy(self, busy: bool, message: str | None = None) -> None:
@@ -270,7 +274,7 @@ class MainWindow(ttk.Frame):
         if message:
             self.set_status(message)
         elif not busy:
-            self.set_status("Ready")
+            self.set_status(tr("status.ready"))
         self.parent.update_idletasks()
 
     def _update_window_title(self) -> None:

@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from tkinter import colorchooser, messagebox, simpledialog, ttk
 
 from batikcraft_studio.domain import CanvasSpec, ProjectMetadata, ProjectValidationError
+from batikcraft_studio.i18n import tr
 
 
 @dataclass(frozen=True, slots=True)
@@ -28,7 +29,7 @@ class NewProjectDialog(simpledialog.Dialog):
         self.width_var = tk.StringVar(value="2048")
         self.height_var = tk.StringVar(value="2048")
         self.background_var = tk.StringVar(value="#F4E9D8")
-        super().__init__(parent, title="New BatikCraft Project")
+        super().__init__(parent, title=tr("dialog.new_project.title"))
 
     def body(self, master: tk.Misc) -> tk.Widget:
         form = ttk.Frame(master, padding=(8, 8))
@@ -36,20 +37,26 @@ class NewProjectDialog(simpledialog.Dialog):
         form.columnconfigure(1, weight=1)
 
         fields = (
-            ("Project title", self.title_var),
-            ("Creator", self.creator_var),
-            ("Canvas width", self.width_var),
-            ("Canvas height", self.height_var),
+            (tr("dialog.new_project.project_title"), self.title_var),
+            (tr("dialog.new_project.creator"), self.creator_var),
+            (tr("dialog.new_project.canvas_width"), self.width_var),
+            (tr("dialog.new_project.canvas_height"), self.height_var),
         )
         first_entry: ttk.Entry | None = None
         for row, (label, variable) in enumerate(fields):
-            ttk.Label(form, text=label).grid(row=row, column=0, sticky="w", padx=(0, 14), pady=6)
+            ttk.Label(form, text=label).grid(
+                row=row,
+                column=0,
+                sticky="w",
+                padx=(0, 14),
+                pady=6,
+            )
             entry = ttk.Entry(form, textvariable=variable, width=38)
             entry.grid(row=row, column=1, sticky="ew", pady=6)
             if first_entry is None:
                 first_entry = entry
 
-        ttk.Label(form, text="Background").grid(
+        ttk.Label(form, text=tr("dialog.new_project.background")).grid(
             row=4,
             column=0,
             sticky="w",
@@ -64,12 +71,31 @@ class NewProjectDialog(simpledialog.Dialog):
             column=0,
             sticky="ew",
         )
-        ttk.Button(background_row, text="Choose…", command=self._choose_color).grid(
-            row=0,
-            column=1,
-            padx=(8, 0),
-        )
+        ttk.Button(
+            background_row,
+            text=tr("common.choose"),
+            command=self._choose_color,
+        ).grid(row=0, column=1, padx=(8, 0))
         return first_entry or form
+
+    def buttonbox(self) -> None:
+        box = ttk.Frame(self)
+        ttk.Button(
+            box,
+            text=tr("common.ok"),
+            width=10,
+            command=self.ok,
+            default=tk.ACTIVE,
+        ).pack(side=tk.LEFT, padx=5, pady=5)
+        ttk.Button(
+            box,
+            text=tr("common.cancel"),
+            width=10,
+            command=self.cancel,
+        ).pack(side=tk.LEFT, padx=5, pady=5)
+        self.bind("<Return>", self.ok)
+        self.bind("<Escape>", self.cancel)
+        box.pack()
 
     def validate(self) -> bool:
         try:
@@ -86,13 +112,17 @@ class NewProjectDialog(simpledialog.Dialog):
             )
         except ValueError:
             messagebox.showerror(
-                "Invalid canvas size",
-                "Canvas width and height must be whole numbers.",
+                tr("dialog.invalid_canvas.title"),
+                tr("dialog.invalid_canvas.message"),
                 parent=self,
             )
             return False
         except ProjectValidationError as exc:
-            messagebox.showerror("Invalid project", str(exc), parent=self)
+            messagebox.showerror(
+                tr("dialog.invalid_project.title"),
+                str(exc),
+                parent=self,
+            )
             return False
 
         self.result = NewProjectRequest(
@@ -105,14 +135,13 @@ class NewProjectDialog(simpledialog.Dialog):
         return True
 
     def apply(self) -> None:
-        # Validation already prepared the immutable request object.
         return None
 
     def _choose_color(self) -> None:
         _rgb, color = colorchooser.askcolor(
             color=self.background_var.get(),
             parent=self,
-            title="Choose Canvas Background",
+            title=tr("dialog.new_project.choose_background"),
         )
         if color:
             self.background_var.set(color.upper())
