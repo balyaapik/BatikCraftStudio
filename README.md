@@ -5,8 +5,9 @@ membuat motif batik secara manual, melakukan batikfikasi objek, mengintegrasikan
 generative AI, serta menyiapkan motif untuk proses lisensi dan bidding melalui
 website BatikCraft.
 
-> Status: Milestone 2D — raster layer editing. Pengembangan dilakukan bertahap agar
-> setiap modul dapat diuji, diperbaiki, dan disempurnakan menggunakan IBM Bob.
+> Status: Milestone 3B — refined raster brush and eraser. Pengembangan dilakukan
+> bertahap agar setiap modul dapat diuji, diperbaiki, dan disempurnakan menggunakan
+> IBM Bob.
 
 ## Fokus Produk
 
@@ -25,7 +26,7 @@ hanya menyiapkan serta menerbitkan aset motif.
 
 ## Fitur yang Sudah Berfungsi
 
-- shell aplikasi Tkinter dengan lima workspace;
+- shell aplikasi Tkinter native dengan toolbar ikon offline dan lima workspace;
 - project domain tervalidasi;
 - format proyek editable `.batikcraft` berbasis ZIP;
 - New Project, Open, Save, Save As, Close Project, dan Exit;
@@ -37,7 +38,10 @@ hanya menyiapkan serta menerbitkan aset motif.
 - transform X/Y, rotation, scale X/Y, dan opacity;
 - duplicate, delete, show/hide, lock/unlock, serta layer ordering;
 - undo/redo yang memulihkan project state dan asset bytes;
-- keyboard shortcut untuk file, editor, dan workspace navigation;
+- paint layer transparan berukuran penuh sesuai canvas;
+- brush dan eraser dengan satu history entry per stroke;
+- opacity, hardness, smoothing, preset ukuran, dan circular brush cursor;
+- shortcut `B`, `E`, `V`, `[`, dan `]`;
 - CI menggunakan Ruff dan Pytest.
 
 ## Roadmap Bertahap
@@ -46,7 +50,7 @@ hanya menyiapkan serta menerbitkan aset motif.
 
 - struktur package Python;
 - shell aplikasi Tkinter;
-- sidebar dan perpindahan workspace;
+- navigasi workspace;
 - tema, status bar, menu, shortcut dasar, dokumentasi, dan CI.
 
 ### Milestone 2 — Project and Workspace Core
@@ -62,7 +66,7 @@ hanya menyiapkan serta menerbitkan aset motif.
 
 - format `.batikcraft` berbasis ZIP;
 - manifest strict dan versioned;
-- atomic save, verified in-memory load, SHA-256, size verification;
+- atomic save, verified in-memory load, SHA-256, dan size verification;
 - path traversal, duplicate entry, dan corrupted-file protection.
 
 #### Milestone 2C — Workspace Shell ✅
@@ -78,18 +82,36 @@ hanya menyiapkan serta menerbitkan aset motif.
 - canonical embedded PNG assets;
 - bounded raster project preview;
 - select, move, scale, rotate, opacity, duplicate, dan delete;
-- visibility, lock, dan layer ordering;
-- undo/redo melalui session snapshot history;
-- renderer, import, history, save/reopen, dan failure-path tests.
+- visibility, lock, layer ordering, dan undo/redo.
 
 ### Milestone 3 — Manual Motif Tools
 
+#### Milestone 3A — Basic Paint Layer ✅
+
+- full-canvas transparent paint layer;
 - brush dan eraser;
-- shape dan line tools;
-- motif stamp;
-- palet warna;
-- mirror dan symmetry drawing;
-- isen-isen tools dasar.
+- color picker dan brush size;
+- satu completed stroke sebagai satu history entry;
+- paint asset tersimpan di `.batikcraft`.
+
+#### Milestone 3B — Brush Refinement ✅
+
+- endpoint-preserving stroke smoothing;
+- opacity dan hardness;
+- partial-opacity eraser;
+- preset ukuran dan shortcut `[` / `]`;
+- circular cursor sesuai diameter brush;
+- bounded stroke resampling dan antialiased brush stamp.
+
+#### Milestone 3C — Shape and Line Tools
+
+- line, rectangle, ellipse, dan polygon dasar;
+- fill/stroke controls;
+- editable shape properties;
+- snapping dan modifier keyboard dasar.
+
+Tahap manual berikutnya mencakup motif stamp, palet warna, mirror/symmetry drawing,
+dan isen-isen tools.
 
 ### Milestone 4 — Object Batikfication MVP
 
@@ -129,7 +151,7 @@ hanya menyiapkan serta menerbitkan aset motif.
 
 - Python 3.11+
 - Tkinter / ttk
-- Pillow untuk import dan rendering raster
+- Pillow untuk import, rendering raster, brush, dan eraser
 - NumPy dan OpenCV untuk milestone pemrosesan citra
 - PyTorch atau ONNX Runtime untuk milestone AI
 - Requests/HTTPX untuk integrasi website
@@ -161,18 +183,17 @@ python -m pip install -e ".[dev]"
 python -m batikcraft_studio
 ```
 
-## Workflow Raster Layer
+## Workflow Editor
 
-1. Pilih **File → New Project** atau tekan `Ctrl+N`.
-2. Masukkan judul, creator, ukuran canvas, dan warna latar.
-3. Pilih **File → Import Image** atau tekan `Ctrl+I`.
-4. Pilih PNG/JPEG; aplikasi menyimpan versi PNG RGBA di project session.
-5. Klik layer pada canvas atau layer panel untuk memilihnya.
-6. Drag layer yang tidak terkunci untuk memindahkannya.
-7. Gunakan transform inspector untuk rotation, scale, position, dan opacity.
-8. Gunakan panel layer untuk duplicate, delete, visibility, lock, dan ordering.
-9. Gunakan `Ctrl+Z` dan `Ctrl+Y` untuk undo/redo.
-10. Simpan sebagai `.batikcraft` melalui `Ctrl+Shift+S`.
+1. Buat atau buka proyek melalui menu **File**.
+2. Import PNG/JPEG melalui `Ctrl+I`, atau pilih Brush dengan `B`.
+3. Gunakan `V` untuk memilih dan memindahkan layer.
+4. Gunakan `B` untuk menggambar dan `E` untuk menghapus.
+5. Atur size, opacity, hardness, smoothing, dan color pada tab **Brush**.
+6. Gunakan `[` dan `]` untuk mengubah ukuran brush.
+7. Gunakan tab **Layers** dan **Transform** untuk mengelola objek.
+8. Gunakan `Ctrl+Z` dan `Ctrl+Y` untuk undo/redo.
+9. Simpan sebagai `.batikcraft` melalui `Ctrl+Shift+S`.
 
 ## Validasi
 
@@ -200,5 +221,7 @@ CI GitHub menjalankan kedua perintah tersebut pada setiap push dan pull request.
 - `docs/PROJECT_FORMAT.md` — format archive dan keamanan Milestone 2B;
 - `docs/WORKSPACE_SHELL.md` — session dan GUI contract Milestone 2C;
 - `docs/LAYER_EDITOR.md` — raster layer contract Milestone 2D;
+- `docs/MILESTONE_3A_PAINT_LAYER.md` — basic paint-layer contract;
+- `docs/MILESTONE_3B_BRUSH_REFINEMENT.md` — refined brush contract;
 - `docs/BOB_PROMPTS.md` — prompt bertahap untuk IBM Bob;
 - `docs/BOB_DEVELOPMENT_LOG.md` — catatan kontribusi Bob dan hasil review.
