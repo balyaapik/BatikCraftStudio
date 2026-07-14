@@ -46,61 +46,59 @@ def build_shape_geometry(
 ) -> ShapeGeometry:
     """Build validated shape properties from a pointer drag."""
 
-    kind = _validate_shape_type(shape_type)
-    start_x, start_y = _validate_point(start, "start")
-    end_x, end_y = _validate_point(end, "end")
+    kind = _shape_type(shape_type)
+    start_x, start_y = _point(start, "start")
+    end_x, end_y = _point(end, "end")
     if not isinstance(constrain, bool) or not isinstance(from_center, bool):
         raise ShapeError("Shape modifiers must be booleans.")
 
-    end_x, end_y = _apply_constraint(kind, start_x, start_y, end_x, end_y, constrain)
+    end_x, end_y = _constrained_end(
+        kind,
+        start_x,
+        start_y,
+        end_x,
+        end_y,
+        constrain,
+    )
     if from_center:
-        left = start_x - abs(end_x - start_x)
-        right = start_x + abs(end_x - start_x)
-        top = start_y - abs(end_y - start_y)
-        bottom = start_y + abs(end_y - start_y)
-        line_start = (left, top)
-        line_end = (right, bottom)
+        offset_x = abs(end_x - start_x)
+        offset_y = abs(end_y - start_y)
+        left, right = start_x - offset_x, start_x + offset_x
+        top, bottom = start_y - offset_y, start_y + offset_y
+        line_start, line_end = (left, top), (right, bottom)
     else:
         left, right = sorted((start_x, end_x))
         top, bottom = sorted((start_y, end_y))
-        line_start = (start_x, start_y)
-        line_end = (end_x, end_y)
+        line_start, line_end = (start_x, start_y), (end_x, end_y)
 
     geometry_width = abs(right - left)
     geometry_height = abs(bottom - top)
-    if kind != "line" and (geometry_width < 1.0 or geometry_height < 1.0):
-        raise ShapeError("Shapes must be at least 1 pixel wide and high.")
-    if kind == "line" and geometry_width < 1.0 and geometry_height < 1.0:
-        raise ShapeError("Lines must have a visible length.")
+    _validate_geometry_size(kind, geometry_width, geometry_height)
 
-    width = _validate_stroke_width(stroke_width)
-    stroke = _validate_color(stroke_color, "stroke color")
-    fill = _validate_color(fill_color, "fill color")
-    stroke_on, fill_on = _validate_paint_flags(
+    line_width = _stroke_width(stroke_width)
+    stroke = _color(stroke_color, "stroke color")
+    fill = _color(fill_color, "fill color")
+    stroke_on, fill_on = _paint_flags(
         kind,
         stroke_enabled=stroke_enabled,
         fill_enabled=fill_enabled,
     )
-    sides = _validate_polygon_sides(polygon_sides)
-    padding = max(2.0, width / 2 + 2.0)
-    pixel_width = max(1.0, geometry_width + padding * 2)
-    pixel_height = max(1.0, geometry_height + padding * 2)
-
-    line_orientation = _line_orientation(line_start, line_end)
+    sides = _polygon_sides(polygon_sides)
+    padding = max(2.0, line_width / 2 + 2.0)
     properties: dict[str, Any] = {
         "shape_type": kind,
         "geometry_width": geometry_width,
         "geometry_height": geometry_height,
-        "pixel_width": pixel_width,
-        "pixel_height": pixel_height,
+        "pixel_width": max(1.0, geometry_width + padding * 2),
+        "pixel_height": max(1.0, geometry_height + padding * 2),
         "padding": padding,
         "stroke_color": stroke,
         "fill_color": fill,
-        "stroke_width": width,
+        "stroke_width": line_width,
         "stroke_enabled": stroke_on,
         "fill_enabled": fill_on,
         "polygon_sides": sides,
-        "line_orientation": line_orientation,
+        "line_orientation": _line_orientation(line_start, line_end),
     }
     return ShapeGeometry(
         center_x=(left + right) / 2,
@@ -124,36 +122,30 @@ def update_shape_properties(
     """Return validated replacement properties for an existing shape layer."""
 
     values = parse_shape_properties(layer)
-    width = values["geometry_width"] if geometry_width is None else _positive(geometry_width, "width")
-    height = (
-        values["geometry_height"]
-        if geometry_height is None
-        else _positive(geometry_height, "height")
-    )
-    line = values["shape_type"] == "line"
-    if line:
-        width = max(0.0, width)
-        height = max(0.0, height)
-        if width < 1.0 and height < 1.0:
-            raise ShapeError("Lines must have a visible length.")
-    elif width < 1.0 or height < 1.0:
-        raise ShapeError("Shapes must be at least 1 pixel wide and high.")
+    width = values["geometry_width"]
+    height = values["geometry_height"]
+    if geometry_width is not None:
+        width = _non_negative(geometry_width, "width")
+    if geometry_height is not None:
+        height = _non_negative(geometry_height, "height")
+    _validate_geometry_size(values["shape_type"], width, height)
 
-    new_stroke_width = (
-        values["stroke_width"]
-        if stroke_width is None
-        else _validate_stroke_width(stroke_width)
-    )
-    new_stroke_enabled = (
-        values["stroke_enabled"] if stroke_enabled is None else stroke_enabled
-    )
-    new_fill_enabled = values["fill_enabled"] if fill_enabled is None else fill_enabled
-    stroke_on, fill_on = _validate_paint_flags(
+    new_stroke_width = values["stroke_width"]
+    if stroke_width is not None:
+        new_stroke_width = _stroke_width(stroke_width)
+    new_stroke_enabled = values["stroke_enabled"]
+    if stroke_enabled is not None:
+        new_stroke_enabled = stroke_enabled
+    new_fill_enabled = values["fill_enabled"]
+    if fill_enabled is not None:
+        new_fill_enabled = fill_enabled
+    stroke_on, fill_on = _paint_flags(
         values["shape_type"],
         stroke_enabled=new_stroke_enabled,
         fill_enabled=new_fill_enabled,
     )
     padding = max(2.0, new_stroke_width / 2 + 2.0)
+
     updated = dict(layer.properties)
     updated.update(
         {
@@ -164,16 +156,16 @@ def update_shape_properties(
             "padding": padding,
             "stroke_color": values["stroke_color"]
             if stroke_color is None
-            else _validate_color(stroke_color, "stroke color"),
+            else _color(stroke_color, "stroke color"),
             "fill_color": values["fill_color"]
             if fill_color is None
-            else _validate_color(fill_color, "fill color"),
+            else _color(fill_color, "fill color"),
             "stroke_width": new_stroke_width,
             "stroke_enabled": stroke_on,
             "fill_enabled": fill_on,
             "polygon_sides": values["polygon_sides"]
             if polygon_sides is None
-            else _validate_polygon_sides(polygon_sides),
+            else _polygon_sides(polygon_sides),
         }
     )
     return updated
@@ -185,15 +177,17 @@ def parse_shape_properties(layer: Layer) -> dict[str, Any]:
     if layer.kind is not LayerKind.SHAPE:
         raise ShapeError("Layer is not a shape layer.")
     properties = layer.properties
-    kind = _validate_shape_type(properties.get("shape_type"))
-    geometry_width = _non_negative(properties.get("geometry_width"), "geometry width")
-    geometry_height = _non_negative(properties.get("geometry_height"), "geometry height")
-    if kind != "line" and (geometry_width < 1.0 or geometry_height < 1.0):
-        raise ShapeError("Shape geometry must be at least 1 pixel wide and high.")
-    if kind == "line" and geometry_width < 1.0 and geometry_height < 1.0:
-        raise ShapeError("Line geometry must have a visible length.")
-
-    stroke_enabled, fill_enabled = _validate_paint_flags(
+    kind = _shape_type(properties.get("shape_type"))
+    geometry_width = _non_negative(
+        properties.get("geometry_width"),
+        "geometry width",
+    )
+    geometry_height = _non_negative(
+        properties.get("geometry_height"),
+        "geometry height",
+    )
+    _validate_geometry_size(kind, geometry_width, geometry_height)
+    stroke_enabled, fill_enabled = _paint_flags(
         kind,
         stroke_enabled=properties.get("stroke_enabled"),
         fill_enabled=properties.get("fill_enabled"),
@@ -205,13 +199,13 @@ def parse_shape_properties(layer: Layer) -> dict[str, Any]:
         "pixel_width": _positive(properties.get("pixel_width"), "pixel width"),
         "pixel_height": _positive(properties.get("pixel_height"), "pixel height"),
         "padding": _positive(properties.get("padding"), "padding"),
-        "stroke_color": _validate_color(properties.get("stroke_color"), "stroke color"),
-        "fill_color": _validate_color(properties.get("fill_color"), "fill color"),
-        "stroke_width": _validate_stroke_width(properties.get("stroke_width")),
+        "stroke_color": _color(properties.get("stroke_color"), "stroke color"),
+        "fill_color": _color(properties.get("fill_color"), "fill color"),
+        "stroke_width": _stroke_width(properties.get("stroke_width")),
         "stroke_enabled": stroke_enabled,
         "fill_enabled": fill_enabled,
-        "polygon_sides": _validate_polygon_sides(properties.get("polygon_sides")),
-        "line_orientation": _validate_line_orientation(properties.get("line_orientation")),
+        "polygon_sides": _polygon_sides(properties.get("polygon_sides")),
+        "line_orientation": _orientation(properties.get("line_orientation")),
     }
 
 
@@ -236,30 +230,36 @@ def render_shape_image(layer: Layer, width: int, height: int) -> Image.Image:
         output_size[0] - padding_x,
         output_size[1] - padding_y,
     )
-    stroke_width = max(
+    line_width = max(
         1,
         round(values["stroke_width"] * min(scale_x, scale_y)),
     )
     stroke = values["stroke_color"] if values["stroke_enabled"] else None
     fill = values["fill_color"] if values["fill_enabled"] else None
+    shape_type = values["shape_type"]
 
-    if values["shape_type"] == "line":
-        start, end = _rendered_line_points(bounds, values["line_orientation"])
-        draw.line((start, end), fill=values["stroke_color"], width=stroke_width)
-    elif values["shape_type"] == "rectangle":
-        draw.rectangle(bounds, fill=fill, outline=stroke, width=stroke_width)
-    elif values["shape_type"] == "ellipse":
-        draw.ellipse(bounds, fill=fill, outline=stroke, width=stroke_width)
+    if shape_type == "line":
+        start, end = _line_points(bounds, values["line_orientation"])
+        draw.line((start, end), fill=values["stroke_color"], width=line_width)
+    elif shape_type == "rectangle":
+        draw.rectangle(bounds, fill=fill, outline=stroke, width=line_width)
+    elif shape_type == "ellipse":
+        draw.ellipse(bounds, fill=fill, outline=stroke, width=line_width)
     else:
-        points = _regular_polygon_points(bounds, values["polygon_sides"])
+        points = _polygon_points(bounds, values["polygon_sides"])
         draw.polygon(points, fill=fill)
         if stroke is not None:
-            draw.line((*points, points[0]), fill=stroke, width=stroke_width, joint="curve")
+            draw.line(
+                (*points, points[0]),
+                fill=stroke,
+                width=line_width,
+                joint="curve",
+            )
 
     return image.resize((width, height), Image.Resampling.LANCZOS)
 
 
-def _apply_constraint(
+def _constrained_end(
     shape_type: str,
     start_x: float,
     start_y: float,
@@ -275,13 +275,26 @@ def _apply_constraint(
         distance = math.hypot(delta_x, delta_y)
         if distance == 0:
             return end_x, end_y
-        angle = round(math.atan2(delta_y, delta_x) / (math.pi / 4)) * (math.pi / 4)
-        return start_x + math.cos(angle) * distance, start_y + math.sin(angle) * distance
+        step = math.pi / 4
+        angle = round(math.atan2(delta_y, delta_x) / step) * step
+        return (
+            start_x + math.cos(angle) * distance,
+            start_y + math.sin(angle) * distance,
+        )
     size = max(abs(delta_x), abs(delta_y))
     return (
         start_x + math.copysign(size, delta_x or 1.0),
         start_y + math.copysign(size, delta_y or 1.0),
     )
+
+
+def _validate_geometry_size(shape_type: str, width: float, height: float) -> None:
+    if shape_type == "line":
+        if width < 1.0 and height < 1.0:
+            raise ShapeError("Lines must have a visible length.")
+        return
+    if width < 1.0 or height < 1.0:
+        raise ShapeError("Shapes must be at least 1 pixel wide and high.")
 
 
 def _line_orientation(
@@ -293,7 +306,7 @@ def _line_orientation(
     return f"{horizontal}_{vertical}"
 
 
-def _rendered_line_points(
+def _line_points(
     bounds: tuple[float, float, float, float],
     orientation: str,
 ) -> tuple[tuple[float, float], tuple[float, float]]:
@@ -307,7 +320,7 @@ def _rendered_line_points(
     return (right, bottom), (left, top)
 
 
-def _regular_polygon_points(
+def _polygon_points(
     bounds: tuple[float, float, float, float],
     sides: int,
 ) -> list[tuple[float, float]]:
@@ -325,21 +338,19 @@ def _regular_polygon_points(
     ]
 
 
-def _validate_shape_type(value: object) -> str:
+def _shape_type(value: object) -> str:
     if not isinstance(value, str) or value not in SHAPE_TYPES:
         raise ShapeError(f"Shape type must be one of: {', '.join(SHAPE_TYPES)}.")
     return value
 
 
-def _validate_point(value: object, label: str) -> tuple[float, float]:
+def _point(value: object, label: str) -> tuple[float, float]:
     if not isinstance(value, (tuple, list)) or len(value) != 2:
         raise ShapeError(f"Shape {label} must contain x and y coordinates.")
-    x = _finite(value[0], f"{label} x")
-    y = _finite(value[1], f"{label} y")
-    return x, y
+    return _finite(value[0], f"{label} x"), _finite(value[1], f"{label} y")
 
 
-def _validate_color(value: object, label: str) -> str:
+def _color(value: object, label: str) -> str:
     if not isinstance(value, str):
         raise ShapeError(f"Shape {label} must be a color string.")
     try:
@@ -349,26 +360,28 @@ def _validate_color(value: object, label: str) -> str:
     return f"#{red:02X}{green:02X}{blue:02X}"
 
 
-def _validate_stroke_width(value: object) -> float:
+def _stroke_width(value: object) -> float:
     width = _finite(value, "stroke width")
     if not 0.5 <= width <= MAX_SHAPE_STROKE_WIDTH:
         raise ShapeError(
-            f"Shape stroke width must be between 0.5 and {MAX_SHAPE_STROKE_WIDTH:g}."
+            "Shape stroke width must be between 0.5 and "
+            f"{MAX_SHAPE_STROKE_WIDTH:g}."
         )
     return width
 
 
-def _validate_polygon_sides(value: object) -> int:
+def _polygon_sides(value: object) -> int:
     if isinstance(value, bool) or not isinstance(value, int):
         raise ShapeError("Polygon sides must be an integer.")
     if not MIN_POLYGON_SIDES <= value <= MAX_POLYGON_SIDES:
         raise ShapeError(
-            f"Polygon sides must be between {MIN_POLYGON_SIDES} and {MAX_POLYGON_SIDES}."
+            f"Polygon sides must be between {MIN_POLYGON_SIDES} "
+            f"and {MAX_POLYGON_SIDES}."
         )
     return value
 
 
-def _validate_paint_flags(
+def _paint_flags(
     shape_type: str,
     *,
     stroke_enabled: object,
@@ -385,7 +398,7 @@ def _validate_paint_flags(
     return stroke_enabled, fill_enabled
 
 
-def _validate_line_orientation(value: object) -> str:
+def _orientation(value: object) -> str:
     allowed = {"right_down", "right_up", "left_down", "left_up"}
     if not isinstance(value, str) or value not in allowed:
         raise ShapeError("Line orientation is invalid.")
