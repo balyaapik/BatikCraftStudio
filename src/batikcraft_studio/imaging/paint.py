@@ -6,9 +6,10 @@ import math
 from collections.abc import Sequence
 from io import BytesIO
 
-from PIL import Image, ImageColor, ImageDraw, UnidentifiedImageError
+from PIL import Image, ImageChops, ImageColor, ImageDraw, ImageOps, UnidentifiedImageError
 
 MAX_BRUSH_SIZE = 2048.0
+MAX_STROKE_STAMPS = 250_000
 
 
 class PaintStrokeError(ValueError):
@@ -23,6 +24,40 @@ def create_transparent_canvas_png(width: int, height: int) -> bytes:
     return _encode_png(image)
 
 
+def smooth_stroke_points(
+    points: Sequence[tuple[float, float]],
+    smoothing: float,
+) -> tuple[tuple[float, float], ...]:
+    """Return endpoint-preserving moving-average smoothing for pointer samples."""
+
+    normalized = _validate_points(points)
+    strength = _validate_unit_interval(smoothing, "Smoothing")
+    if strength == 0 or len(normalized) < 3:
+        return normalized
+
+    radius = max(1, min(8, round(1 + strength * 5)))
+    passes = 1 if strength < 0.65 else 2
+    result = normalized
+    for _ in range(passes):
+        refined: list[tuple[float, float]] = [result[0]]
+        for index in range(1, len(result) - 1):
+            start = max(0, index - radius)
+            stop = min(len(result), index + radius + 1)
+            neighborhood = result[start:stop]
+            average_x = sum(point[0] for point in neighborhood) / len(neighborhood)
+            average_y = sum(point[1] for point in neighborhood) / len(neighborhood)
+            source_x, source_y = result[index]
+            refined.append(
+                (
+                    source_x + (average_x - source_x) * strength,
+                    source_y + (average_y - source_y) * strength,
+                )
+            )
+        refined.append(result[-1])
+        result = tuple(refined)
+    return result
+
+
 def apply_paint_stroke(
     content: bytes | bytearray | memoryview,
     *,
@@ -32,13 +67,18 @@ def apply_paint_stroke(
     brush_size: float,
     color: str,
     erase: bool = False,
+    opacity: float = 1.0,
+    hardness: float = 1.0,
+    smoothing: float = 0.0,
 ) -> bytes:
-    """Apply one round brush or eraser stroke and return normalized PNG bytes."""
+    """Apply one refined brush or eraser stroke and return normalized PNG bytes."""
 
     _validate_canvas_size(width, height)
-    normalized_points = _validate_points(points)
     diameter = _validate_brush_size(brush_size)
     rgba = _validate_color(color)
+    opacity_value = _validate_unit_interval(opacity, "Opacity", minimum_exclusive=True)
+    hardness_value = _validate_unit_interval(hardness, "Hardness")
+    smoothing_value = _validate_unit_interval(smoothing, "Smoothing")
     if not isinstance(erase, bool):
         raise PaintStrokeError("erase must be a boolean.")
 
@@ -54,41 +94,142 @@ def apply_paint_stroke(
     if image.size != (width, height):
         raise PaintStrokeError("Paint-layer dimensions must match the project canvas.")
 
-    pixel_points = [(round(x), round(y)) for x, y in normalized_points]
+    smoothed = smooth_stroke_points(points, smoothing_value)
+    stamp_points = _resample_stroke(smoothed, max(0.75, diameter * 0.10))
+    color_alpha = rgba[3] / 255
+    stroke_opacity = opacity_value if erase else opacity_value * color_alpha
+    stroke_mask = _build_stroke_mask(
+        image.size,
+        stamp_points,
+        diameter=diameter,
+        opacity=stroke_opacity,
+        hardness=hardness_value,
+    )
+
     if erase:
-        _erase_round_stroke(image, pixel_points, diameter)
+        remaining = ImageOps.invert(stroke_mask)
+        image.putalpha(ImageChops.multiply(image.getchannel("A"), remaining))
     else:
-        _draw_round_stroke(image, pixel_points, diameter, rgba)
+        overlay = Image.new("RGBA", image.size, (*rgba[:3], 0))
+        overlay.putalpha(stroke_mask)
+        image = Image.alpha_composite(image, overlay)
     return _encode_png(image)
 
 
-def _draw_round_stroke(
-    image: Image.Image,
-    points: list[tuple[int, int]],
-    diameter: int,
-    color: tuple[int, int, int, int],
-) -> None:
-    draw = ImageDraw.Draw(image)
-    if len(points) > 1:
-        draw.line(points, fill=color, width=diameter, joint="curve")
-    radius = diameter / 2
-    for x, y in points:
-        draw.ellipse((x - radius, y - radius, x + radius, y + radius), fill=color)
+def _resample_stroke(
+    points: Sequence[tuple[float, float]],
+    spacing: float,
+) -> tuple[tuple[float, float], ...]:
+    samples: list[tuple[float, float]] = [points[0]]
+    for start, end in zip(points, points[1:], strict=False):
+        delta_x = end[0] - start[0]
+        delta_y = end[1] - start[1]
+        distance = math.hypot(delta_x, delta_y)
+        if distance == 0:
+            continue
+        steps = max(1, math.ceil(distance / spacing))
+        if len(samples) + steps > MAX_STROKE_STAMPS:
+            raise PaintStrokeError("Stroke contains too many samples.")
+        samples.extend(
+            (
+                start[0] + delta_x * step / steps,
+                start[1] + delta_y * step / steps,
+            )
+            for step in range(1, steps + 1)
+        )
+    return tuple(samples)
 
 
-def _erase_round_stroke(
-    image: Image.Image,
-    points: list[tuple[int, int]],
+def _build_stroke_mask(
+    image_size: tuple[int, int],
+    points: Sequence[tuple[float, float]],
+    *,
     diameter: int,
-) -> None:
-    mask = Image.new("L", image.size, 0)
-    draw = ImageDraw.Draw(mask)
-    if len(points) > 1:
-        draw.line(points, fill=255, width=diameter, joint="curve")
-    radius = diameter / 2
+    opacity: float,
+    hardness: float,
+) -> Image.Image:
+    mask = Image.new("L", image_size, 0)
+    stamp = _create_round_stamp(diameter, opacity=opacity, hardness=hardness)
+    stamp_width, stamp_height = stamp.size
+    half_width = stamp_width // 2
+    half_height = stamp_height // 2
+
     for x, y in points:
-        draw.ellipse((x - radius, y - radius, x + radius, y + radius), fill=255)
-    image.paste((0, 0, 0, 0), (0, 0, image.width, image.height), mask)
+        left = round(x) - half_width
+        top = round(y) - half_height
+        right = left + stamp_width
+        bottom = top + stamp_height
+        clipped_left = max(0, left)
+        clipped_top = max(0, top)
+        clipped_right = min(image_size[0], right)
+        clipped_bottom = min(image_size[1], bottom)
+        if clipped_left >= clipped_right or clipped_top >= clipped_bottom:
+            continue
+
+        source_box = (
+            clipped_left - left,
+            clipped_top - top,
+            clipped_right - left,
+            clipped_bottom - top,
+        )
+        destination_box = (clipped_left, clipped_top, clipped_right, clipped_bottom)
+        existing = mask.crop(destination_box)
+        incoming = stamp.crop(source_box)
+        mask.paste(ImageChops.lighter(existing, incoming), destination_box)
+    return mask
+
+
+def _create_round_stamp(diameter: int, *, opacity: float, hardness: float) -> Image.Image:
+    scale = 4 if diameter <= 512 else 2 if diameter <= 1024 else 1
+    high_diameter = diameter * scale
+    padding = scale * 2
+    size = high_diameter + padding * 2
+    center = size / 2
+    outer_radius = high_diameter / 2
+    max_alpha = max(1, min(255, round(opacity * 255)))
+    stamp = Image.new("L", (size, size), 0)
+    draw = ImageDraw.Draw(stamp)
+
+    if hardness >= 1:
+        draw.ellipse(
+            (
+                center - outer_radius,
+                center - outer_radius,
+                center + outer_radius,
+                center + outer_radius,
+            ),
+            fill=max_alpha,
+        )
+    else:
+        inner_radius = outer_radius * hardness
+        transition = max(outer_radius - inner_radius, 1.0)
+        steps = max(12, min(64, round(transition / scale)))
+        for step in range(steps):
+            progress = step / max(steps - 1, 1)
+            radius = outer_radius - transition * progress
+            alpha = round(max_alpha * progress**1.35)
+            draw.ellipse(
+                (
+                    center - radius,
+                    center - radius,
+                    center + radius,
+                    center + radius,
+                ),
+                fill=alpha,
+            )
+        if inner_radius > 0:
+            draw.ellipse(
+                (
+                    center - inner_radius,
+                    center - inner_radius,
+                    center + inner_radius,
+                    center + inner_radius,
+                ),
+                fill=max_alpha,
+            )
+
+    final_size = diameter + 4
+    return stamp.resize((final_size, final_size), Image.Resampling.LANCZOS)
 
 
 def _validate_canvas_size(width: int, height: int) -> None:
@@ -129,6 +270,25 @@ def _validate_brush_size(value: float) -> int:
     if not math.isfinite(size) or not 1.0 <= size <= MAX_BRUSH_SIZE:
         raise PaintStrokeError(f"Brush size must be between 1 and {MAX_BRUSH_SIZE:g} pixels.")
     return max(1, round(size))
+
+
+def _validate_unit_interval(
+    value: float,
+    label: str,
+    *,
+    minimum_exclusive: bool = False,
+) -> float:
+    if isinstance(value, bool):
+        raise PaintStrokeError(f"{label} must be a finite number.")
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError) as exc:
+        raise PaintStrokeError(f"{label} must be a finite number.") from exc
+    minimum_valid = numeric > 0 if minimum_exclusive else numeric >= 0
+    if not math.isfinite(numeric) or not minimum_valid or numeric > 1:
+        interval = "greater than 0 and at most 1" if minimum_exclusive else "between 0 and 1"
+        raise PaintStrokeError(f"{label} must be {interval}.")
+    return numeric
 
 
 def _validate_color(value: str) -> tuple[int, int, int, int]:
