@@ -7,8 +7,8 @@ import sys
 import tkinter as tk
 from tkinter import messagebox
 
-from .clipboard_app import ClipboardBatikCraftApplication
 from .config import APP_NAME
+from .structured_batification_app import StructuredBatificationApplication
 
 
 def _configure_logging() -> None:
@@ -24,12 +24,10 @@ def main() -> int:
     _configure_logging()
 
     try:
-        application = ClipboardBatikCraftApplication()
+        application = StructuredBatificationApplication()
         application.run()
     except tk.TclError as exc:
         logging.exception("Tkinter could not initialize")
-        # A message box may also fail when no display server exists, so keep a
-        # terminal fallback for headless development environments.
         try:
             messagebox.showerror(APP_NAME, f"The application could not start:\n{exc}")
         except tk.TclError:
