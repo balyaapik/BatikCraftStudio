@@ -42,6 +42,7 @@ target-version = "py311"
 select = ["E", "F", "I", "UP", "B"]
 
 [tool.ruff.lint.per-file-ignores]
+"notebooks/*.ipynb" = ["E402", "F401", "I001"]
 "src/batikcraft_studio/assets/library.py" = ["F401"]
 "src/batikcraft_studio/domain/project.py" = ["E501"]
 "src/batikcraft_studio/ui/object_tree_editor.py" = ["E501"]
