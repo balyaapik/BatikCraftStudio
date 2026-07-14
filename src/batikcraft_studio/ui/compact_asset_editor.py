@@ -1,4 +1,4 @@
-"""Asset-first editor with permanent library/tree panes and transient tool windows."""
+"""Asset-first editor with bilingual permanent panes and transient tool windows."""
 
 from __future__ import annotations
 
@@ -16,15 +16,15 @@ from batikcraft_studio.assets import (
     AssetLibraryError,
     AssetRecord,
 )
+from batikcraft_studio.i18n import category_label, tr
 from batikcraft_studio.imaging import ASSET_CATEGORIES, BatikAssetError, load_batik_asset
 
+from .keyboard import run_single_key_shortcut
 from .professional_object_tree_editor import ProfessionalObjectTreeEditorWorkspaceView
 from .theme import COLORS
 from .tool_windows import EditorToolWindows
 from .widgets import icon_button
 
-_ALL_PACKS = "Semua paket"
-_ALL_CATEGORIES = "Semua kategori"
 _MAX_VISIBLE_RESULTS = 5_000
 
 
@@ -34,11 +34,22 @@ class CompactAssetEditorWorkspaceView(ProfessionalObjectTreeEditorWorkspaceView)
     def __init__(self, *args: object, **kwargs: object) -> None:
         parent = args[0] if args else kwargs["parent"]
         self.asset_library = AssetLibrary()
+        self._all_packs_label = tr("library.all_packs")
+        self._all_categories_label = tr("library.all_categories")
+        self._category_display_to_id = {
+            category_label(category): category for category in ASSET_CATEGORIES
+        }
         self.library_query_value = tk.StringVar(master=parent)
-        self.library_category_value = tk.StringVar(master=parent, value=_ALL_CATEGORIES)
-        self.library_pack_value = tk.StringVar(master=parent, value=_ALL_PACKS)
+        self.library_category_value = tk.StringVar(
+            master=parent,
+            value=self._all_categories_label,
+        )
+        self.library_pack_value = tk.StringVar(master=parent, value=self._all_packs_label)
         self.library_summary_value = tk.StringVar(master=parent)
-        self.library_asset_name_value = tk.StringVar(master=parent, value="Pilih asset")
+        self.library_asset_name_value = tk.StringVar(
+            master=parent,
+            value=tr("library.choose_asset"),
+        )
         self.library_asset_meta_value = tk.StringVar(master=parent, value="")
         self._library_records: dict[str, AssetRecord] = {}
         self._library_pack_lookup: dict[str, str] = {}
@@ -99,11 +110,11 @@ class CompactAssetEditorWorkspaceView(ProfessionalObjectTreeEditorWorkspaceView)
         header = ttk.Frame(parent, style="Dock.TFrame")
         header.grid(row=0, column=0, sticky="ew")
         header.columnconfigure(0, weight=1)
-        ttk.Label(header, text="Pustaka Asset", style="PanelTitle.TLabel").grid(
-            row=0,
-            column=0,
-            sticky="w",
-        )
+        ttk.Label(
+            header,
+            text=tr("library.title"),
+            style="PanelTitle.TLabel",
+        ).grid(row=0, column=0, sticky="w")
         ttk.Label(
             header,
             textvariable=self.library_summary_value,
@@ -126,13 +137,14 @@ class CompactAssetEditorWorkspaceView(ProfessionalObjectTreeEditorWorkspaceView)
             state="readonly",
         )
         self.library_pack_combo.grid(row=1, column=0, sticky="ew", padx=(0, 4))
-        ttk.Combobox(
+        self.library_category_combo = ttk.Combobox(
             filters,
             textvariable=self.library_category_value,
-            values=(_ALL_CATEGORIES, *ASSET_CATEGORIES),
+            values=(self._all_categories_label, *self._category_display_to_id),
             state="readonly",
             width=15,
-        ).grid(row=1, column=1, sticky="ew")
+        )
+        self.library_category_combo.grid(row=1, column=1, sticky="ew")
 
         preview = ttk.Frame(parent, style="Surface.TFrame", padding=(7, 7))
         preview.grid(row=2, column=0, sticky="ew", pady=(4, 5))
@@ -167,9 +179,9 @@ class CompactAssetEditorWorkspaceView(ProfessionalObjectTreeEditorWorkspaceView)
             selectmode="browse",
             height=18,
         )
-        self.library_list.heading("#0", text="Asset")
-        self.library_list.heading("category", text="Kategori")
-        self.library_list.heading("pack", text="Paket")
+        self.library_list.heading("#0", text=tr("library.asset_heading"))
+        self.library_list.heading("category", text=tr("library.category_heading"))
+        self.library_list.heading("pack", text=tr("library.pack_heading"))
         self.library_list.column("#0", width=145, minwidth=90, stretch=True)
         self.library_list.column("category", width=80, minwidth=65, stretch=False)
         self.library_list.column("pack", width=70, minwidth=55, stretch=False)
@@ -179,16 +191,16 @@ class CompactAssetEditorWorkspaceView(ProfessionalObjectTreeEditorWorkspaceView)
 
         actions = ttk.Frame(parent, style="Toolbar.TFrame", padding=(3, 3))
         actions.grid(row=5, column=0, sticky="ew", pady=(5, 0))
-        for icon, tooltip, command in (
-            ("apply", "Tambahkan asset terpilih ke canvas", self.add_selected_library_asset),
-            ("import", "Install asset pack", self.install_asset_pack_dialog),
-            ("delete", "Hapus asset pack terpilih", self.uninstall_selected_pack),
-            ("redo", "Muat ulang pustaka", self.reload_asset_library),
+        for icon, tooltip_key, command in (
+            ("apply", "library.add_tooltip", self.add_selected_library_asset),
+            ("import", "library.install_tooltip", self.install_asset_pack_dialog),
+            ("delete", "library.remove_tooltip", self.uninstall_selected_pack),
+            ("redo", "library.reload_tooltip", self.reload_asset_library),
         ):
             icon_button(
                 actions,
                 icon=icon,
-                tooltip=tooltip,
+                tooltip=tr(tooltip_key),
                 command=command,
                 size=18,
             ).pack(side="left", padx=1)
@@ -197,32 +209,53 @@ class CompactAssetEditorWorkspaceView(ProfessionalObjectTreeEditorWorkspaceView)
         """Keep structural and import actions; drawing creation lives in the menu bar."""
 
         self._new_tree_menu = tk.Menu(self, tearoff=False)
-        self._new_tree_menu.add_command(label="Folder", command=self._new_folder)
-        self._new_tree_menu.add_command(label="Sublapis Objek", command=self._new_object_layer)
-        self._new_tree_menu.add_command(label="Lapis Canting", command=self._new_paint_layer_in_tree)
+        self._new_tree_menu.add_command(label=tr("tree.folder"), command=self._new_folder)
+        self._new_tree_menu.add_command(
+            label=tr("tree.object_sublayer"),
+            command=self._new_object_layer,
+        )
+        self._new_tree_menu.add_command(
+            label=tr("tree.canting_layer"),
+            command=self._new_paint_layer_in_tree,
+        )
         self._new_tree_menu.add_separator()
         self._new_tree_menu.add_command(
-            label="Tambah dari Pustaka",
+            label=tr("tree.add_from_library"),
             command=self.add_selected_library_asset,
         )
-        self._new_tree_menu.add_command(label="Import Asset…", command=self.import_asset_dialog)
+        self._new_tree_menu.add_command(
+            label=tr("tree.import_asset"),
+            command=self.import_asset_dialog,
+        )
 
         self._tree_context_menu = tk.Menu(self, tearoff=False)
-        self._tree_context_menu.add_cascade(label="Baru", menu=self._new_tree_menu)
+        self._tree_context_menu.add_cascade(
+            label=tr("tree.new"),
+            menu=self._new_tree_menu,
+        )
         self._move_folder_menu = tk.Menu(self._tree_context_menu, tearoff=False)
         self._tree_context_menu.add_cascade(
-            label="Pindah ke Folder",
+            label=tr("tree.move_to_folder"),
             menu=self._move_folder_menu,
         )
         self._tree_context_menu.add_separator()
-        self._tree_context_menu.add_command(label="Duplikat", command=self.duplicate_active)
-        self._tree_context_menu.add_command(label="Hapus", command=self.delete_active)
+        self._tree_context_menu.add_command(
+            label=tr("tree.duplicate"),
+            command=self.duplicate_active,
+        )
+        self._tree_context_menu.add_command(
+            label=tr("tree.delete"),
+            command=self.delete_active,
+        )
         self._tree_context_menu.add_separator()
         self._tree_context_menu.add_command(
-            label="Tampilkan/Sembunyikan",
+            label=tr("tree.visibility"),
             command=self.toggle_visibility,
         )
-        self._tree_context_menu.add_command(label="Kunci/Buka", command=self.toggle_lock)
+        self._tree_context_menu.add_command(
+            label=tr("tree.lock"),
+            command=self.toggle_lock,
+        )
 
     def refresh_library(self) -> None:
         if not hasattr(self, "library_list"):
@@ -230,7 +263,7 @@ class CompactAssetEditorWorkspaceView(ProfessionalObjectTreeEditorWorkspaceView)
         pack_display = self.library_pack_value.get()
         pack_id = self._library_pack_lookup.get(pack_display)
         category_display = self.library_category_value.get()
-        category = None if category_display == _ALL_CATEGORIES else category_display
+        category = self._category_display_to_id.get(category_display)
         try:
             records = self.asset_library.search(
                 self.library_query_value.get(),
@@ -253,52 +286,62 @@ class CompactAssetEditorWorkspaceView(ProfessionalObjectTreeEditorWorkspaceView)
                 tk.END,
                 iid=iid,
                 text=record.name,
-                values=(record.category, pack_names.get(record.pack_id, record.pack_id)),
+                values=(
+                    category_label(record.category),
+                    pack_names.get(record.pack_id, record.pack_id),
+                ),
             )
         total = self.asset_library.asset_count
         suffix = "+" if len(records) == _MAX_VISIBLE_RESULTS and total > len(records) else ""
         self.library_summary_value.set(
-            f"{len(records)}{suffix} tampil · {total} asset · {len(self.asset_library.packs)} paket"
+            tr(
+                "library.summary",
+                shown=len(records),
+                suffix=suffix,
+                total=total,
+                packs=len(self.asset_library.packs),
+            )
         )
         self._refresh_pack_combo()
 
     def _refresh_pack_combo(self) -> None:
         current = self.library_pack_value.get()
-        self._library_pack_lookup = {pack.name: pack.pack_id for pack in self.asset_library.packs}
-        values = (_ALL_PACKS, *self._library_pack_lookup)
+        self._library_pack_lookup = {
+            pack.name: pack.pack_id for pack in self.asset_library.packs
+        }
+        values = (self._all_packs_label, *self._library_pack_lookup)
         self.library_pack_combo.configure(values=values)
         if current not in values:
-            self.library_pack_value.set(_ALL_PACKS)
+            self.library_pack_value.set(self._all_packs_label)
 
     def reload_asset_library(self) -> None:
         self.asset_library.refresh()
         self.refresh_library()
         self.set_status(
-            f"Pustaka dimuat ulang: {self.asset_library.asset_count} asset tersedia."
+            tr("library.reloaded", count=self.asset_library.asset_count)
         )
 
     def install_asset_pack_dialog(self) -> None:
         selected = filedialog.askopenfilename(
             parent=self.winfo_toplevel(),
-            title="Install BatikCraft Asset Pack",
+            title=tr("library.install_title"),
             filetypes=(("BatikCraft asset pack", f"*{ASSET_PACK_EXTENSION}"),),
         )
         if not selected:
             return
-        replace = False
         try:
             pack = self.asset_library.install_pack(selected)
         except AssetLibraryError as exc:
             if "sudah terpasang" not in str(exc):
                 messagebox.showerror(
-                    "Install asset pack gagal",
+                    tr("library.install_error"),
                     str(exc),
                     parent=self.winfo_toplevel(),
                 )
                 return
             replace = messagebox.askyesno(
-                "Ganti asset pack",
-                f"{exc}\n\nGanti paket yang sudah terpasang?",
+                tr("library.replace_title"),
+                tr("library.replace_question", error=exc),
                 parent=self.winfo_toplevel(),
             )
             if not replace:
@@ -307,25 +350,27 @@ class CompactAssetEditorWorkspaceView(ProfessionalObjectTreeEditorWorkspaceView)
                 pack = self.asset_library.install_pack(selected, replace=True)
             except AssetLibraryError as replace_exc:
                 messagebox.showerror(
-                    "Install asset pack gagal",
+                    tr("library.install_error"),
                     str(replace_exc),
                     parent=self.winfo_toplevel(),
                 )
                 return
         self.refresh_library()
         self.library_pack_value.set(pack.name)
-        self.set_status(f"Asset pack terpasang: {pack.name} ({len(pack.assets)} asset).")
+        self.set_status(
+            tr("library.installed", name=pack.name, count=len(pack.assets))
+        )
 
     def uninstall_selected_pack(self) -> None:
         display = self.library_pack_value.get()
         pack_id = self._library_pack_lookup.get(display)
         if pack_id is None:
-            self.set_status("Pilih satu asset pack pada filter sebelum menghapusnya.")
+            self.set_status(tr("library.select_pack_first"))
             return
         pack = self.asset_library.get_pack(pack_id)
         if not messagebox.askyesno(
-            "Hapus asset pack",
-            f"Hapus '{pack.name}' beserta {len(pack.assets)} asset dari pustaka lokal?",
+            tr("library.remove_title"),
+            tr("library.remove_question", name=pack.name, count=len(pack.assets)),
             parent=self.winfo_toplevel(),
         ):
             return
@@ -333,30 +378,33 @@ class CompactAssetEditorWorkspaceView(ProfessionalObjectTreeEditorWorkspaceView)
             self.asset_library.uninstall_pack(pack_id)
         except AssetLibraryError as exc:
             messagebox.showerror(
-                "Hapus asset pack gagal",
+                tr("library.remove_error"),
                 str(exc),
                 parent=self.winfo_toplevel(),
             )
             return
-        self.library_pack_value.set(_ALL_PACKS)
+        self.library_pack_value.set(self._all_packs_label)
         self.refresh_library()
-        self.set_status(f"Asset pack dihapus: {pack.name}.")
+        self.set_status(tr("library.removed", name=pack.name))
 
     def add_selected_library_asset(self) -> None:
         if not self.session.has_project:
-            self.set_status("Buat atau buka proyek sebelum menambahkan asset.")
+            self.set_status(tr("library.project_required"))
             return
         selection = self.library_list.selection()
         if not selection:
-            self.set_status("Pilih asset pada Pustaka Asset terlebih dahulu.")
+            self.set_status(tr("library.select_asset_first"))
             return
         record = self._library_records.get(selection[0])
         if record is None:
-            self.set_status("Asset terpilih tidak lagi tersedia; muat ulang pustaka.")
+            self.set_status(tr("library.asset_missing"))
             return
         try:
             content = self.asset_library.read_asset(record)
-            target = self._target_layer_for_object("assets", "Pustaka Aset")
+            target = self._target_layer_for_object(
+                "assets",
+                tr("library.target_layer"),
+            )
             item = self._object_session.import_batik_asset(
                 Path(record.relative_path).name,
                 content,
@@ -365,13 +413,13 @@ class CompactAssetEditorWorkspaceView(ProfessionalObjectTreeEditorWorkspaceView)
             )
         except (AssetLibraryError, ProjectSessionError, BatikAssetError, OSError) as exc:
             messagebox.showerror(
-                "Tambah asset gagal",
+                tr("library.add_error"),
                 str(exc),
                 parent=self.winfo_toplevel(),
             )
             return
         self.refresh_context()
-        self.set_status(f"Asset ditambahkan sebagai objek: {item.name}.")
+        self.set_status(tr("library.added", name=item.name))
 
     def _on_library_select(self, _event: tk.Event[ttk.Treeview]) -> None:
         selection = self.library_list.selection()
@@ -384,12 +432,12 @@ class CompactAssetEditorWorkspaceView(ProfessionalObjectTreeEditorWorkspaceView)
         dimensions = (
             f"{record.width}×{record.height}px"
             if record.width and record.height
-            else "ukuran dari file"
+            else tr("common.file_size")
         )
-        tags = ", ".join(record.tags[:5]) or "tanpa tag"
+        tags = ", ".join(record.tags[:5]) or tr("common.no_tags")
         self.library_asset_name_value.set(record.name)
         self.library_asset_meta_value.set(
-            f"{record.category} · {dimensions}\n{pack.name}\n{tags}"
+            f"{category_label(record.category)} · {dimensions}\n{pack.name}\n{tags}"
         )
         self._show_library_preview(record)
 
@@ -417,11 +465,14 @@ class CompactAssetEditorWorkspaceView(ProfessionalObjectTreeEditorWorkspaceView)
             ValueError,
         ):
             self._library_preview_photo = None
-            self.library_preview_label.configure(image="", text="Preview\ntidak tersedia")
+            self.library_preview_label.configure(
+                image="",
+                text=tr("library.preview_unavailable"),
+            )
 
     def focus_asset_library(self) -> None:
         self.library_list.focus_set()
-        self.set_status("Pustaka Asset aktif.")
+        self.set_status(tr("library.focused"))
 
     def open_brush_settings(self) -> None:
         self.tool_windows.open_brush("brush")
@@ -457,19 +508,27 @@ class CompactAssetEditorWorkspaceView(ProfessionalObjectTreeEditorWorkspaceView)
         self._new_paint_layer_in_tree()
 
     def _bind_compact_shortcuts(self) -> None:
-        bindings = (
-            ("<Key-v>", lambda _event: self.activate_select_tool()),
-            ("<Key-b>", lambda _event: self.open_brush_settings()),
-            ("<Key-e>", lambda _event: self.open_eraser_settings()),
-            ("<Key-l>", lambda _event: self.open_shape_settings("line")),
-            ("<Key-r>", lambda _event: self.open_shape_settings("rectangle")),
-            ("<Key-o>", lambda _event: self.open_shape_settings("ellipse")),
-            ("<Key-p>", lambda _event: self.open_shape_settings("polygon")),
-            ("<Key-m>", lambda _event: self.open_motif_settings()),
-            ("<Key-c>", lambda _event: self.open_isen_settings()),
+        bindings: tuple[tuple[str, Callable[[], object]], ...] = (
+            ("<Key-v>", self.activate_select_tool),
+            ("<Key-b>", self.open_brush_settings),
+            ("<Key-e>", self.open_eraser_settings),
+            ("<Key-l>", lambda: self.open_shape_settings("line")),
+            ("<Key-r>", lambda: self.open_shape_settings("rectangle")),
+            ("<Key-o>", lambda: self.open_shape_settings("ellipse")),
+            ("<Key-p>", lambda: self.open_shape_settings("polygon")),
+            ("<Key-m>", self.open_motif_settings),
+            ("<Key-c>", self.open_isen_settings),
         )
         for sequence, command in bindings:
-            self.bind_all(sequence, command)
+            self.bind_all(
+                sequence,
+                lambda event, action=command: run_single_key_shortcut(event, action),
+            )
+
+    def destroy(self) -> None:
+        if hasattr(self, "tool_windows"):
+            self.tool_windows.close_all()
+        super().destroy()
 
 
 __all__ = ["CompactAssetEditorWorkspaceView"]
