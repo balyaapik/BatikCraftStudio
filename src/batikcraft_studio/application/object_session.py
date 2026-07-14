@@ -126,7 +126,7 @@ class ObjectProjectSession(MotifProjectSession):
     ) -> LayerObject:
         raster = normalize_raster_image(content)
         project = self.require_project()
-        target = self._resolve_object_layer(target_layer_id, name="Aset Motif")
+        target, add_target = self._resolve_object_layer(target_layer_id, name="Aset Motif")
         asset_ref = f"assets/{uuid4()}.png"
         scale = min(
             1.0,
@@ -155,6 +155,8 @@ class ObjectProjectSession(MotifProjectSession):
         )
 
         def mutation() -> None:
+            if add_target:
+                project.add_layer(target)
             self._assets[asset_ref] = raster.content
             project.add_object(target.layer_id, item, select=True)
 
@@ -178,7 +180,7 @@ class ObjectProjectSession(MotifProjectSession):
         except BatikAssetError as exc:
             raise ProjectSessionError(str(exc)) from exc
         project = self.require_project()
-        target = self._resolve_object_layer(target_layer_id, name="Pustaka Aset")
+        target, add_target = self._resolve_object_layer(target_layer_id, name="Pustaka Aset")
         source_ref = f"assets/{uuid4()}.png"
         scale = min(
             1.0,
@@ -212,6 +214,8 @@ class ObjectProjectSession(MotifProjectSession):
         )
 
         def mutation() -> None:
+            if add_target:
+                project.add_layer(target)
             self._assets[source_ref] = asset.content
             project.add_object(target.layer_id, item, select=True)
 
@@ -481,18 +485,50 @@ class ObjectProjectSession(MotifProjectSession):
             raise ProjectSessionError("Pemindahan objek tidak menghasilkan perubahan.")
         return moved
 
-    def _resolve_object_layer(self, layer_id: str | None, *, name: str) -> Layer:
+    def _resolve_object_layer(self, layer_id: str | None, *, name: str) -> tuple[Layer, bool]:
+        """Resolve an object-insertion target, respecting the active layer selection.
+
+        Returns a ``(layer, needs_add)`` pair.  When *needs_add* is ``True`` the
+        caller must call ``project.add_layer(layer)`` inside its ``_commit_mutation``
+        block so that layer creation and object insertion share one undo/redo entry.
+
+        This override of ``ShapeProjectSession._resolve_object_layer`` provides a
+        richer implementation that also handles folders and uses
+        ``create_object_layer`` for a proper ``BATIKIFIED_OBJECT`` container.
+
+        1. Explicit *layer_id* → validate and use.
+        2. Active layer → use if valid and unlocked; reject if locked.
+        3. No active layer → create a new one (``needs_add=False``, already committed).
+        """
         project = self.require_project()
-        candidate_id = layer_id or project.active_layer_id
-        if candidate_id is not None:
-            candidate = project.get_layer(candidate_id)
+
+        if layer_id is not None:
+            candidate = project.get_layer(layer_id)
+            if candidate.node_kind is not LayerNodeKind.LAYER or candidate.asset_ref is not None:
+                raise LayerLockedError(
+                    "The selected target is not a valid object layer."
+                )
+            if project.is_layer_effectively_locked(candidate.layer_id):
+                raise LayerLockedError(
+                    f"Layer {candidate.name!r} is locked and cannot receive new objects."
+                )
+            return candidate, False
+
+        active_id = project.active_layer_id
+        if active_id is not None:
+            active = project.get_layer(active_id)
             if (
-                candidate.node_kind is LayerNodeKind.LAYER
-                and candidate.asset_ref is None
-                and not project.is_layer_effectively_locked(candidate.layer_id)
+                active.node_kind is LayerNodeKind.LAYER
+                and active.asset_ref is None
             ):
-                return candidate
-        return self.create_object_layer(name)
+                if project.is_layer_effectively_locked(active.layer_id):
+                    raise LayerLockedError(
+                        f"Layer {active.name!r} is locked and cannot receive new objects. "
+                        "Unlock the layer or select a different layer."
+                    )
+                return active, False
+
+        return self.create_object_layer(name), False
 
     def _require_unlocked_layer(self, layer_id: str) -> Layer:
         project = self.require_project()

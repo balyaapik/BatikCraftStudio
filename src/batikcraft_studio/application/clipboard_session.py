@@ -142,46 +142,84 @@ class ClipboardProjectSession(InteractiveTransformProjectSession):
         *,
         source_layer_id: str,
     ) -> tuple[Layer, bool]:
-        project = self.require_project()
-        candidate_ids: list[str] = []
-        if target_layer_id is not None:
-            candidate_ids.append(target_layer_id)
-        if project.active_object_id is not None:
-            candidate_ids.append(project.object_layer_id(project.active_object_id))
-        if project.active_layer_id is not None:
-            candidate_ids.append(project.active_layer_id)
-        if any(layer.layer_id == source_layer_id for layer in project.layers):
-            candidate_ids.append(source_layer_id)
+        """Resolve the paste destination using the active layer as the primary target.
 
-        parent_id: str | None = None
-        seen: set[str] = set()
-        for layer_id in candidate_ids:
-            if layer_id in seen:
-                continue
-            seen.add(layer_id)
-            layer = project.get_layer(layer_id)
-            if layer.node_kind is LayerNodeKind.GROUP:
-                parent_id = layer.layer_id
-                continue
-            if project.is_layer_effectively_locked(layer.layer_id):
-                if target_layer_id == layer.layer_id:
-                    raise LayerLockedError(f"Lapis {layer.name!r} sedang dikunci.")
-                parent_id = layer.parent_id
-                continue
-            if layer.asset_ref is None:
-                return layer, False
-            parent_id = layer.parent_id
+        Resolution order
+        ----------------
+        1. Explicit *target_layer_id* → validate and use directly.
+        2. Active layer (``project.active_layer_id``) if it is an unlocked container.
+        3. The layer that owns the active object (fallback for object selection).
+        4. The original source layer (if still valid and unlocked).
+        5. Create a new paste layer as a last resort.
+
+        Locked active layers are rejected with a clear error; they are never silently
+        bypassed.
+        """
+        project = self.require_project()
+
+        # ---- Explicit caller-supplied target ----
+        if target_layer_id is not None:
+            target = project.get_layer(target_layer_id)
+            if target.node_kind is LayerNodeKind.GROUP:
+                raise LayerLockedError(
+                    "Paste target must be an editable layer, not a folder."
+                )
+            if project.is_layer_effectively_locked(target.layer_id):
+                raise LayerLockedError(f"Lapis {target.name!r} sedang dikunci.")
+            if target.asset_ref is None:
+                return target, False
+
+        # ---- Active layer (current tree selection) ----
+        if project.active_layer_id is not None:
+            active = project.get_layer(project.active_layer_id)
+            if active.node_kind is LayerNodeKind.LAYER and active.asset_ref is None:
+                if project.is_layer_effectively_locked(active.layer_id):
+                    raise LayerLockedError(
+                        f"Layer {active.name!r} is locked and cannot receive pasted objects. "
+                        "Unlock the layer or select a different layer."
+                    )
+                return active, False
+            if active.node_kind is LayerNodeKind.GROUP:
+                # Folder selected; find last child or create a new one.
+                children = project.children_of(active.layer_id)
+                for child in reversed(children):
+                    if (
+                        child.node_kind is LayerNodeKind.LAYER
+                        and child.asset_ref is None
+                        and not project.is_layer_effectively_locked(child.layer_id)
+                    ):
+                        return child, False
+                return (
+                    Layer(
+                        name="Objek Tempel",
+                        kind=LayerKind.BATIKIFIED_OBJECT,
+                        node_kind=LayerNodeKind.LAYER,
+                        parent_id=active.layer_id,
+                        properties={"object_container": True, "object_role": "clipboard"},
+                    ),
+                    True,
+                )
+
+        # ---- Active object's layer (fallback) ----
+        if project.active_object_id is not None:
+            obj_layer_id = project.object_layer_id(project.active_object_id)
+            obj_layer = project.get_layer(obj_layer_id)
+            if obj_layer.asset_ref is None and not project.is_layer_effectively_locked(obj_layer_id):
+                return obj_layer, False
+
+        # ---- Source layer (last resort before creating) ----
+        if any(layer.layer_id == source_layer_id for layer in project.layers):
+            src = project.get_layer(source_layer_id)
+            if src.node_kind is LayerNodeKind.LAYER and src.asset_ref is None:
+                if not project.is_layer_effectively_locked(src.layer_id):
+                    return src, False
 
         return (
             Layer(
                 name="Objek Tempel",
                 kind=LayerKind.BATIKIFIED_OBJECT,
                 node_kind=LayerNodeKind.LAYER,
-                parent_id=parent_id,
-                properties={
-                    "object_container": True,
-                    "object_role": "clipboard",
-                },
+                properties={"object_container": True, "object_role": "clipboard"},
             ),
             True,
         )

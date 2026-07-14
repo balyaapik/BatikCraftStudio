@@ -109,17 +109,20 @@ def test_ensure_active_paint_layer_reuses_editable_aligned_layer() -> None:
     assert len(project.layers) == 1
 
 
-def test_ensure_active_paint_layer_creates_new_layer_when_active_is_locked() -> None:
+def test_ensure_active_paint_layer_raises_when_active_is_locked() -> None:
+    """Locked active paint layer must raise LayerLockedError, not silently create a new layer.
+
+    Before the active-layer routing fix this test expected a *new* layer to be
+    created — that silent-redirect behaviour was the root of the routing bug.
+    The corrected behaviour is to raise so the user gets a clear error.
+    """
     session = PaintProjectSession()
-    project = session.new_project(title="Paint", creator="Creator", width=32, height=32)
+    session.new_project(title="Paint", creator="Creator", width=32, height=32)
     locked = session.create_paint_layer()
     session.set_layer_locked(locked.layer_id, True)
 
-    returned = session.ensure_active_paint_layer()
-
-    assert returned.layer_id != locked.layer_id
-    assert returned.kind is LayerKind.PAINT
-    assert len(project.layers) == 2
+    with pytest.raises(LayerLockedError):
+        session.ensure_active_paint_layer()
 
 
 def test_paint_stroke_rejects_locked_layer() -> None:
