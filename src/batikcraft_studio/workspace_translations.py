@@ -39,6 +39,11 @@ _TRANSLATIONS = {
         "palette.secondary_set": "Warna sekunder diubah menjadi {color}.",
         "palette.swapped": "Warna utama dan sekunder ditukar.",
         "palette.reset": "Warna utama dan sekunder dikembalikan ke palet batik awal.",
+        "gizmo.shear_x": "Shear X",
+        "gizmo.shear_y": "Shear Y",
+        "gizmo.invalid_title": "Transformasi objek tidak valid",
+        "gizmo.cancelled": "Transformasi canvas dibatalkan.",
+        "gizmo.dialog_note": "Transformasi juga dapat dilakukan langsung di canvas: kotak untuk resize, lingkaran untuk rotasi, dan wajik untuk shear.",
     },
     "en": {
         "dock.tools": "Batik Tools",
@@ -74,6 +79,11 @@ _TRANSLATIONS = {
         "palette.secondary_set": "Secondary color changed to {color}.",
         "palette.swapped": "Primary and secondary colors swapped.",
         "palette.reset": "Primary and secondary colors reset to the initial Batik palette.",
+        "gizmo.shear_x": "Shear X",
+        "gizmo.shear_y": "Shear Y",
+        "gizmo.invalid_title": "Invalid object transform",
+        "gizmo.cancelled": "Canvas transform cancelled.",
+        "gizmo.dialog_note": "You can also transform directly on the canvas: squares resize, the circle rotates, and diamonds shear.",
     },
 }
 
