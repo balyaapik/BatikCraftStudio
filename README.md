@@ -1,47 +1,58 @@
 # BatikCraft Studio
 
 BatikCraft Studio adalah aplikasi desktop native berbasis Python dan Tkinter untuk
-membuat motif batik secara manual, melakukan batikfikasi objek, mengintegrasikan
-AI generatif, serta menyiapkan motif untuk lisensi dan bidding melalui website
-BatikCraft.
+merakit, menggambar, dan menyunting motif batik dari pustaka asset offline yang dapat
+dikembangkan dari dataset Kaggle.
 
-> Status: Milestone 3E — Object Tree, Pustaka Asset, dan Humanize. Pengembangan
-> dilakukan bertahap agar setiap modul dapat diuji dan disempurnakan tanpa merusak
-> workflow yang sudah stabil.
+> Status: Milestone 3F — Pustaka Asset dan UI Ringkas.
 
 ## Fokus Produk
 
 Aplikasi desktop menangani proses penciptaan motif:
 
-- menggambar dan menyunting motif secara manual;
-- mengelola folder, sublapis, dan banyak objek dalam satu lapis;
-- memasukkan objek dari foto, ilustrasi, PNG transparan, atau `.batikasset`;
-- membentuk Motif Pokok dan Isen-Isen;
-- membuat seamless/repeating pattern;
+- memasang pustaka Motif Pokok, Isen-Isen, ornamen, tekstur, dan asset custom;
+- mencari serta menggabungkan banyak asset menjadi komposisi baru;
+- mengelola Folder, Subfolder, Sublapis, dan banyak objek dalam satu lapis;
+- mengubah posisi, ukuran, rotasi, opacity, susunan, metadata, dan humanize;
+- menggambar dengan Brush, Eraser, Shape, Cap Motif, dan Cap Isen bila diperlukan;
 - menyimpan proyek editable;
-- menyiapkan aset final untuk publikasi dan lisensi.
+- menyiapkan asset final untuk pattern, AI, publikasi, dan lisensi.
 
 Bidding, transaksi, dan pengelolaan lisensi dilakukan di website BatikCraft.
 
+## Layout Editor
+
+Editor utama hanya memiliki tiga area permanen:
+
+```text
+Pustaka Asset | Canvas | Susunan Lapis
+```
+
+Pengaturan menggambar tidak lagi memenuhi dock dengan tab. Menu **Draw**, **Edit**, dan
+**Asset** membuka jendela kecil yang hanya tampil ketika diperlukan.
+
 ## Fitur yang Sudah Berfungsi
 
-- shell Tkinter native dengan toolbar ikon offline;
+- shell Tkinter native dengan toolbar ikon offline dan menu bar;
 - format proyek `.batikcraft` berbasis ZIP dengan validasi integritas;
-- New, Open, Save, Save As, Close, dan dirty-project confirmation;
+- format asset portable `.batikasset`;
+- format pustaka `.batikpack` dengan manifest, tags, kategori, thumbnail, dan version;
+- install/replace/uninstall pack secara atomik;
+- pencarian serta filter asset berdasarkan nama, ID, tag, kategori, dan pack;
+- preview asset dan double-click untuk menempatkan asset pada canvas;
+- asset library global per-user, sehingga ribuan asset tidak disalin ke setiap proyek;
 - renderer Pillow untuk raster, shape, paint object, motif, dan isen;
-- folder, subfolder, sublapis, dan object tree;
+- Folder, Subfolder, Sublapis, dan object tree;
 - banyak objek dalam satu layer;
 - selection dan transform per objek;
 - visibility, lock, ordering, duplicate, delete, dan Undo/Redo;
-- brush dan eraser sebagai objek cropped, bukan raster seluas kanvas;
-- brush opacity, hardness, smoothing, preset ukuran, dan circular cursor;
-- line, rectangle, ellipse, dan polygon non-destruktif;
-- Motif Pokok Kawung, Truntum, Ceplok, dan Lereng;
+- Brush dan Eraser sebagai objek cropped, bukan raster seluas kanvas;
+- Brush opacity, hardness, smoothing, preset ukuran, dan circular cursor;
+- Line, Rectangle, Ellipse, dan Polygon non-destruktif;
+- Motif Pokok Kawung, Truntum, Ceplok, dan Lereng sebagai fallback procedural;
 - Cecek, Cecek Telu, Sawut, Cecek Sawut, Ukel, Galaran, Sisik, dan Cacah Gori;
-- pengisian isen otomatis;
-- susun Tunggal, Cermin, Putar 4, dan Putar 8;
-- import/export `.batikasset`;
-- humanize non-destruktif dengan seed, wobble tepi, celah malam, dan variasi tekanan;
+- pengisian isen otomatis dan pola susun Cermin/Putar;
+- Humanize non-destruktif dengan seed, wobble tepi, celah malam, dan variasi tekanan;
 - migrasi baca project schema `1.0` ke schema `1.1`;
 - CI menggunakan Ruff dan Pytest.
 
@@ -51,56 +62,71 @@ Bidding, transaksi, dan pengelolaan lisensi dilakukan di website BatikCraft.
 Folder
 ├── Subfolder
 │   └── Sublapis
-│       ├── Objek 1
-│       ├── Objek 2
-│       └── Objek 3
+│       ├── Objek Asset 1
+│       ├── Objek Asset 2
+│       └── Objek Asset 3
 └── Lapis Canting
     ├── Gores Canting 1
     ├── Gores Canting 2
     └── Hapus 3
 ```
 
-Folder mengatur susunan. Sublapis menampung objek. Objek adalah unit selection terkecil.
-Satu susunan Cap Motif dapat menghasilkan beberapa objek dalam satu sublapis dan tetap
-menjadi satu langkah Undo.
+Folder mengatur susunan. Sublapis menampung banyak objek. Objek adalah unit selection
+terkecil. Asset dari pustaka baru disalin ke proyek ketika benar-benar ditempatkan pada
+canvas.
+
+## Asset Pack
+
+Paket asset memakai ekstensi:
+
+```text
+.batikpack
+```
+
+Struktur dasarnya:
+
+```text
+manifest.json
+assets/
+  asset-001.batikasset
+thumbnails/
+  asset-001.png
+```
+
+Kategori yang didukung:
+
+- `motif-pokok`;
+- `isen-isen`;
+- `ornamen`;
+- `tekstur`;
+- `lainnya`.
+
+Windows menyimpan pack terpasang di:
+
+```text
+%LOCALAPPDATA%\BatikCraftStudio\asset-library
+```
+
+Panduan format lengkap tersedia di `docs/MILESTONE_3F_ASSET_LIBRARY.md`.
 
 ## Roadmap
 
 ### Milestone 1 — Application Foundation ✅
 
-- package Python;
-- shell Tkinter;
-- tema, menu, status bar, shortcut, dokumentasi, dan CI.
+- package Python, shell Tkinter, tema, menu, status bar, shortcut, dokumentasi, dan CI.
 
 ### Milestone 2 — Project and Workspace Core ✅
 
-#### 2A — Project Domain
+- project domain;
+- serializer `.batikcraft`;
+- atomic save dan integrity validation;
+- raster object editing dan Undo/Redo.
 
-- metadata, canvas, layer, transform, revision, dan dirty state.
-
-#### 2B — Project Serializer
-
-- archive `.batikcraft`;
-- manifest versioned;
-- SHA-256, size verification, atomic save, dan path security.
-
-#### 2C — Workspace Shell
-
-- ProjectSession;
-- New/Open/Save/Save As/Close/Exit;
-- Save–Discard–Cancel.
-
-#### 2D — Raster Layer Editing
-
-- import PNG/JPEG;
-- selection, move, scale, rotation, opacity;
-- layer ordering, visibility, lock, duplicate, delete, Undo/Redo.
-
-### Milestone 3 — Manual Motif Tools
+### Milestone 3 — Manual and Asset-Based Motif Tools
 
 #### 3A — Basic Paint Layer ✅
 
-- brush, eraser, color picker, dan satu completed stroke per history entry.
+- Brush, Eraser, color picker, dan satu completed stroke per history entry.
 
 #### 3B — Brush Refinement ✅
 
@@ -108,69 +134,70 @@ menjadi satu langkah Undo.
 
 #### 3C — Shape and Line Tools ✅
 
-- line, rectangle, ellipse, polygon, fill, stroke, dan modifier keyboard.
+- Line, Rectangle, Ellipse, Polygon, fill, stroke, dan modifier keyboard.
 
 #### 3D — Cap Isen dan Pola Susun ✅
 
-- isen procedural;
-- palet batik;
-- cermin dan putar;
-- preview susun.
+- isen procedural, palet batik, cermin, putar, dan preview susun.
 
 #### Patch 3D.1 — Motif Pokok dan Isen Otomatis ✅
 
-- Motif Pokok Kawung, Truntum, Ceplok, dan Lereng;
-- Isen-Isen berulang;
-- pengisian isen otomatis.
+- Kawung, Truntum, Ceplok, Lereng, dan pengisian isen otomatis.
 
-#### Milestone 3E — Object Tree, Asset, dan Humanize ✅
+#### 3E — Object Tree, Asset, dan Humanize ✅
 
-- folder, subfolder, dan sublapis;
-- banyak objek dalam satu lapis;
+- Folder/Sublapis/Objek;
 - selection mengikuti bounds objek;
-- stroke kuas/penghapus sebagai cropped object;
-- Cap Motif dan Cap Isen sebagai object arrangement;
-- portable `.batikasset`;
-- metadata asset editable;
-- humanize non-destruktif dan reset;
-- schema proyek `1.1` dengan migrasi `1.0`.
+- `.batikasset`;
+- metadata asset dan Humanize non-destruktif.
+
+#### 3F — Pustaka Asset dan UI Ringkas ✅
+
+- `.batikpack`;
+- install, replace, uninstall, search, filter, dan preview;
+- Pustaka Asset permanen;
+- layout Asset Library → Canvas → Susunan Lapis;
+- tool settings melalui jendela kecil dari menu bar;
+- rail workspace dan dock tab menggambar dihapus dari workflow utama.
+
+#### 3G — Kaggle Asset Pack Builder
+
+- scan dataset;
+- segmentasi/crop kandidat komponen batik;
+- pembersihan alpha;
+- klasifikasi dan tagging;
+- review/curation queue;
+- export `.batikasset`, thumbnail, manifest, dan `.batikpack`.
 
 #### Tahap Manual Berikutnya
 
-- group transform untuk seluruh isi folder;
+- group transform;
 - vector path dan node editing;
 - pressure curve per titik stroke;
-- cap kustom dari selection;
 - simetri canting real-time;
-- recolor region pada asset.
+- recolor region asset.
 
 ### Milestone 4 — Object Batikfication MVP
 
-- import objek dan background removal;
-- koreksi mask;
-- pilihan gaya batik;
+- background removal dan mask correction;
+- pilihan gaya Batik;
 - Outline, Fill, dan Generative;
 - hasil masuk sebagai objek editable.
 
 ### Milestone 5 — Pattern Engine
 
 - straight, mirror, half-drop, half-brick, dan rotational repeat;
-- live seamless preview;
-- export tile dan repeat preview.
+- seamless preview dan export tile.
 
 ### Milestone 6 — AI Integration
 
-- checkpoint loader;
+- model/checkpoint loader;
 - image, mask, edge, style, palette, dan seed conditioning;
-- worker thread, progress, cancellation, dan recovery;
-- hasil AI dapat diedit kembali.
+- worker thread, progress, cancellation, dan recovery.
 
 ### Milestone 7 — Licensing and Website Bridge
 
-- design version dan hash;
-- konfigurasi lisensi;
-- preview watermark;
-- publish manifest dan upload ke website.
+- design version, hash, lisensi, watermark, publish manifest, dan upload.
 
 ## Menjalankan Aplikasi
 
@@ -201,18 +228,16 @@ python -m batikcraft_studio
 ## Workflow Editor
 
 1. Buat atau buka proyek.
-2. Buat Folder atau Sublapis melalui ikon New atau klik kanan tree.
-3. Import PNG/JPEG/`.batikasset` ke sublapis terpilih.
-4. Gunakan `M` untuk Cap Motif dan `C` untuk Cap Isen.
-5. Gunakan `B` untuk brush, `E` untuk eraser, dan `V` untuk selection.
-6. Pilih objek melalui canvas atau tree.
-7. Atur transform, opacity, visibility, lock, dan ordering objek.
-8. Gunakan tab **Asset** untuk nama, kategori, import/export, humanize, dan reset.
-9. Gunakan `Ctrl+Z` dan `Ctrl+Y` untuk Undo/Redo.
-10. Simpan sebagai `.batikcraft`.
-
-Panduan lengkap persiapan asset dan parameter humanize tersedia di
-`docs/MILESTONE_3E_OBJECT_TREE_ASSETS.md`.
+2. Install `.batikpack` melalui **Asset → Install Asset Pack…**.
+3. Cari/filter asset di panel kiri.
+4. Pilih Sublapis tujuan pada panel kanan.
+5. Double-click asset untuk memasukkannya ke canvas.
+6. Pilih dan susun objek melalui canvas atau tree.
+7. Buka **Edit → Transform…** untuk transform numerik.
+8. Buka **Asset → Edit Asset Metadata…** atau **Humanize…** bila diperlukan.
+9. Buka **Draw** hanya ketika perlu Brush, Eraser, Shape, Motif, atau Isen.
+10. Gunakan `Ctrl+Z` dan `Ctrl+Y` untuk Undo/Redo.
+11. Simpan sebagai `.batikcraft`.
 
 ## Validasi
 
@@ -224,24 +249,19 @@ pytest
 ## Prinsip Pengembangan
 
 - setiap milestone dibuat melalui branch dan pull request;
-- UI, application, domain, persistence, imaging, dan integration dipisahkan;
+- UI, application, domain, persistence, imaging, asset library, dan integration dipisahkan;
 - domain dan persistence tidak mengimpor Tkinter;
-- domain tidak menyimpan image bytes atau widget state;
 - sumber asset asli dipertahankan untuk operasi non-destruktif;
-- AI tidak boleh membekukan Tkinter main thread;
-- fitur non-AI tetap berfungsi tanpa model.
+- library besar diindeks dari manifest, bukan membuka seluruh PNG saat startup;
+- fitur non-AI tetap berfungsi tanpa model;
+- AI tidak boleh membekukan Tkinter main thread.
 
 ## Dokumentasi
 
 - `docs/ARCHITECTURE.md` — batas modul dan arah dependensi;
 - `docs/PROJECT_DOMAIN.md` — invariant project domain;
 - `docs/PROJECT_FORMAT.md` — format archive dan keamanan;
-- `docs/LAYER_EDITOR.md` — raster layer editor;
-- `docs/MILESTONE_3A_PAINT_LAYER.md` — basic paint layer;
-- `docs/MILESTONE_3B_BRUSH_REFINEMENT.md` — refined brush;
-- `docs/MILESTONE_3C_SHAPE_TOOLS.md` — shape tools;
-- `docs/MILESTONE_3D_CAP_ISEN.md` — Cap Isen dan pola susun;
-- `docs/MILESTONE_3D1_MOTIF_POKOK.md` — Motif Pokok dan isen otomatis;
-- `docs/MILESTONE_3E_OBJECT_TREE_ASSETS.md` — object tree, asset, dan humanize;
+- `docs/MILESTONE_3E_OBJECT_TREE_ASSETS.md` — object tree dan Humanize;
+- `docs/MILESTONE_3F_ASSET_LIBRARY.md` — pack management dan UI ringkas;
 - `docs/BOB_PROMPTS.md` — prompt bertahap;
 - `docs/BOB_DEVELOPMENT_LOG.md` — development log.
