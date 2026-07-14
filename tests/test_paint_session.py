@@ -35,7 +35,7 @@ def test_create_paint_layer_adds_full_canvas_transparent_asset() -> None:
     assert _alpha_extrema(session.assets[layer.asset_ref]) == (0, 0)
 
 
-def test_one_paint_stroke_is_one_undoable_history_entry() -> None:
+def test_one_refined_paint_stroke_is_one_undoable_history_entry() -> None:
     session = PaintProjectSession()
     project = session.new_project(title="Paint", creator="Creator", width=64, height=64)
     layer = session.create_paint_layer()
@@ -45,15 +45,22 @@ def test_one_paint_stroke_is_one_undoable_history_entry() -> None:
 
     updated = session.apply_paint_stroke(
         layer.layer_id,
-        points=((8, 8), (56, 56)),
+        points=((8, 8), (30, 48), (56, 56)),
         brush_size=7,
         color="#AA3300",
+        opacity=0.65,
+        hardness=0.4,
+        smoothing=0.5,
     )
     after = session.assets[layer.asset_ref]
 
     assert after != before
     assert updated.properties["stroke_count"] == 1
     assert updated.properties["last_tool"] == "brush"
+    assert updated.properties["last_brush_size"] == 7.0
+    assert updated.properties["last_brush_opacity"] == 0.65
+    assert updated.properties["last_brush_hardness"] == 0.4
+    assert updated.properties["last_brush_smoothing"] == 0.5
     assert project.revision == before_revision + 1
 
     assert session.undo() is True
@@ -65,6 +72,7 @@ def test_one_paint_stroke_is_one_undoable_history_entry() -> None:
     redone = session.require_project().get_layer(layer.layer_id)
     assert session.assets[layer.asset_ref] == after
     assert redone.properties["stroke_count"] == 1
+    assert redone.properties["last_brush_hardness"] == 0.4
 
 
 def test_eraser_updates_same_asset_and_records_tool() -> None:
@@ -85,11 +93,15 @@ def test_eraser_updates_same_asset_and_records_tool() -> None:
         brush_size=9,
         color="#000000",
         erase=True,
+        opacity=0.5,
+        hardness=0.75,
     )
 
     assert updated.asset_ref == layer.asset_ref
     assert updated.properties["stroke_count"] == 2
     assert updated.properties["last_tool"] == "eraser"
+    assert updated.properties["last_brush_opacity"] == 0.5
+    assert updated.properties["last_brush_hardness"] == 0.75
 
 
 def test_ensure_active_paint_layer_reuses_editable_aligned_layer() -> None:
