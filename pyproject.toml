@@ -20,6 +20,14 @@ dev = [
   "pytest>=8.0",
   "ruff>=0.5"
 ]
+ai = [
+  "torch>=2.4",
+  "diffusers>=0.39,<0.40",
+  "transformers>=4.48,<5",
+  "accelerate>=1.2",
+  "peft>=0.17",
+  "safetensors>=0.4"
+]
 
 [project.scripts]
 batikcraft-studio = "batikcraft_studio.__main__:main"
