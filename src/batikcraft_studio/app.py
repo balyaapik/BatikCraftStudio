@@ -17,6 +17,7 @@ from batikcraft_studio.persistence import PROJECT_EXTENSION, ProjectArchiveError
 
 from .config import APP_NAME, APP_VERSION, DEFAULT_WINDOW_SIZE, MINIMUM_WINDOW_SIZE
 from .ui.dialogs import NewProjectDialog
+from .ui.keyboard import event_targets_text_input
 from .ui.main_window import MainWindow
 from .ui.theme import configure_theme
 
@@ -279,7 +280,7 @@ class BatikCraftApplication:
         for sequence, command in bindings:
             self.root.bind_all(
                 sequence,
-                lambda _event, action=command: self._run_shortcut(action),
+                lambda event, action=command: self._run_shortcut(event, action),
             )
 
     def change_language(self, language: str) -> None:
@@ -428,7 +429,12 @@ class BatikCraftApplication:
         return f"{slug or 'untitled'}{PROJECT_EXTENSION}"
 
     @staticmethod
-    def _run_shortcut(command: Callable[[], object]) -> str:
+    def _run_shortcut(
+        event: tk.Event[tk.Misc],
+        command: Callable[[], object],
+    ) -> str | None:
+        if event_targets_text_input(event):
+            return None
         command()
         return "break"
 
