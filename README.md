@@ -5,7 +5,7 @@ membuat motif batik secara manual, melakukan batikfikasi objek, mengintegrasikan
 generative AI, serta menyiapkan motif untuk proses lisensi dan bidding melalui
 website BatikCraft.
 
-> Status: Milestone 3D — Cap Isen dan pola susun batik. Pengembangan dilakukan
+> Status: Patch 3D.1 — Motif Pokok dan Isen Otomatis. Pengembangan dilakukan
 > bertahap agar setiap modul dapat diuji, diperbaiki, dan disempurnakan menggunakan
 > IBM Bob.
 
@@ -44,11 +44,14 @@ hanya menyiapkan serta menerbitkan aset motif.
 - line, rectangle, ellipse, dan regular polygon non-destruktif;
 - editable fill, stroke, dimensions, stroke width, dan polygon sides;
 - klik kanan Layers dengan submenu **New Layer**;
-- Cap Isen untuk Cecek, Sawut, Ukel, dan Cecek Sawut;
+- Cap Isen berulang: Cecek, Cecek Telu, Sawut, Cecek Sawut, Ukel, Galaran, Sisik,
+  dan Cacah Gori;
+- Motif Pokok: Kawung, Truntum, Ceplok, dan Lereng;
+- pengisian isen otomatis di dalam bidang Motif Pokok;
 - pola susun Tunggal, Cermin kiri–kanan, Cermin atas–bawah, Cermin empat arah,
   Putar 4, dan Putar 8;
 - palet batik Soga, Indigo, Gading, Mengkudu, dan Hitam;
-- shortcut `B`, `E`, `V`, `[`, `]`, `L`, `R`, `O`, `P`, dan `C`;
+- shortcut `B`, `E`, `V`, `[`, `]`, `L`, `R`, `O`, `P`, `C`, dan `M`;
 - CI menggunakan Ruff dan Pytest.
 
 ## Roadmap Bertahap
@@ -122,7 +125,7 @@ hanya menyiapkan serta menerbitkan aset motif.
 
 #### Milestone 3D — Cap Isen dan Pola Susun ✅
 
-- Cap Isen procedural: Cecek, Sawut, Ukel, dan Cecek Sawut;
+- Cap Isen procedural;
 - ukuran cap dan warna isen;
 - palet batik: Soga, Indigo, Gading, Mengkudu, dan Hitam;
 - pola susun Tunggal, Cermin kiri–kanan, Cermin atas–bawah, Cermin empat arah,
@@ -131,6 +134,18 @@ hanya menyiapkan serta menerbitkan aset motif.
 - satu pengecapan sebagai satu langkah undo/redo;
 - satu asset PNG dibagikan oleh seluruh lapis hasil susun;
 - klik kanan **New Layer → Isen-Isen**.
+
+#### Patch 3D.1 — Motif Pokok dan Isen Otomatis ✅
+
+- membedakan Motif Pokok sebagai ornamen utama dan Isen-Isen sebagai detail pengisi;
+- Motif Pokok Kawung, Truntum, Ceplok, dan Lereng;
+- Cecek Telu, Galaran, Sisik, serta Cacah Gori;
+- pola Cecek, Sawut, Cecek Sawut, dan Ukel dibuat sebagai detail berulang;
+- **Isi isen otomatis** aktif secara bawaan;
+- pasangan isen bawaan berbeda untuk setiap Motif Pokok;
+- pengguna dapat mengganti isen atau membuat motif garis tanpa isen;
+- klik kanan **New Layer → Motif Pokok**;
+- shortcut `M` untuk Cap Motif lengkap dan `C` untuk Cap Isen manual.
 
 #### Milestone 3E — Cap Kustom dan Simetri Canting
 
@@ -179,7 +194,7 @@ hanya menyiapkan serta menerbitkan aset motif.
 
 - Python 3.11+
 - Tkinter / ttk
-- Pillow untuk import, raster rendering, paint tools, shape, dan Cap Isen
+- Pillow untuk import, raster rendering, paint tools, shape, Cap Isen, dan Motif Pokok
 - NumPy dan OpenCV untuk milestone pemrosesan citra
 - PyTorch atau ONNX Runtime untuk milestone AI
 - Requests/HTTPX untuk integrasi website
@@ -214,16 +229,17 @@ python -m batikcraft_studio
 ## Workflow Editor
 
 1. Buat atau buka proyek melalui menu **File**.
-2. Import PNG/JPEG melalui `Ctrl+I`, atau pilih Brush dengan `B`.
-3. Gunakan `V` untuk memilih dan memindahkan layer.
-4. Gunakan `B` untuk menggambar dan `E` untuk menghapus.
-5. Gunakan `L`, `R`, `O`, dan `P` untuk membuat shape.
-6. Gunakan `C` untuk mengaktifkan **Cap Isen**.
-7. Pilih Cecek, Sawut, Ukel, atau Cecek Sawut pada tab **Batik**.
-8. Pilih ukuran cap, warna isen, dan pola susun, lalu klik kain.
-9. Klik kanan Layers untuk membuka **New Layer → Isen-Isen**.
-10. Gunakan `Ctrl+Z` dan `Ctrl+Y` untuk undo/redo.
-11. Simpan sebagai `.batikcraft` melalui `Ctrl+Shift+S`.
+2. Gunakan `M` untuk mengaktifkan **Cap Motif** lengkap.
+3. Pilih Kawung, Truntum, Ceplok, atau Lereng pada bagian **Motif Pokok**.
+4. Biarkan **Isi isen otomatis** aktif agar motif tidak perlu diisi manual.
+5. Pilih warna garis motif, warna isen, ukuran, dan pola susun, lalu klik kain.
+6. Gunakan `C` hanya untuk menambah **Cap Isen** secara manual.
+7. Import PNG/JPEG melalui `Ctrl+I`, atau gunakan Brush dengan `B`.
+8. Gunakan `V` untuk memilih dan memindahkan layer.
+9. Gunakan `L`, `R`, `O`, dan `P` untuk membuat shape.
+10. Klik kanan Layers untuk membuka **New Layer → Motif Pokok** atau **Isen-Isen**.
+11. Gunakan `Ctrl+Z` dan `Ctrl+Y` untuk undo/redo.
+12. Simpan sebagai `.batikcraft` melalui `Ctrl+Shift+S`.
 
 ## Validasi
 
@@ -255,5 +271,6 @@ CI GitHub menjalankan kedua perintah tersebut pada setiap push dan pull request.
 - `docs/MILESTONE_3B_BRUSH_REFINEMENT.md` — refined brush contract;
 - `docs/MILESTONE_3C_SHAPE_TOOLS.md` — shape dan layer context-menu contract;
 - `docs/MILESTONE_3D_CAP_ISEN.md` — Cap Isen dan pola susun batik;
+- `docs/MILESTONE_3D1_MOTIF_POKOK.md` — Motif Pokok dan isen otomatis;
 - `docs/BOB_PROMPTS.md` — prompt bertahap untuk IBM Bob;
 - `docs/BOB_DEVELOPMENT_LOG.md` — catatan kontribusi Bob dan hasil review.
