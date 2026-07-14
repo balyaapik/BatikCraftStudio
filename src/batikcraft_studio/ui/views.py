@@ -10,9 +10,7 @@ from batikcraft_studio.application import ProjectSession
 from batikcraft_studio.config import WorkspaceDefinition
 
 from .icons import create_icon
-from .structured_batification_editor import (
-    StructuredBatificationEditorWorkspaceView,
-)
+from .offline_ai_editor import OfflineAIEditorWorkspaceView
 from .theme import COLORS
 
 StatusCallback = Callable[[str], None]
@@ -31,7 +29,12 @@ class WorkspaceView(ttk.Frame):
         super().__init__(parent, style="App.TFrame")
         self.definition = definition
         self.set_status = set_status
-        self._icon = create_icon(self, definition.key, size=42, color=COLORS["muted_ink"])
+        self._icon = create_icon(
+            self,
+            definition.key,
+            size=42,
+            color=COLORS["muted_ink"],
+        )
         self.columnconfigure(0, weight=1)
         self.rowconfigure(0, weight=1)
         empty = ttk.Frame(self, style="Surface.TFrame", padding=(24, 20))
@@ -60,10 +63,10 @@ def create_workspace_view(
     set_status: StatusCallback,
     session: ProjectSession,
     refresh_context: RefreshCallback,
-) -> StructuredBatificationEditorWorkspaceView:
-    """Return the polished editor with clipboard and Structured Batification."""
+) -> OfflineAIEditorWorkspaceView:
+    """Return the polished editor with local-only LoRA Batification."""
 
-    return StructuredBatificationEditorWorkspaceView(
+    return OfflineAIEditorWorkspaceView(
         parent,
         definition=definition,
         set_status=set_status,

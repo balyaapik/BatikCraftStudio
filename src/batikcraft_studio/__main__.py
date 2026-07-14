@@ -8,7 +8,7 @@ import tkinter as tk
 from tkinter import messagebox
 
 from .config import APP_NAME
-from .structured_batification_app import StructuredBatificationApplication
+from .offline_ai_app import OfflineAIApplication
 
 
 def _configure_logging() -> None:
@@ -24,7 +24,7 @@ def main() -> int:
     _configure_logging()
 
     try:
-        application = StructuredBatificationApplication()
+        application = OfflineAIApplication()
         application.run()
     except tk.TclError as exc:
         logging.exception("Tkinter could not initialize")
