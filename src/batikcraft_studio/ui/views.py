@@ -10,7 +10,7 @@ from batikcraft_studio.application import ProjectSession
 from batikcraft_studio.config import WorkspaceDefinition
 
 from .icons import create_icon
-from .precise_transform_editor import PreciseTransformEditorWorkspaceView
+from .polished_batik_editor import PolishedBatikEditorWorkspaceView
 from .theme import COLORS
 
 StatusCallback = Callable[[str], None]
@@ -58,10 +58,10 @@ def create_workspace_view(
     set_status: StatusCallback,
     session: ProjectSession,
     refresh_context: RefreshCallback,
-) -> PreciseTransformEditorWorkspaceView:
-    """Return the asset-first editor with renderer-matched WYSIWYG handles."""
+) -> PolishedBatikEditorWorkspaceView:
+    """Return the polished asset-first Batik editor."""
 
-    return PreciseTransformEditorWorkspaceView(
+    return PolishedBatikEditorWorkspaceView(
         parent,
         definition=definition,
         set_status=set_status,

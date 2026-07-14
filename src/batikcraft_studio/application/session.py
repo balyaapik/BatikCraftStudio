@@ -130,7 +130,7 @@ class ProjectSession:
         creator: str,
         width: int = 2048,
         height: int = 2048,
-        background_color: str = "#F4E9D8",
+        background_color: str = "#FFFFFF",
     ) -> Project:
         project = Project.create(
             title=title,

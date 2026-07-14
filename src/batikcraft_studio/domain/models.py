@@ -125,7 +125,7 @@ class CanvasSpec:
 
     width: int = 2048
     height: int = 2048
-    background_color: str = "#F4E9D8"
+    background_color: str = "#FFFFFF"
 
     def __post_init__(self) -> None:
         if isinstance(self.width, bool) or not isinstance(self.width, int):

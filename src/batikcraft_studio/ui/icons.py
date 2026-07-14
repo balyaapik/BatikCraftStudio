@@ -34,6 +34,12 @@ _CUSTOM_ICON_NAMES = (
     "rectangle_tool",
     "ellipse_tool",
     "polygon_tool",
+    "canting_tool",
+    "brush_tool",
+    "pencil_tool",
+    "eraser_tool",
+    "motif_tool",
+    "isen_tool",
 )
 
 _ICON_COLORS: dict[str, str] = {
@@ -61,6 +67,12 @@ _ICON_COLORS: dict[str, str] = {
     "rectangle_tool": "#7C3AED",
     "ellipse_tool": "#0284C7",
     "polygon_tool": "#D97706",
+    "canting_tool": "#7A3E2A",
+    "brush_tool": "#B45309",
+    "pencil_tool": "#475569",
+    "eraser_tool": "#DC2626",
+    "motif_tool": "#7C3AED",
+    "isen_tool": "#0F766E",
 }
 
 _RAIL_ICON_COLORS: dict[str, str] = {
@@ -227,6 +239,43 @@ def _render_custom_alpha(name: str) -> Image.Image:
             for index in range(6)
         ]
         draw.line((*points, points[0]), fill=255, width=stroke, joint="curve")
+    elif name == "canting_tool":
+        draw.line((22, 78, 67, 33), fill=255, width=12)
+        draw.ellipse((50, 18, 79, 47), outline=255, width=8)
+        draw.line((75, 31, 90, 20), fill=255, width=7)
+        draw.line((90, 20, 93, 12), fill=255, width=5)
+        draw.ellipse((15, 71, 31, 87), fill=255)
+    elif name == "brush_tool":
+        draw.line((23, 79, 65, 37), fill=255, width=13)
+        draw.polygon(((61, 42), (77, 18), (90, 8), (84, 31), (70, 49)), fill=255)
+        draw.ellipse((14, 70, 32, 88), fill=255)
+    elif name == "pencil_tool":
+        draw.polygon(((17, 78), (28, 88), (79, 37), (68, 26)), fill=255)
+        draw.polygon(((68, 26), (79, 37), (90, 14)), fill=255)
+        draw.polygon(((17, 78), (28, 88), (11, 94)), fill=255)
+    elif name == "eraser_tool":
+        draw.polygon(((18, 67), (50, 22), (84, 46), (52, 88)), fill=255)
+        draw.line((36, 72, 69, 29), fill=0, width=5)
+        draw.line((42, 82, 78, 82), fill=255, width=7)
+    elif name == "motif_tool":
+        center = size / 2
+        for angle in (0, math.pi / 2, math.pi, 3 * math.pi / 2):
+            dx = math.cos(angle) * 22
+            dy = math.sin(angle) * 22
+            draw.ellipse(
+                (center + dx - 17, center + dy - 17, center + dx + 17, center + dy + 17),
+                outline=255,
+                width=7,
+            )
+        draw.ellipse((center - 9, center - 9, center + 9, center + 9), fill=255)
+    elif name == "isen_tool":
+        for row in range(3):
+            for column in range(3):
+                x = 27 + column * 21
+                y = 27 + row * 21
+                radius = 6 if (row + column) % 2 == 0 else 4
+                draw.ellipse((x - radius, y - radius, x + radius, y + radius), fill=255)
+        draw.rounded_rectangle((15, 15, 81, 81), radius=10, outline=255, width=5)
     else:
         draw.rounded_rectangle(
             (margin, margin + 12, size - margin - 18, size - margin),
