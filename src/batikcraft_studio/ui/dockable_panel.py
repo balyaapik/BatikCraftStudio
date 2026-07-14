@@ -6,6 +6,10 @@ import tkinter as tk
 from collections.abc import Callable
 from tkinter import ttk
 
+from batikcraft_studio.workspace_translations import install_workspace_translations
+
+install_workspace_translations()
+
 PanelBuilder = Callable[[ttk.Frame], None]
 StateCallback = Callable[[], None]
 
