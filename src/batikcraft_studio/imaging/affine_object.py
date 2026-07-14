@@ -30,7 +30,7 @@ def object_shear(item: LayerObject) -> tuple[float, float]:
 
 
 def object_linear_matrix(item: LayerObject) -> tuple[float, float, float, float]:
-    """Return local-to-world 2x2 affine matrix."""
+    """Return local-to-world 2x2 matrix for scale/flip, shear, then rotation."""
 
     shear_x, shear_y = object_shear(item)
     transform = item.transform
@@ -38,8 +38,8 @@ def object_linear_matrix(item: LayerObject) -> tuple[float, float, float, float]
     cos_a = math.cos(angle)
     sin_a = math.sin(angle)
     local_a = transform.scale_x
-    local_b = transform.scale_x * shear_x
-    local_c = transform.scale_y * shear_y
+    local_b = shear_x * transform.scale_y
+    local_c = shear_y * transform.scale_x
     local_d = transform.scale_y
     return (
         cos_a * local_a - sin_a * local_c,
