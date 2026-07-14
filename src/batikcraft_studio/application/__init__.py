@@ -11,10 +11,14 @@ from batikcraft_studio.application.session import (
     ProjectSessionError,
     ProjectSessionSnapshot,
 )
+from batikcraft_studio.application.shape_session import (
+    ShapeLayerError,
+    ShapeProjectSession,
+)
 
-# The public session used by the desktop application includes paint commands while
-# preserving every ProjectSession API from Milestones 2C and 2D.
-ProjectSession = PaintProjectSession
+# The public desktop session includes raster, paint, and non-destructive shape commands
+# while preserving every ProjectSession API from the earlier milestones.
+ProjectSession = ShapeProjectSession
 
 __all__ = [
     "LayerLockedError",
@@ -25,4 +29,6 @@ __all__ = [
     "ProjectSession",
     "ProjectSessionError",
     "ProjectSessionSnapshot",
+    "ShapeLayerError",
+    "ShapeProjectSession",
 ]

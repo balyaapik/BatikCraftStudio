@@ -10,7 +10,7 @@ from batikcraft_studio.application import ProjectSession
 from batikcraft_studio.config import WorkspaceDefinition
 
 from .icons import create_icon
-from .refined_paint_editor import RefinedPaintLayerEditorWorkspaceView
+from .selectable_shape_editor import SelectableShapeEditorWorkspaceView
 from .theme import COLORS
 
 StatusCallback = Callable[[str], None]
@@ -77,9 +77,9 @@ def create_workspace_view(
     set_status: StatusCallback,
     session: ProjectSession,
     refresh_context: RefreshCallback,
-) -> WorkspaceView | RefinedPaintLayerEditorWorkspaceView:
+) -> WorkspaceView | SelectableShapeEditorWorkspaceView:
     if definition.key == "editor":
-        return RefinedPaintLayerEditorWorkspaceView(
+        return SelectableShapeEditorWorkspaceView(
             parent,
             definition=definition,
             set_status=set_status,

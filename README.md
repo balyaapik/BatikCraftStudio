@@ -5,7 +5,7 @@ membuat motif batik secara manual, melakukan batikfikasi objek, mengintegrasikan
 generative AI, serta menyiapkan motif untuk proses lisensi dan bidding melalui
 website BatikCraft.
 
-> Status: Milestone 3B — refined raster brush and eraser. Pengembangan dilakukan
+> Status: Milestone 3C — editable shape and line tools. Pengembangan dilakukan
 > bertahap agar setiap modul dapat diuji, diperbaiki, dan disempurnakan menggunakan
 > IBM Bob.
 
@@ -41,7 +41,10 @@ hanya menyiapkan serta menerbitkan aset motif.
 - paint layer transparan berukuran penuh sesuai canvas;
 - brush dan eraser dengan satu history entry per stroke;
 - opacity, hardness, smoothing, preset ukuran, dan circular brush cursor;
-- shortcut `B`, `E`, `V`, `[`, dan `]`;
+- line, rectangle, ellipse, dan regular polygon non-destruktif;
+- editable fill, stroke, dimensions, stroke width, dan polygon sides;
+- klik kanan Layers dengan submenu **New Layer**;
+- shortcut `B`, `E`, `V`, `[`, `]`, `L`, `R`, `O`, dan `P`;
 - CI menggunakan Ruff dan Pytest.
 
 ## Roadmap Bertahap
@@ -103,15 +106,23 @@ hanya menyiapkan serta menerbitkan aset motif.
 - circular cursor sesuai diameter brush;
 - bounded stroke resampling dan antialiased brush stamp.
 
-#### Milestone 3C — Shape and Line Tools
+#### Milestone 3C — Shape and Line Tools ✅
 
-- line, rectangle, ellipse, dan polygon dasar;
-- fill/stroke controls;
-- editable shape properties;
-- snapping dan modifier keyboard dasar.
+- line, rectangle, ellipse, dan regular polygon;
+- fill/stroke controls dan editable dimensions;
+- stroke width dan polygon sides;
+- Shift constraint dan Alt draw-from-center;
+- shape selection, move, transform, duplicate, delete, dan ordering;
+- klik kanan Layers dengan **New Layer** untuk Paint dan semua shape types;
+- shape tersimpan non-destruktif di `.batikcraft` tanpa PNG asset tambahan.
 
-Tahap manual berikutnya mencakup motif stamp, palet warna, mirror/symmetry drawing,
-dan isen-isen tools.
+#### Milestone 3D — Motif Stamp and Symmetry
+
+- reusable motif stamp;
+- mirror horizontal/vertical;
+- radial symmetry;
+- palet warna motif;
+- isen-isen tools dasar.
 
 ### Milestone 4 — Object Batikfication MVP
 
@@ -151,7 +162,7 @@ dan isen-isen tools.
 
 - Python 3.11+
 - Tkinter / ttk
-- Pillow untuk import, rendering raster, brush, dan eraser
+- Pillow untuk import, raster rendering, paint tools, dan shape rendering
 - NumPy dan OpenCV untuk milestone pemrosesan citra
 - PyTorch atau ONNX Runtime untuk milestone AI
 - Requests/HTTPX untuk integrasi website
@@ -189,11 +200,12 @@ python -m batikcraft_studio
 2. Import PNG/JPEG melalui `Ctrl+I`, atau pilih Brush dengan `B`.
 3. Gunakan `V` untuk memilih dan memindahkan layer.
 4. Gunakan `B` untuk menggambar dan `E` untuk menghapus.
-5. Atur size, opacity, hardness, smoothing, dan color pada tab **Brush**.
-6. Gunakan `[` dan `]` untuk mengubah ukuran brush.
-7. Gunakan tab **Layers** dan **Transform** untuk mengelola objek.
-8. Gunakan `Ctrl+Z` dan `Ctrl+Y` untuk undo/redo.
-9. Simpan sebagai `.batikcraft` melalui `Ctrl+Shift+S`.
+5. Gunakan `L`, `R`, `O`, dan `P` untuk membuat shape.
+6. Tahan `Shift` untuk constraint dan `Alt` untuk menggambar dari pusat.
+7. Atur properti pada tab **Brush**, **Shape**, **Transform**, dan **Layers**.
+8. Klik kanan pada daftar Layers untuk membuka submenu **New Layer**.
+9. Gunakan `Ctrl+Z` dan `Ctrl+Y` untuk undo/redo.
+10. Simpan sebagai `.batikcraft` melalui `Ctrl+Shift+S`.
 
 ## Validasi
 
@@ -223,5 +235,6 @@ CI GitHub menjalankan kedua perintah tersebut pada setiap push dan pull request.
 - `docs/LAYER_EDITOR.md` — raster layer contract Milestone 2D;
 - `docs/MILESTONE_3A_PAINT_LAYER.md` — basic paint-layer contract;
 - `docs/MILESTONE_3B_BRUSH_REFINEMENT.md` — refined brush contract;
+- `docs/MILESTONE_3C_SHAPE_TOOLS.md` — shape dan layer context-menu contract;
 - `docs/BOB_PROMPTS.md` — prompt bertahap untuk IBM Bob;
 - `docs/BOB_DEVELOPMENT_LOG.md` — catatan kontribusi Bob dan hasil review.

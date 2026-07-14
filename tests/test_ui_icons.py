@@ -39,16 +39,25 @@ def test_render_icon_applies_requested_color_without_changing_alpha() -> None:
 def test_default_palette_uses_brighter_workspace_colors_on_dark_rail() -> None:
     assert default_icon_color("editor") != default_icon_color("editor", on_dark=True)
     assert default_icon_color("delete") == "#DC2626"
+    assert default_icon_color("polygon_tool") == "#D97706"
 
 
-def test_font_awesome_metadata_matches_embedded_assets() -> None:
+def test_font_awesome_metadata_matches_embedded_and_custom_assets() -> None:
     metadata = font_awesome_metadata()
 
     assert metadata["font_awesome_version"] == FONT_AWESOME_VERSION
     assert metadata["license"] == FONT_AWESOME_LICENSE
     assert metadata["storage"] == "embedded-base85-alpha"
     assert metadata["master_size"] == MASTER_ICON_SIZE
-    assert set(metadata["icons"]) == set(available_icons())
+    names = set(metadata["icons"]) | set(metadata["custom_icons"])
+    assert names == set(available_icons())
+    assert {
+        "layer_add",
+        "line_tool",
+        "rectangle_tool",
+        "ellipse_tool",
+        "polygon_tool",
+    } <= set(metadata["custom_icons"])
     with pytest.raises(TypeError):
         metadata["license"] = "changed"  # type: ignore[index]
 
