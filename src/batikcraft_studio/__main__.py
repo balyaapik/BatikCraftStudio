@@ -8,7 +8,7 @@ import tkinter as tk
 from tkinter import messagebox
 
 from .config import APP_NAME
-from .offline_ai_app import OfflineAIApplication
+from .multi_object_app import MultiObjectApplication
 
 
 def _configure_logging() -> None:
@@ -24,7 +24,7 @@ def main() -> int:
     _configure_logging()
 
     try:
-        application = OfflineAIApplication()
+        application = MultiObjectApplication()
         application.run()
     except tk.TclError as exc:
         logging.exception("Tkinter could not initialize")

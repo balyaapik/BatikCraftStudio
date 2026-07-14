@@ -16,6 +16,12 @@ from batikcraft_studio.application.motif_session import (
     MotifCapError,
     MotifProjectSession,
 )
+from batikcraft_studio.application.multi_object_session import (
+    GROUP_ID_KEY,
+    GROUP_NAME_KEY,
+    MultiObjectProjectSession,
+    MultiObjectSelection,
+)
 from batikcraft_studio.application.object_session import (
     ObjectLockedError,
     ObjectProjectSession,
@@ -44,11 +50,13 @@ from batikcraft_studio.application.structured_batification_session import (
     StructuredBatificationProjectSession,
 )
 
-# The public desktop session includes model packs, rectangle selection, and local-only LoRA
-# inference in addition to the source-preserving Milestone 4A workflow.
-ProjectSession = OfflineAIProjectSession
+# The public desktop session includes offline AI plus transient multi-selection and persistent
+# object groups without changing the project schema.
+ProjectSession = MultiObjectProjectSession
 
 __all__ = [
+    "GROUP_ID_KEY",
+    "GROUP_NAME_KEY",
     "BatikProjectSession",
     "BatificationGeneration",
     "CapIsenError",
@@ -58,6 +66,8 @@ __all__ = [
     "LayerLockedError",
     "MotifCapError",
     "MotifProjectSession",
+    "MultiObjectProjectSession",
+    "MultiObjectSelection",
     "NoActiveProjectError",
     "ObjectClipboardSnapshot",
     "ObjectLockedError",
