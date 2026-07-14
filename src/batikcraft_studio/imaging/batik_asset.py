@@ -6,12 +6,13 @@ import base64
 import json
 import math
 import random
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from io import BytesIO
 from types import MappingProxyType
 from typing import Any
 
-from PIL import Image, ImageChops, ImageDraw, ImageEnhance, UnidentifiedImageError
+from PIL import Image, ImageChops, ImageDraw, UnidentifiedImageError
 
 from batikcraft_studio.imaging.raster import normalize_raster_image
 
@@ -33,7 +34,7 @@ class EditableBatikAsset:
     content: bytes
     width: int
     height: int
-    metadata: dict[str, Any] = field(default_factory=dict)
+    metadata: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         name = str(self.name).strip()
@@ -47,7 +48,7 @@ class EditableBatikAsset:
             raise BatikAssetError("Ukuran asset harus berupa bilangan bulat.")
         if self.width < 1 or self.height < 1:
             raise BatikAssetError("Ukuran asset harus positif.")
-        if not isinstance(self.metadata, dict):
+        if not isinstance(self.metadata, Mapping):
             raise BatikAssetError("Metadata asset harus berupa object JSON.")
         object.__setattr__(self, "name", name)
         object.__setattr__(self, "metadata", MappingProxyType(dict(self.metadata)))
@@ -117,9 +118,8 @@ def humanize_raster_asset(
 ) -> bytes:
     """Add deterministic imperfections resembling hand-applied malam/ink.
 
-    The operation preserves transparency and source dimensions. It intentionally avoids
-    pure random pixel noise: low-frequency warping, uneven opacity, and sparse ink gaps
-    produce a more controlled handmade appearance.
+    The source dimensions and transparent background are preserved. Low-frequency
+    warping, uneven pressure, and sparse gaps are used instead of generic pixel noise.
     """
 
     wobble = _unit(edge_wobble, "Ketidakteraturan tepi")
@@ -250,10 +250,6 @@ def _add_ink_breaks(alpha: Image.Image, rng: random.Random, strength: float) -> 
             (x - radius_x, y - radius_y, x + radius_x, y + radius_y),
             fill=rng.randint(0, 80),
         )
-    softened = mask.filter(ImageEnhance.Sharpness(mask).enhance(0.7).filter if False else None)
-    # Keep the implementation Pillow-version stable: a direct multiply already gives
-    # sparse wax/ink gaps and avoids requiring optional image-processing libraries.
-    del softened
     return ImageChops.multiply(alpha, mask)
 
 
