@@ -1,20 +1,21 @@
-"""Offline Font Awesome icons for the native Tkinter interface.
+"""Offline professional icons for the native Tkinter interface.
 
 Selected Font Awesome Free 7.3.0 masks are embedded as compressed Base85 text.
-Rendering happens locally with Pillow; the application never downloads icons
-and does not depend on an installed icon font or a binary ZIP resource.
+Small BatikCraft-specific geometry icons are generated locally with Pillow so all
+editor controls remain crisp, colored, and completely offline.
 """
 
 from __future__ import annotations
 
 import base64
 import hashlib
+import math
 import zlib
 from functools import cache
 from types import MappingProxyType
 from typing import Any
 
-from PIL import Image, ImageColor, ImageTk
+from PIL import Image, ImageColor, ImageDraw, ImageTk
 
 from .fontawesome_assets import (
     FONT_AWESOME_LICENSE,
@@ -26,6 +27,14 @@ from .fontawesome_assets import (
 )
 
 _MIN_ICON_SIZE = 12
+_FONT_AWESOME_NAMES = tuple(ICON_ALPHA_B85)
+_CUSTOM_ICON_NAMES = (
+    "layer_add",
+    "line_tool",
+    "rectangle_tool",
+    "ellipse_tool",
+    "polygon_tool",
+)
 
 _ICON_COLORS: dict[str, str] = {
     "new": "#7C3AED",
@@ -47,6 +56,11 @@ _ICON_COLORS: dict[str, str] = {
     "down": "#C2410C",
     "apply": "#16A34A",
     "select": "#4F46E5",
+    "layer_add": "#2563EB",
+    "line_tool": "#0F766E",
+    "rectangle_tool": "#7C3AED",
+    "ellipse_tool": "#0284C7",
+    "polygon_tool": "#D97706",
 }
 
 _RAIL_ICON_COLORS: dict[str, str] = {
@@ -61,7 +75,7 @@ ICON_NAMES = tuple(_ICON_COLORS)
 
 
 def available_icons() -> tuple[str, ...]:
-    """Return the stable public names of all bundled icons."""
+    """Return the stable public names of all bundled and generated icons."""
 
     return ICON_NAMES
 
@@ -85,7 +99,8 @@ def font_awesome_metadata() -> MappingProxyType[str, Any]:
             "source": FONT_AWESOME_SOURCE,
             "storage": "embedded-base85-alpha",
             "master_size": MASTER_ICON_SIZE,
-            "icons": ICON_NAMES,
+            "icons": _FONT_AWESOME_NAMES,
+            "custom_icons": _CUSTOM_ICON_NAMES,
         }
     )
 
@@ -96,7 +111,7 @@ def render_icon(
     size: int = 20,
     color: str | None = None,
 ) -> Image.Image:
-    """Render one sharp, colored RGBA icon from an embedded alpha mask."""
+    """Render one sharp, colored RGBA icon from an offline alpha mask."""
 
     _validate_icon_name(name)
     if not isinstance(size, int) or isinstance(size, bool) or size < _MIN_ICON_SIZE:
@@ -125,7 +140,7 @@ def create_icon(
     size: int = 20,
     color: str | None = None,
 ) -> ImageTk.PhotoImage:
-    """Create a Tk-compatible offline Font Awesome icon."""
+    """Create a Tk-compatible offline icon."""
 
     return ImageTk.PhotoImage(
         render_icon(name, size=size, color=color),
@@ -144,10 +159,10 @@ def _decoded_alpha_masks() -> MappingProxyType[str, bytes]:
     decoded: dict[str, bytes] = {}
     digest = hashlib.sha256()
 
-    if set(ICON_ALPHA_B85) != set(ICON_NAMES):
+    if set(ICON_ALPHA_B85) != set(_FONT_AWESOME_NAMES):
         raise RuntimeError("Bundled Font Awesome icon manifest is incomplete.")
 
-    for name in sorted(ICON_NAMES):
+    for name in sorted(_FONT_AWESOME_NAMES):
         encoded = ICON_ALPHA_B85[name]
         try:
             compressed = base64.b85decode(encoded)
@@ -167,8 +182,80 @@ def _decoded_alpha_masks() -> MappingProxyType[str, bytes]:
 @cache
 def _source_alpha(name: str) -> Image.Image:
     _validate_icon_name(name)
+    if name in _CUSTOM_ICON_NAMES:
+        return _render_custom_alpha(name)
     return Image.frombytes(
         "L",
         (MASTER_ICON_SIZE, MASTER_ICON_SIZE),
         _decoded_alpha_masks()[name],
     )
+
+
+def _render_custom_alpha(name: str) -> Image.Image:
+    scale = 4
+    size = MASTER_ICON_SIZE * scale
+    image = Image.new("L", (size, size), 0)
+    draw = ImageDraw.Draw(image)
+    stroke = 7
+    margin = 16
+
+    if name == "line_tool":
+        draw.line((margin, size - margin, size - margin, margin), fill=255, width=stroke)
+        _round_dot(draw, margin, size - margin, stroke)
+        _round_dot(draw, size - margin, margin, stroke)
+    elif name == "rectangle_tool":
+        draw.rounded_rectangle(
+            (margin, margin + 6, size - margin, size - margin - 6),
+            radius=5,
+            outline=255,
+            width=stroke,
+        )
+    elif name == "ellipse_tool":
+        draw.ellipse(
+            (margin, margin + 6, size - margin, size - margin - 6),
+            outline=255,
+            width=stroke,
+        )
+    elif name == "polygon_tool":
+        center = size / 2
+        radius = size / 2 - margin
+        points = [
+            (
+                center + math.cos(-math.pi / 2 + index * math.tau / 6) * radius,
+                center + math.sin(-math.pi / 2 + index * math.tau / 6) * radius,
+            )
+            for index in range(6)
+        ]
+        draw.line((*points, points[0]), fill=255, width=stroke, joint="curve")
+    else:
+        draw.rounded_rectangle(
+            (margin, margin + 12, size - margin - 18, size - margin),
+            radius=4,
+            outline=255,
+            width=stroke,
+        )
+        center_x = size - margin - 8
+        center_y = margin + 16
+        draw.ellipse(
+            (
+                center_x - 16,
+                center_y - 16,
+                center_x + 16,
+                center_y + 16,
+            ),
+            fill=255,
+        )
+        draw.rectangle((center_x - 3, center_y - 10, center_x + 3, center_y + 10), fill=0)
+        draw.rectangle((center_x - 10, center_y - 3, center_x + 10, center_y + 3), fill=0)
+        draw.rectangle((center_x - 3, center_y - 10, center_x + 3, center_y + 10), fill=255)
+        draw.rectangle((center_x - 10, center_y - 3, center_x + 10, center_y + 3), fill=255)
+
+    return image.resize(
+        (MASTER_ICON_SIZE, MASTER_ICON_SIZE),
+        Image.Resampling.LANCZOS,
+    )
+
+
+def _round_dot(draw: ImageDraw.ImageDraw, x: float, y: float, diameter: int) -> None:
+    radius = diameter / 2
+    draw.ellipse((x - radius, y - radius, x + radius, y + radius), fill=255)
