@@ -9,8 +9,10 @@ from tkinter import ttk
 from batikcraft_studio.application import ProjectSession
 from batikcraft_studio.config import WorkspaceDefinition
 
-from .clipboard_batik_editor import ClipboardBatikEditorWorkspaceView
 from .icons import create_icon
+from .structured_batification_editor import (
+    StructuredBatificationEditorWorkspaceView,
+)
 from .theme import COLORS
 
 StatusCallback = Callable[[str], None]
@@ -58,10 +60,10 @@ def create_workspace_view(
     set_status: StatusCallback,
     session: ProjectSession,
     refresh_context: RefreshCallback,
-) -> ClipboardBatikEditorWorkspaceView:
-    """Return the polished asset-first editor with object clipboard support."""
+) -> StructuredBatificationEditorWorkspaceView:
+    """Return the polished editor with clipboard and Structured Batification."""
 
-    return ClipboardBatikEditorWorkspaceView(
+    return StructuredBatificationEditorWorkspaceView(
         parent,
         definition=definition,
         set_status=set_status,
