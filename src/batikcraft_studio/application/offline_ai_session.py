@@ -25,7 +25,7 @@ from batikcraft_studio.domain import (
     ObjectKind,
     Transform,
 )
-from batikcraft_studio.imaging.project_renderer import render_project_preview
+from batikcraft_studio.imaging import render_project_preview
 from batikcraft_studio.imaging.structured_batification import (
     BatificationRequest,
     LocalStructuredBatificationProvider,
