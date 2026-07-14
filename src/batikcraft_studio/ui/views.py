@@ -10,7 +10,7 @@ from batikcraft_studio.application import ProjectSession
 from batikcraft_studio.config import WorkspaceDefinition
 
 from .icons import create_icon
-from .offline_ai_editor import OfflineAIEditorWorkspaceView
+from .multi_object_editor import MultiObjectEditorWorkspaceView
 from .theme import COLORS
 
 StatusCallback = Callable[[str], None]
@@ -63,10 +63,10 @@ def create_workspace_view(
     set_status: StatusCallback,
     session: ProjectSession,
     refresh_context: RefreshCallback,
-) -> OfflineAIEditorWorkspaceView:
-    """Return the polished editor with local-only LoRA Batification."""
+) -> MultiObjectEditorWorkspaceView:
+    """Return the editor with offline AI and multi-object grouping."""
 
-    return OfflineAIEditorWorkspaceView(
+    return MultiObjectEditorWorkspaceView(
         parent,
         definition=definition,
         set_status=set_status,
