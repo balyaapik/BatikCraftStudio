@@ -50,7 +50,8 @@ target-version = "py311"
 select = ["E", "F", "I", "UP", "B"]
 
 [tool.ruff.lint.per-file-ignores]
-"notebooks/*.ipynb" = ["E402", "F401", "I001"]
+"notebooks/*.ipynb" = ["E401", "E402", "E501", "F401", "I001"]
+"src/batikcraft_studio/ai/model_pack.py" = ["E501"]
 "src/batikcraft_studio/assets/library.py" = ["F401"]
 "src/batikcraft_studio/domain/project.py" = ["E501"]
 "src/batikcraft_studio/i18n.py" = ["E501"]
