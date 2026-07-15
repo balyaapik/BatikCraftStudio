@@ -10,7 +10,7 @@ from io import BytesIO
 from pathlib import Path
 from typing import Any
 
-from PIL import Image, ImageChops, ImageOps, UnidentifiedImageError
+from PIL import Image, ImageOps, UnidentifiedImageError
 
 from batikcraft_studio.imaging.structured_batification import BatificationError
 
@@ -164,8 +164,6 @@ class PretrainedBatikBackgroundProvider:
         reference_content: bytes | None = None,
         reference_name: str | None = None,
     ) -> AIBatikBackgroundResult:
-        """Run generation and return a moderate-resolution image scaled by the editor."""
-
         settings = options or AIBatikBackgroundOptions()
         if canvas_width < 1 or canvas_height < 1:
             raise BatificationError("Ukuran canvas untuk background AI tidak valid.")
@@ -193,17 +191,25 @@ class PretrainedBatikBackgroundProvider:
                 generation_size,
                 scale=settings.reference_scale,
             )
-            kwargs.update({"image": reference.convert("RGB"), "strength": settings.reference_strength})
+            kwargs.update(
+                {
+                    "image": reference.convert("RGB"),
+                    "strength": settings.reference_strength,
+                }
+            )
 
         with self._inference_lock:
             try:
                 response = pipeline(**kwargs)
             except Exception as exc:
-                raise BatificationError(f"Generasi background Stable Diffusion gagal: {exc}") from exc
+                message = f"Generasi background Stable Diffusion gagal: {exc}"
+                raise BatificationError(message) from exc
 
         flags = getattr(response, "nsfw_content_detected", None)
         if flags and any(bool(value) for value in flags):
-            raise BatificationError("Hasil background AI diblokir oleh pemeriksaan keamanan model.")
+            raise BatificationError(
+                "Hasil background AI diblokir oleh pemeriksaan keamanan model."
+            )
         images = getattr(response, "images", None)
         if not images:
             raise BatificationError("Model Stable Diffusion tidak menghasilkan background.")
@@ -284,7 +290,9 @@ def _default_pipeline_factory(
     dtype = _resolve_dtype(torch, device, settings.precision)
     local_path = Path(settings.model_id_or_path).expanduser()
     source = str(local_path.resolve()) if local_path.exists() else settings.model_id_or_path
-    pipeline_class = AutoPipelineForImage2Image if mode == "img2img" else AutoPipelineForText2Image
+    pipeline_class = (
+        AutoPipelineForImage2Image if mode == "img2img" else AutoPipelineForText2Image
+    )
     try:
         pipeline = pipeline_class.from_pretrained(
             source,
@@ -302,9 +310,11 @@ def _default_pipeline_factory(
         else:
             pipeline.to(device)
     except Exception as exc:
-        raise BatificationError(
-            f"Model Stable Diffusion {settings.model_id_or_path!r} tidak dapat dimuat: {exc}"
-        ) from exc
+        message = (
+            f"Model Stable Diffusion {settings.model_id_or_path!r} "
+            f"tidak dapat dimuat: {exc}"
+        )
+        raise BatificationError(message) from exc
     return pipeline, torch, device
 
 
@@ -335,7 +345,10 @@ def _prepare_reference(content: bytes, size: tuple[int, int], *, scale: float) -
     tile_side = max(32, int(min(size) * scale))
     motif.thumbnail((tile_side, tile_side), Image.Resampling.LANCZOS)
     tile = Image.new("RGBA", (tile_side, tile_side), (244, 233, 216, 255))
-    tile.alpha_composite(motif, ((tile_side - motif.width) // 2, (tile_side - motif.height) // 2))
+    tile.alpha_composite(
+        motif,
+        ((tile_side - motif.width) // 2, (tile_side - motif.height) // 2),
+    )
     canvas = Image.new("RGBA", size, (244, 233, 216, 255))
     for y in range(-tile_side // 2, size[1], tile_side):
         offset = tile_side // 2 if (y // tile_side) % 2 else 0
