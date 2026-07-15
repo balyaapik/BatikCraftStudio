@@ -32,6 +32,18 @@ def test_any_object_batik_lora_notebook_is_valid_and_complete() -> None:
     assert "SKIP rusak/tidak valid" in source
     assert "prepared_count" in source
 
+    # Kaggle may ship torchao 0.10.0 while modern PEFT requires >= 0.16.0.
+    # LoRA does not need torchao, so the install cell must remove only an
+    # incompatible version before PEFT is imported by the training cell.
+    assert "TORCHAO_MINIMUM = Version('0.16.0')" in source
+    assert "remove_incompatible_torchao" in source
+    assert "'pip','uninstall','-y','torchao'" in source
+    assert "peft==0.17.1" in source
+    assert "torchao_required" in source
+    assert source.index("remove_incompatible_torchao()") < source.index(
+        "from peft import LoraConfig"
+    )
+
     for cell in notebook["cells"]:
         if cell.get("cell_type") == "code":
             ast.parse("".join(cell.get("source", [])))
