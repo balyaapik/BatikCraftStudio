@@ -1,6 +1,11 @@
 """Application services that coordinate domain, persistence, and UI workflows."""
 
 from batikcraft_studio.application.asset_edit_session import EditableObjectProjectSession
+from batikcraft_studio.application.background_ai_session import (
+    AIBatikBackgroundContext,
+    AIBatikBackgroundPreview,
+    AIBatikBackgroundProjectSession,
+)
 from batikcraft_studio.application.batik_session import (
     BatikProjectSession,
     CapIsenError,
@@ -92,8 +97,9 @@ from batikcraft_studio.application.viewport_session import (
     ViewportProjectSession,
 )
 
-# The public desktop session includes pretrained AI, external images, and outline cleanup.
-ProjectSession = OutlineCleanupProjectSession
+# The desktop session includes AI backgrounds, pretrained Batification, image import,
+# outline cleanup, and the existing manual editing stack.
+ProjectSession = AIBatikBackgroundProjectSession
 
 __all__ = [
     "BATIK_PROCESS_EXTENSION",
@@ -102,6 +108,9 @@ __all__ = [
     "GROUP_ID_KEY",
     "GROUP_NAME_KEY",
     "POSITION_LOCK_KEY",
+    "AIBatikBackgroundContext",
+    "AIBatikBackgroundPreview",
+    "AIBatikBackgroundProjectSession",
     "BatikProcessProjectSession",
     "BatikProjectSession",
     "BatificationGeneration",
