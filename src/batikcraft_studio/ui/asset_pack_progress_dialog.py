@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import tkinter as tk
+from collections.abc import Callable
 from pathlib import Path
 from tkinter import ttk
-from collections.abc import Callable
 
 from batikcraft_studio.assets.progressive_install import AssetInstallProgress
 
