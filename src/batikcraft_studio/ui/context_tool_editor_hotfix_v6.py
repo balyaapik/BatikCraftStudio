@@ -120,14 +120,14 @@ class ContextToolEditorWorkspaceView(_HotfixV5Editor):
         if self._preview_scale <= 0:
             return None
         try:
-            root_x = float(getattr(event, "x_root"))
-            root_y = float(getattr(event, "y_root"))
+            root_x = float(event.x_root)
+            root_y = float(event.y_root)
             canvas_x = root_x - float(self.canvas.winfo_rootx())
             canvas_y = root_y - float(self.canvas.winfo_rooty())
         except (AttributeError, TypeError, ValueError, tk.TclError):
             try:
-                canvas_x = float(getattr(event, "x"))
-                canvas_y = float(getattr(event, "y"))
+                canvas_x = float(event.x)
+                canvas_y = float(event.y)
             except (AttributeError, TypeError, ValueError):
                 return None
         return (
