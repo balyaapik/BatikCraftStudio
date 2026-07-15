@@ -44,8 +44,8 @@ def normalize_raster_image(content: bytes | bytearray | memoryview) -> RasterAss
             normalized = source.convert("RGBA")
     except (UnidentifiedImageError, OSError, ValueError) as exc:
         raise RasterImageError(
-            "File bukan gambar raster yang dapat dibaca. Gunakan PNG, JPEG, TIFF, "
-            "WebP, BMP, GIF, ICO, atau format lain yang didukung Pillow."
+            "The selected file is not a readable raster image. Use PNG, JPEG, TIFF, "
+            "WebP, BMP, GIF, ICO, or another Pillow-supported format."
         ) from exc
     except Image.DecompressionBombError as exc:
         raise RasterImageError("The selected image exceeds the safe pixel limit.") from exc
