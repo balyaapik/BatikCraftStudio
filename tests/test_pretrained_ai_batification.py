@@ -195,13 +195,15 @@ def test_session_commits_ai_result_in_source_layer_as_one_undo_step() -> None:
     assert len(objects) == 3
 
     assert session.undo() is True
-    assert project.get_object(source.object_id).visible is True
+    restored = session.require_project()
+    assert restored.get_object(source.object_id).visible is True
     with pytest.raises(ObjectNotFoundError):
-        project.get_object(output.object_id)
+        restored.get_object(output.object_id)
 
     assert session.redo() is True
-    assert project.get_object(source.object_id).visible is False
-    assert project.get_object(output.object_id).visible is True
+    redone = session.require_project()
+    assert redone.get_object(source.object_id).visible is False
+    assert redone.get_object(output.object_id).visible is True
 
 
 def test_stale_ai_result_is_rejected_after_project_edit() -> None:
