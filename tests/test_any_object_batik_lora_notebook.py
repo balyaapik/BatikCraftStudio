@@ -24,6 +24,14 @@ def test_any_object_batik_lora_notebook_is_valid_and_complete() -> None:
     assert "mask_of" in source
     assert "outline_strength" in source
 
+    # Dataset preparation must tolerate damaged or mislabeled image files.
+    assert "ImageFile.LOAD_TRUNCATED_IMAGES=True" in source
+    assert "UnidentifiedImageError" in source
+    assert "probe.verify()" in source
+    assert "skipped-images.json" in source
+    assert "SKIP rusak/tidak valid" in source
+    assert "prepared_count" in source
+
     for cell in notebook["cells"]:
         if cell.get("cell_type") == "code":
             ast.parse("".join(cell.get("source", [])))
