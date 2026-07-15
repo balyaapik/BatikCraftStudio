@@ -19,21 +19,19 @@ def default_ai_settings_path() -> Path:
     """Return a stable per-user configuration path without extra dependencies."""
 
     appdata = os.environ.get("APPDATA")
-    if appdata:
-        root = Path(appdata)
-    else:
-        root = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config"))
+    root = Path(appdata) if appdata else Path(
+        os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")
+    )
     return root / "BatikCraftStudio" / "ai_runtime.json"
 
 
 def default_ai_cache_dir() -> Path:
-    """Return a persistent model-cache directory that survives application updates."""
+    """Return a model-cache directory that survives application updates."""
 
     local_appdata = os.environ.get("LOCALAPPDATA")
-    if local_appdata:
-        root = Path(local_appdata)
-    else:
-        root = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache"))
+    root = Path(local_appdata) if local_appdata else Path(
+        os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")
+    )
     return root / "BatikCraftStudio" / "models" / "huggingface"
 
 
@@ -59,9 +57,9 @@ class AIRuntimeSettings:
         if self.schema_version != AI_SETTINGS_SCHEMA_VERSION:
             raise ValueError("Versi konfigurasi AI tidak didukung.")
         device = str(self.device).strip().casefold()
+        precision = str(self.precision).strip().casefold()
         if device not in _DEVICE_VALUES:
             raise ValueError("Device AI harus auto, cuda, cpu, atau mps.")
-        precision = str(self.precision).strip().casefold()
         if precision not in _PRECISION_VALUES:
             raise ValueError("Precision AI harus auto, float16, float32, atau bfloat16.")
         flags = (
@@ -77,11 +75,11 @@ class AIRuntimeSettings:
         model = str(self.default_model).strip()
         if not model or len(model) > 1_000:
             raise ValueError("Model Stable Diffusion global tidak valid.")
-        cache = str(Path(str(self.cache_dir).strip() or default_ai_cache_dir()).expanduser())
+        cache_text = str(self.cache_dir).strip() or str(default_ai_cache_dir())
         object.__setattr__(self, "device", device)
         object.__setattr__(self, "precision", precision)
         object.__setattr__(self, "default_model", model)
-        object.__setattr__(self, "cache_dir", cache)
+        object.__setattr__(self, "cache_dir", str(Path(cache_text).expanduser()))
 
     @property
     def effective_cpu_offload(self) -> bool:
@@ -211,11 +209,10 @@ class AIRuntimeReport:
             lines.append(f"ERROR: {self.error}")
         lines.extend(f"Peringatan: {warning}" for warning in self.warnings)
         recommendation = self.recommendation
+        offload = "aktif" if recommendation.cpu_offload else "nonaktif"
         lines.append(
-            "Rekomendasi: "
-            f"{recommendation.device} + {recommendation.precision} · "
-            f"CPU offload {'aktif' if recommendation.cpu_offload else 'nonaktif'} · "
-            recommendation.reason
+            f"Rekomendasi: {recommendation.device} + {recommendation.precision} · "
+            f"CPU offload {offload} · {recommendation.reason}"
         )
         return "\n".join(lines)
 
@@ -318,7 +315,7 @@ def diagnose_ai_runtime(
             if effective_device == "cuda" and cuda is not None:
                 cuda.synchronize()
             tensor_ok = True
-        except Exception as exc:  # noqa: BLE001 - diagnosis must report arbitrary backend errors
+        except Exception as exc:  # noqa: BLE001 - diagnosis reports backend errors
             tensor_ok = False
             error = f"Tes tensor pada {effective_device} gagal: {exc}"
         tensor_ms = (time.perf_counter() - started) * 1_000
