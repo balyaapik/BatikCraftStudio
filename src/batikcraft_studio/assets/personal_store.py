@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import threading
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from io import BytesIO
 from pathlib import Path
 
@@ -103,7 +103,7 @@ class PersonalAssetStore:
                             "sha256": digest,
                             "original_name": original_name,
                             "source_format": raster.source_format,
-                            "imported_at": datetime.now(timezone.utc).isoformat(),
+                            "imported_at": datetime.now(UTC).isoformat(),
                             "personal_library": True,
                         },
                     }
