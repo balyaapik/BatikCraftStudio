@@ -27,6 +27,11 @@ from batikcraft_studio.ai.offline_runtime import (
     OfflineLoraBatificationProvider,
     OfflineRuntimeConfig,
 )
+from batikcraft_studio.ai.pretrained_background import (
+    AIBatikBackgroundOptions,
+    AIBatikBackgroundResult,
+    PretrainedBatikBackgroundProvider,
+)
 from batikcraft_studio.ai.pretrained_batification import (
     PretrainedAIBatificationOptions,
     PretrainedAIBatificationResult,
@@ -40,6 +45,8 @@ __all__ = [
     "BATIK_MODEL_EXTENSION",
     "BATIK_MODEL_FORMAT",
     "BATIK_MODEL_SCHEMA_VERSION",
+    "AIBatikBackgroundOptions",
+    "AIBatikBackgroundResult",
     "BatikDatasetBundle",
     "BatikDatasetError",
     "BatikDatasetMetadata",
@@ -52,6 +59,7 @@ __all__ = [
     "OfflineRuntimeConfig",
     "PretrainedAIBatificationOptions",
     "PretrainedAIBatificationResult",
+    "PretrainedBatikBackgroundProvider",
     "PretrainedImg2ImgBatificationProvider",
     "build_batik_dataset",
     "build_batik_model_pack",
