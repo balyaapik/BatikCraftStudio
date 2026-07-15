@@ -10,6 +10,7 @@ from batikcraft_studio.imaging.batik_asset import (
     humanize_raster_asset,
     load_batik_asset,
 )
+from batikcraft_studio.imaging.cached_renderer import CachedViewportRenderer
 from batikcraft_studio.imaging.cursor_guide import (
     CursorGuide,
     compute_cursor_guide,
@@ -85,13 +86,38 @@ from batikcraft_studio.imaging.stroke_object import (
     CroppedStroke,
     render_cropped_stroke,
 )
+from batikcraft_studio.imaging.tile_cache import (
+    TILE_SIZE,
+    ObjectRenderCache,
+    ObjectRenderCacheKey,
+    TileCache,
+    TileCacheKey,
+    tile_project_bounds,
+    visible_tile_coords,
+    zoom_scale_bucket,
+)
+from batikcraft_studio.imaging.viewport_renderer import (
+    bounds_intersect,
+    render_project_region,
+)
 
 __all__ = [
+    "CachedViewportRenderer",
     "CursorGuide",
     "GradientError",
     "ASSET_CATEGORIES",
     "ASSET_FORMAT",
     "ASSET_SCHEMA_VERSION",
+    "TILE_SIZE",
+    "ObjectRenderCache",
+    "ObjectRenderCacheKey",
+    "TileCache",
+    "TileCacheKey",
+    "bounds_intersect",
+    "render_project_region",
+    "tile_project_bounds",
+    "visible_tile_coords",
+    "zoom_scale_bucket",
     "DEFAULT_MOTIF_ISEN",
     "ISEN_LABELS",
     "ISEN_TYPES",

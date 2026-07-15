@@ -204,6 +204,11 @@ _TRANSLATIONS: dict[LanguageCode, dict[str, str]] = {
         "tool.pressure": "Variasi tekanan",
         "tool.humanize_note": "Mulai ringan: tepi 0.06–0.14, celah 0.03–0.08, tekanan 0.05–0.12. Sumber asli tetap disimpan.",
         "tool.reset_source": "Reset Sumber",
+        # Active-layer routing errors
+        "layer_routing.locked_active": "Layer {name!r} dikunci dan tidak dapat menerima objek baru. Buka kunci layer atau pilih layer lain.",
+        "layer_routing.folder_target": "Objek tidak dapat disisipkan langsung ke dalam folder. Pilih atau buat layer yang dapat diedit di dalam folder terlebih dahulu.",
+        "layer_routing.invalid_target": "Target yang dipilih bukan layer objek yang valid.",
+        "layer_routing.paste_locked": "Layer {name!r} dikunci dan tidak dapat menerima objek yang ditempel. Buka kunci layer atau pilih layer lain.",
         # Position lock
         "position_lock.lock": "Kunci Posisi",
         "position_lock.unlock": "Buka Kunci Posisi",
@@ -492,6 +497,11 @@ _TRANSLATIONS: dict[LanguageCode, dict[str, str]] = {
         "tool.pressure": "Pressure variation",
         "tool.humanize_note": "Start lightly: edge 0.06–0.14, gaps 0.03–0.08, pressure 0.05–0.12. The original source is preserved.",
         "tool.reset_source": "Reset Source",
+        # Active-layer routing errors
+        "layer_routing.locked_active": "Layer {name!r} is locked and cannot receive new objects. Unlock the layer or select a different layer.",
+        "layer_routing.folder_target": "Objects cannot be inserted directly into a folder. Select or create an editable layer inside the folder first.",
+        "layer_routing.invalid_target": "The selected target is not a valid object layer.",
+        "layer_routing.paste_locked": "Layer {name!r} is locked and cannot receive pasted objects. Unlock the layer or select a different layer.",
         # Position lock
         "position_lock.lock": "Lock Position",
         "position_lock.unlock": "Unlock Position",

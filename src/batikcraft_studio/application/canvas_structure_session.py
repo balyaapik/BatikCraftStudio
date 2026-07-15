@@ -72,7 +72,7 @@ class CanvasStructureProjectSession(BatikProcessProjectSession):
         except ShapeError as exc:
             raise ShapeLayerError(str(exc)) from exc
 
-        target = self._resolve_object_layer(target_layer_id, name="Layer Bentuk")
+        target, add_target = self._resolve_object_layer(target_layer_id, name="Layer Bentuk")
         shape_number = (
             sum(
                 item.kind is ObjectKind.SHAPE
@@ -103,9 +103,13 @@ class CanvasStructureProjectSession(BatikProcessProjectSession):
             ),
             properties=properties,
         )
-        self._commit_mutation(
-            lambda: project.add_object(target.layer_id, item, select=True)
-        )
+
+        def _shape_mutation() -> None:
+            if add_target:
+                project.add_layer(target)
+            project.add_object(target.layer_id, item, select=True)
+
+        self._commit_mutation(_shape_mutation)
         return item
 
     def create_default_shape_layer(
@@ -308,23 +312,69 @@ class CanvasStructureProjectSession(BatikProcessProjectSession):
             and item.properties.get("shape_type") in _CLOSED_SHAPES
         )
 
-    def _resolve_object_layer(self, layer_id: str | None, *, name: str) -> Layer:
-        """Resolve a layer container and preserve the active folder hierarchy."""
+    def _resolve_object_layer(self, layer_id: str | None, *, name: str) -> tuple[Layer, bool]:
+        """Resolve an object-insertion target, respecting the active layer selection.
+
+        Returns a ``(layer, needs_add)`` pair.  When *needs_add* is ``True`` the
+        caller must call ``project.add_layer(layer)`` inside the same
+        ``_commit_mutation`` block so that layer creation and object insertion
+        share exactly one undo/redo entry.
+
+        Resolution order
+        ----------------
+        1. If *layer_id* is supplied explicitly, validate and use it directly.
+        2. If the active layer is a valid, unlocked object container, use it.
+        3. If the active layer is a locked object container → raise LayerLockedError.
+        4. If no active layer is set, or the active node is a folder, create a new
+           layer in the right position (folder child or root).
+
+        This ensures that the user's current selection is always honoured and that
+        locked layers never silently redirect objects to a different layer.
+        """
 
         project = self.require_project()
-        candidate_id = layer_id or project.active_layer_id
-        if candidate_id is not None:
-            candidate = project.get_layer(candidate_id)
-            if self._is_object_container(candidate) and not project.is_layer_effectively_locked(
-                candidate.layer_id
-            ):
-                return candidate
-            if candidate.node_kind is LayerNodeKind.GROUP and not candidate.properties.get(
+
+        # ---- Explicit caller-supplied target ----
+        if layer_id is not None:
+            target = project.get_layer(layer_id)
+            if target.node_kind is LayerNodeKind.GROUP:
+                raise LayerLockedError(
+                    "Objects cannot be inserted directly into a folder. "
+                    "Select or create an editable layer inside the folder first."
+                )
+            if project.is_layer_effectively_locked(target.layer_id):
+                raise LayerLockedError(
+                    f"Layer {target.name!r} is locked and cannot receive new objects. "
+                    "Unlock the layer first."
+                )
+            return target, False
+
+        # ---- Active layer (user's current tree selection) ----
+        active_id = project.active_layer_id
+        if active_id is not None:
+            active = project.get_layer(active_id)
+
+            if active.node_kind is LayerNodeKind.GROUP and not active.properties.get(
                 _INTERNAL_HIDDEN_KEY
             ):
-                return self.create_object_layer(name, parent_id=candidate.layer_id)
-            return self.create_object_layer(name, parent_id=candidate.parent_id)
-        return self.create_object_layer(name)
+                # Folder selected → create inside it without silently redirecting.
+                return self.create_object_layer(name, parent_id=active.layer_id), False
+
+            if self._is_object_container(active):
+                if project.is_layer_effectively_locked(active.layer_id):
+                    raise LayerLockedError(
+                        f"Layer {active.name!r} is locked and cannot receive new objects. "
+                        "Unlock the layer or select a different layer."
+                    )
+                # Valid, unlocked object layer → use it directly.
+                return active, False
+
+            # Some other non-container layer type (e.g. legacy raster layer) →
+            # create beside it inside the same folder.
+            return self.create_object_layer(name, parent_id=active.parent_id), False
+
+        # ---- No active layer at all ----
+        return self.create_object_layer(name), False
 
     @staticmethod
     def _is_object_container(layer: Layer) -> bool:

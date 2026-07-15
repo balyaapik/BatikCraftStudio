@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from batikcraft_studio.domain import Layer, LayerKind, Transform
+from batikcraft_studio.domain import Layer, LayerKind, LayerNodeKind, Transform
 from batikcraft_studio.imaging.shape import (
     SHAPE_TYPES,
     ShapeError,
@@ -11,7 +11,7 @@ from batikcraft_studio.imaging.shape import (
 )
 
 from .paint_session import PaintProjectSession
-from .session import ProjectSessionError
+from .session import LayerLockedError, ProjectSessionError
 
 
 class ShapeLayerError(ProjectSessionError):
@@ -155,6 +155,64 @@ class ShapeProjectSession(PaintProjectSession):
         if updated is None:
             raise ShapeLayerError("Shape update did not produce a result.")
         return updated
+
+    def _resolve_object_layer(self, layer_id: str | None, *, name: str) -> tuple[Layer, bool]:
+        """Resolve an object-insertion target, respecting the active layer selection.
+
+        This base implementation is overridden by ``CanvasStructureProjectSession``
+        and ``ObjectProjectSession`` in the full application stack.  It provides a
+        minimal, correct implementation so that ``BatikProjectSession`` and
+        ``MotifProjectSession`` work correctly when used directly (e.g. in tests).
+
+        Returns a ``(layer, needs_add)`` pair.  When *needs_add* is ``True`` the
+        caller is responsible for calling ``project.add_layer(layer)`` inside the
+        same ``_commit_mutation`` block so that layer creation and object insertion
+        share one undo/redo history entry.
+
+        Resolution order
+        ----------------
+        1. Explicit *layer_id* → validate and use directly.
+        2. Active layer that is a valid unlocked object layer → use it.
+        3. Active layer that is locked → raise ``LayerLockedError``.
+        4. No suitable active layer → return a new ``Layer`` with ``needs_add=True``.
+        """
+
+        project = self.require_project()
+
+        if layer_id is not None:
+            candidate = project.get_layer(layer_id)
+            if candidate.node_kind is not LayerNodeKind.LAYER or candidate.asset_ref is not None:
+                raise LayerLockedError(
+                    "The selected target is not a valid object layer."
+                )
+            if project.is_layer_effectively_locked(candidate.layer_id):
+                raise LayerLockedError(
+                    f"Layer {candidate.name!r} is locked and cannot receive new objects."
+                )
+            return candidate, False
+
+        active_id = project.active_layer_id
+        if active_id is not None:
+            active = project.get_layer(active_id)
+            if (
+                active.node_kind is LayerNodeKind.LAYER
+                and active.asset_ref is None
+            ):
+                if project.is_layer_effectively_locked(active.layer_id):
+                    raise LayerLockedError(
+                        f"Layer {active.name!r} is locked and cannot receive new objects. "
+                        "Unlock the layer or select a different layer."
+                    )
+                return active, False
+
+        # Fallback: return a new layer that the caller must add inside its mutation.
+        new_layer = Layer(
+            name=name,
+            kind=LayerKind.BATIKIFIED_OBJECT,
+            node_kind=LayerNodeKind.LAYER,
+            properties={"object_container": True},
+        )
+        return new_layer, True
 
 
 __all__ = ["ShapeLayerError", "ShapeProjectSession"]

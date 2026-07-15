@@ -55,7 +55,16 @@ class PaintProjectSession(ProjectSession):
         return layer
 
     def ensure_active_paint_layer(self) -> Layer:
-        """Return the active editable paint container or create a new one."""
+        """Return the active editable paint container, or create a new one.
+
+        Rules
+        -----
+        * If the active layer is a valid paint container, return it.
+        * If the active layer is a locked paint container, raise LayerLockedError.
+        * If the active layer is any other type (shape, raster, batikified…), create
+          a new paint layer *without* silently ignoring the selected layer.
+        * If no layer is selected, create a new paint layer.
+        """
 
         project = self.require_project()
         if project.active_layer_id is not None:
@@ -64,9 +73,13 @@ class PaintProjectSession(ProjectSession):
                 active.kind is LayerKind.PAINT
                 and active.node_kind is LayerNodeKind.LAYER
                 and active.asset_ref is None
-                and not project.is_layer_effectively_locked(active.layer_id)
                 and active.transform == Transform()
             ):
+                if project.is_layer_effectively_locked(active.layer_id):
+                    raise LayerLockedError(
+                        f"Layer {active.name!r} is locked and cannot receive new objects. "
+                        "Unlock the layer or select a different layer."
+                    )
                 return active
         return self.create_paint_layer()
 
