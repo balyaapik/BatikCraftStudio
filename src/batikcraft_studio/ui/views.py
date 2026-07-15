@@ -9,7 +9,7 @@ from tkinter import ttk
 from batikcraft_studio.application import ProjectSession
 from batikcraft_studio.config import WorkspaceDefinition
 
-from .context_tool_editor_hotfix_v2 import ContextToolEditorWorkspaceView
+from .context_tool_editor_hotfix_v3 import ContextToolEditorWorkspaceView
 from .icons import create_icon
 from .theme import COLORS
 
