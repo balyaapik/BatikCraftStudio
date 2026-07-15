@@ -6,6 +6,8 @@ from io import BytesIO
 from pathlib import Path
 
 import pytest
+from PIL import Image, features
+
 from batikcraft_studio.application import ExternalImageProjectSession
 from batikcraft_studio.assets import PERSONAL_PACK_ID, AssetLibrary, PersonalAssetStore
 from batikcraft_studio.domain import (
@@ -19,7 +21,6 @@ from batikcraft_studio.ui.external_image_io import (
     paths_from_clipboard_text,
     paths_from_drop_data,
 )
-from PIL import Image, features
 
 
 def _image_bytes(image_format: str, *, size: tuple[int, int] = (80, 60)) -> bytes:
