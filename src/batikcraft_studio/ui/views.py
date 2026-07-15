@@ -9,7 +9,7 @@ from tkinter import ttk
 from batikcraft_studio.application import ProjectSession
 from batikcraft_studio.config import WorkspaceDefinition
 
-from .context_tool_editor import ContextToolEditorWorkspaceView
+from .context_tool_editor_hotfix import ContextToolEditorWorkspaceView
 from .icons import create_icon
 from .theme import COLORS
 
@@ -64,7 +64,7 @@ def create_workspace_view(
     session: ProjectSession,
     refresh_context: RefreshCallback,
 ) -> ContextToolEditorWorkspaceView:
-    """Return the contextual-tool object-first editor."""
+    """Return the contextual-tool object-first editor with viewport hotfixes."""
 
     return ContextToolEditorWorkspaceView(
         parent,
