@@ -1,4 +1,4 @@
-"""Offline AI datasets, model packs, and local inference runtime."""
+"""Offline AI datasets, model packs, and local/pretrained inference runtimes."""
 
 from batikcraft_studio.ai.dataset_pack import (
     BATIK_DATASET_EXTENSION,
@@ -27,6 +27,11 @@ from batikcraft_studio.ai.offline_runtime import (
     OfflineLoraBatificationProvider,
     OfflineRuntimeConfig,
 )
+from batikcraft_studio.ai.pretrained_batification import (
+    PretrainedAIBatificationOptions,
+    PretrainedAIBatificationResult,
+    PretrainedImg2ImgBatificationProvider,
+)
 
 __all__ = [
     "BATIK_DATASET_EXTENSION",
@@ -45,6 +50,9 @@ __all__ = [
     "OfflineLoraBatificationProvider",
     "OfflineModelLibrary",
     "OfflineRuntimeConfig",
+    "PretrainedAIBatificationOptions",
+    "PretrainedAIBatificationResult",
+    "PretrainedImg2ImgBatificationProvider",
     "build_batik_dataset",
     "build_batik_model_pack",
     "default_model_library_root",
