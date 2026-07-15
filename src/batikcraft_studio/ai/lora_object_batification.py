@@ -23,7 +23,7 @@ class LoraObjectBatificationOptions(PretrainedAIBatificationOptions):
     lora_trigger_words: tuple[str, ...] = ("bcr_batik",)
 
     def __post_init__(self) -> None:
-        super().__post_init__()
+        PretrainedAIBatificationOptions.__post_init__(self)
         path = Path(str(self.lora_path).strip()).expanduser()
         if not str(self.lora_path).strip():
             raise BatificationError(
@@ -37,14 +37,18 @@ class LoraObjectBatificationOptions(PretrainedAIBatificationOptions):
         if not 0 <= weight <= 2:
             raise BatificationError("Bobot LoRA harus berada antara 0 dan 2.")
         triggers = tuple(
-            dict.fromkeys(str(word).strip() for word in self.lora_trigger_words if str(word).strip())
+            dict.fromkeys(
+                str(word).strip()
+                for word in self.lora_trigger_words
+                if str(word).strip()
+            )
         )
         object.__setattr__(self, "lora_path", str(path.resolve()))
         object.__setattr__(self, "lora_weight", weight)
         object.__setattr__(self, "lora_trigger_words", triggers)
 
     def to_properties(self) -> dict[str, object]:
-        properties = super().to_properties()
+        properties = PretrainedAIBatificationOptions.to_properties(self)
         properties.update(
             {
                 "lora_path": self.lora_path,
