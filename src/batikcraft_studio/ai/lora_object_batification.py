@@ -64,7 +64,7 @@ class LoraObjectBatificationProvider(GlobalPretrainedImg2ImgBatificationProvider
 
     def __init__(self, pipeline_factory: Any | None = None) -> None:
         super().__init__(pipeline_factory)
-        self._lora_key: tuple[str, float] | None = None
+        self._lora_key: tuple[int, str, float] | None = None
 
     def unload(self) -> None:
         self._lora_key = None
@@ -77,7 +77,7 @@ class LoraObjectBatificationProvider(GlobalPretrainedImg2ImgBatificationProvider
         if not isinstance(settings, LoraObjectBatificationOptions):
             raise BatificationError("Batifikasi objek AI memerlukan pengaturan LoRA Batik.")
         pipeline, torch, device = super()._load_pipeline(settings)
-        key = (settings.lora_path, settings.lora_weight)
+        key = (id(pipeline), settings.lora_path, settings.lora_weight)
         if self._lora_key == key:
             return pipeline, torch, device
 
