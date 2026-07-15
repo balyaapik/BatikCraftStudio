@@ -22,11 +22,20 @@ from batikcraft_studio.assets.library import (
     AssetRecord,
     default_asset_library_root,
 )
+from batikcraft_studio.assets.personal_store import (
+    PERSONAL_PACK_ID,
+    PERSONAL_PACK_NAME,
+    SUPPORTED_IMAGE_EXTENSIONS,
+    PersonalAssetStore,
+)
 
 __all__ = [
     "ASSET_PACK_EXTENSION",
     "ASSET_PACK_FORMAT",
     "ASSET_PACK_SCHEMA_VERSION",
+    "PERSONAL_PACK_ID",
+    "PERSONAL_PACK_NAME",
+    "SUPPORTED_IMAGE_EXTENSIONS",
     "AssetCandidate",
     "AssetLibrary",
     "AssetLibraryError",
@@ -34,6 +43,7 @@ __all__ = [
     "AssetPackBuildError",
     "AssetPackMetadata",
     "AssetRecord",
+    "PersonalAssetStore",
     "PreparedAsset",
     "build_asset_pack",
     "canonicalize_candidate",
