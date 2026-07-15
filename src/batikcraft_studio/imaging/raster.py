@@ -26,7 +26,7 @@ class RasterAsset:
 
 
 def normalize_raster_image(content: bytes | bytearray | memoryview) -> RasterAsset:
-    """Validate image bytes and return a deterministic RGBA PNG asset."""
+    """Validate Pillow-readable image bytes and return a deterministic RGBA PNG asset."""
 
     if not isinstance(content, (bytes, bytearray, memoryview)):
         raise RasterImageError("Image content must be bytes-like.")
@@ -39,10 +39,14 @@ def normalize_raster_image(content: bytes | bytearray | memoryview) -> RasterAss
             source_format = (source.format or "UNKNOWN").upper()
             width, height = source.size
             _validate_dimensions(width, height)
+            source.seek(0)
             source.load()
             normalized = source.convert("RGBA")
     except (UnidentifiedImageError, OSError, ValueError) as exc:
-        raise RasterImageError("The selected file is not a readable PNG or JPEG image.") from exc
+        raise RasterImageError(
+            "File bukan gambar raster yang dapat dibaca. Gunakan PNG, JPEG, TIFF, "
+            "WebP, BMP, GIF, ICO, atau format lain yang didukung Pillow."
+        ) from exc
     except Image.DecompressionBombError as exc:
         raise RasterImageError("The selected image exceeds the safe pixel limit.") from exc
 
