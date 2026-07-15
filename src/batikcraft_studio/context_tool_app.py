@@ -4,17 +4,19 @@ from __future__ import annotations
 
 import tkinter as tk
 
+from batikcraft_studio.ai import get_ai_runtime_store
 from batikcraft_studio.i18n import tr
 
 from . import app as app_module
 from .direct_style_app import DirectStyleApplication
+from .ui.ai_runtime_settings_dialog import AIRuntimeSettingsDialog
 from .ui.external_image_i18n import install_external_image_translations
 
 install_external_image_translations()
 
 
 class ContextToolApplication(DirectStyleApplication):
-    """Launch the contextual editor with file, drop, and clipboard image insertion."""
+    """Launch the contextual editor with file, drop, clipboard, and global AI settings."""
 
     def __init__(self) -> None:
         try:
@@ -45,6 +47,14 @@ class ContextToolApplication(DirectStyleApplication):
     def _build_menu(self) -> None:
         super()._build_menu()
         menu_bar = self.root.nametowidget(str(self.root.cget("menu")))
+        edit_menu = self.root.nametowidget(str(menu_bar.entrycget(1, "menu")))
+        edit_menu.add_separator()
+        edit_menu.add_command(
+            label="Preferences → AI & GPU…",
+            accelerator="Ctrl+,",
+            command=self.open_ai_runtime_settings,
+        )
+
         insert_menu = tk.Menu(menu_bar)
         insert_menu.add_command(
             label=tr("insert.image_file"),
@@ -71,6 +81,40 @@ class ContextToolApplication(DirectStyleApplication):
                 self.main_window._editor().import_external_image_dialog,
             ),
         )
+        self.root.bind_all(
+            "<Control-comma>",
+            lambda event: self._run_shortcut(event, self.open_ai_runtime_settings),
+        )
+
+    def open_ai_runtime_settings(self) -> None:
+        """Open the one persistent compute profile used by all AI workflows."""
+
+        dialog = AIRuntimeSettingsDialog(
+            self.root,
+            get_ai_runtime_store(),
+            unload_models=self._unload_ai_models,
+        )
+        self.root.wait_window(dialog)
+        settings = dialog.result
+        if settings is None:
+            return
+        offload = "aktif" if settings.effective_cpu_offload else "nonaktif"
+        self.main_window.flash_status(
+            f"Runtime AI global disimpan: {settings.device} / {settings.precision}; "
+            f"CPU offload {offload}."
+        )
+
+    def _unload_ai_models(self) -> None:
+        """Release every cached AI pipeline after settings change or on demand."""
+
+        for method_name in (
+            "unload_pretrained_ai",
+            "unload_background_ai",
+            "use_foundation_renderer",
+        ):
+            callback = getattr(self.session, method_name, None)
+            if callable(callback):
+                callback()
 
 
 __all__ = ["ContextToolApplication"]
