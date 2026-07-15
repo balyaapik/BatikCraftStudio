@@ -5,12 +5,12 @@ from __future__ import annotations
 import threading
 import tkinter as tk
 
+from batikcraft_studio.ai import PretrainedAIBatificationResult
 from batikcraft_studio.application import (
     PretrainedAIBatificationProjectSession,
     PretrainedAIPlan,
     ProjectSessionError,
 )
-from batikcraft_studio.ai import PretrainedAIBatificationResult
 
 from .context_tool_editor_hotfix_v4 import ContextToolEditorWorkspaceView as _HotfixV4Editor
 
