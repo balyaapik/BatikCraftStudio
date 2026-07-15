@@ -30,10 +30,10 @@ def test_dnd_root_is_created_before_temporary_tk_factory(monkeypatch: Any) -> No
         construction_factories.append(app_module.tk.Tk)
         return root
 
-    def fake_base_init(instance: object) -> None:
+    def fake_base_init(instance: Any) -> None:
         adopted = app_module.tk.Tk()
         adopted_roots.append(adopted)
-        setattr(instance, "root", adopted)
+        instance.root = adopted
 
     monkeypatch.setattr(tkinterdnd2.TkinterDnD, "Tk", fake_dnd_root)
     monkeypatch.setattr(context_module.DirectStyleApplication, "__init__", fake_base_init)
