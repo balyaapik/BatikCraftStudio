@@ -21,6 +21,8 @@ from batikcraft_studio.application.gradient_session import (
     GRADIENT_KEY,
     GradientProjectSession,
 )
+from batikcraft_studio.application.hotfix_session import HotfixProjectSession
+from batikcraft_studio.application.hotfix_session_v2 import FinalHotfixProjectSession
 from batikcraft_studio.application.interactive_transform_session import (
     InteractiveTransformProjectSession,
 )
@@ -75,9 +77,8 @@ from batikcraft_studio.application.viewport_session import (
     ViewportProjectSession,
 )
 
-# The public desktop session includes destructive object erasing, contextual tool controls,
-# direct styling, tab-capable docks, process documentation, and offline AI.
-ProjectSession = DestructiveEraserProjectSession
+# The public desktop session includes the critical active-layer and Fill hotfixes.
+ProjectSession = FinalHotfixProjectSession
 
 __all__ = [
     "BATIK_PROCESS_EXTENSION",
@@ -95,7 +96,9 @@ __all__ = [
     "DestructiveEraserProjectSession",
     "DirectStyleProjectSession",
     "EditableObjectProjectSession",
+    "FinalHotfixProjectSession",
     "GradientProjectSession",
+    "HotfixProjectSession",
     "InteractiveTransformProjectSession",
     "LayerLockedError",
     "MotifCapError",
