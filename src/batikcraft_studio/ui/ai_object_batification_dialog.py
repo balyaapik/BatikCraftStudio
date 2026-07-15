@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import tkinter as tk
-from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
 from batikcraft_studio.ai.lora_object_batification import LoraObjectBatificationOptions
@@ -81,14 +80,26 @@ class AIObjectBatificationDialog(tk.Toplevel):
             f"Base model: {self.defaults.model_id_or_path}\n"
             f"Runtime global: {self.defaults.device} / {self.defaults.precision}"
         )
-        ttk.Label(body, text="Runtime").grid(row=row, column=0, sticky="nw", padx=(0, 10))
-        ttk.Label(body, text=runtime_text, style="Muted.TLabel", justify="left").grid(
-            row=row, column=1, columnspan=2, sticky="w"
+        ttk.Label(body, text="Runtime").grid(
+            row=row,
+            column=0,
+            sticky="nw",
+            padx=(0, 10),
         )
+        ttk.Label(
+            body,
+            text=runtime_text,
+            style="Muted.TLabel",
+            justify="left",
+        ).grid(row=row, column=1, columnspan=2, sticky="w")
         row += 1
 
         ttk.Label(body, text="LoRA Batik terpasang").grid(
-            row=row, column=0, sticky="w", padx=(0, 10), pady=4
+            row=row,
+            column=0,
+            sticky="w",
+            padx=(0, 10),
+            pady=4,
         )
         model_combo = ttk.Combobox(
             body,
@@ -97,29 +108,87 @@ class AIObjectBatificationDialog(tk.Toplevel):
             state="readonly" if model_labels else "disabled",
         )
         model_combo.grid(row=row, column=1, sticky="ew", pady=4)
-        model_combo.bind("<<ComboboxSelected>>", lambda _event: self._select_installed_model())
+        model_combo.bind(
+            "<<ComboboxSelected>>",
+            lambda _event: self._select_installed_model(),
+        )
         ttk.Button(body, text="Gunakan", command=self._select_installed_model).grid(
-            row=row, column=2, sticky="e", padx=(6, 0), pady=4
+            row=row,
+            column=2,
+            sticky="e",
+            padx=(6, 0),
+            pady=4,
         )
         row += 1
 
         ttk.Label(body, text="File LoRA").grid(
-            row=row, column=0, sticky="w", padx=(0, 10), pady=4
+            row=row,
+            column=0,
+            sticky="w",
+            padx=(0, 10),
+            pady=4,
         )
         ttk.Entry(body, textvariable=self.lora_path_value).grid(
-            row=row, column=1, sticky="ew", pady=4
+            row=row,
+            column=1,
+            sticky="ew",
+            pady=4,
         )
         ttk.Button(body, text="Pilih…", command=self._browse_lora).grid(
-            row=row, column=2, sticky="e", padx=(6, 0), pady=4
+            row=row,
+            column=2,
+            sticky="e",
+            padx=(6, 0),
+            pady=4,
         )
         row += 1
 
         row = self._entry_row(body, row, "Trigger words", self.trigger_value)
-        row = self._scale_row(body, row, "Bobot LoRA", self.lora_weight_value, 0, 2, 0.05)
-        row = self._scale_row(body, row, "Kekuatan perubahan", self.strength_value, 5, 80, 1)
-        row = self._scale_row(body, row, "Campuran hasil AI", self.blend_value, 0, 100, 1)
-        row = self._scale_row(body, row, "Skala motif referensi", self.pattern_scale_value, 0.08, 4, 0.05)
-        row = self._scale_row(body, row, "Pertahankan shading", self.shading_value, 0, 100, 1)
+        row = self._scale_row(
+            body,
+            row,
+            "Bobot LoRA",
+            self.lora_weight_value,
+            0,
+            2,
+            0.05,
+        )
+        row = self._scale_row(
+            body,
+            row,
+            "Kekuatan perubahan",
+            self.strength_value,
+            5,
+            80,
+            1,
+        )
+        row = self._scale_row(
+            body,
+            row,
+            "Campuran hasil AI",
+            self.blend_value,
+            0,
+            100,
+            1,
+        )
+        row = self._scale_row(
+            body,
+            row,
+            "Skala motif referensi",
+            self.pattern_scale_value,
+            0.08,
+            4,
+            0.05,
+        )
+        row = self._scale_row(
+            body,
+            row,
+            "Pertahankan shading",
+            self.shading_value,
+            0,
+            100,
+            1,
+        )
 
         numeric = ttk.Frame(body)
         numeric.grid(row=row, column=0, columnspan=3, sticky="ew", pady=(6, 4))
@@ -131,14 +200,24 @@ class AIObjectBatificationDialog(tk.Toplevel):
         self._spinbox(numeric, 3, "Resolusi", self.resolution_value, 256, 1024, 64)
         row += 1
 
-        ttk.Label(body, text="Prompt").grid(row=row, column=0, sticky="nw", padx=(0, 10), pady=4)
+        ttk.Label(body, text="Prompt").grid(
+            row=row,
+            column=0,
+            sticky="nw",
+            padx=(0, 10),
+            pady=4,
+        )
         self.prompt_text = tk.Text(body, height=4, wrap="word")
         self.prompt_text.grid(row=row, column=1, columnspan=2, sticky="nsew", pady=4)
         self.prompt_text.insert("1.0", self.defaults.prompt)
         row += 1
 
         ttk.Label(body, text="Negative prompt").grid(
-            row=row, column=0, sticky="nw", padx=(0, 10), pady=4
+            row=row,
+            column=0,
+            sticky="nw",
+            padx=(0, 10),
+            pady=4,
         )
         self.negative_text = tk.Text(body, height=3, wrap="word")
         self.negative_text.grid(row=row, column=1, columnspan=2, sticky="nsew", pady=4)
@@ -159,13 +238,34 @@ class AIObjectBatificationDialog(tk.Toplevel):
 
         actions = ttk.Frame(body)
         actions.grid(row=row, column=0, columnspan=3, sticky="e")
-        ttk.Button(actions, text="Batal", command=self._cancel).pack(side="right", padx=(6, 0))
-        ttk.Button(actions, text="Generate Batik", command=self._accept).pack(side="right")
+        ttk.Button(actions, text="Batal", command=self._cancel).pack(
+            side="right",
+            padx=(6, 0),
+        )
+        ttk.Button(actions, text="Generate Batik", command=self._accept).pack(
+            side="right"
+        )
 
-    def _entry_row(self, parent: ttk.Frame, row: int, label: str, variable: tk.Variable) -> int:
-        ttk.Label(parent, text=label).grid(row=row, column=0, sticky="w", padx=(0, 10), pady=4)
+    def _entry_row(
+        self,
+        parent: ttk.Frame,
+        row: int,
+        label: str,
+        variable: tk.Variable,
+    ) -> int:
+        ttk.Label(parent, text=label).grid(
+            row=row,
+            column=0,
+            sticky="w",
+            padx=(0, 10),
+            pady=4,
+        )
         ttk.Entry(parent, textvariable=variable).grid(
-            row=row, column=1, columnspan=2, sticky="ew", pady=4
+            row=row,
+            column=1,
+            columnspan=2,
+            sticky="ew",
+            pady=4,
         )
         return row + 1
 
@@ -179,7 +279,13 @@ class AIObjectBatificationDialog(tk.Toplevel):
         stop: float,
         resolution: float,
     ) -> int:
-        ttk.Label(parent, text=label).grid(row=row, column=0, sticky="w", padx=(0, 10), pady=3)
+        ttk.Label(parent, text=label).grid(
+            row=row,
+            column=0,
+            sticky="w",
+            padx=(0, 10),
+            pady=3,
+        )
         tk.Scale(
             parent,
             variable=variable,
@@ -202,7 +308,12 @@ class AIObjectBatificationDialog(tk.Toplevel):
         increment: float,
     ) -> None:
         holder = ttk.Frame(parent)
-        holder.grid(row=0, column=column, sticky="ew", padx=(0 if column == 0 else 5, 0))
+        holder.grid(
+            row=0,
+            column=column,
+            sticky="ew",
+            padx=(0 if column == 0 else 5, 0),
+        )
         ttk.Label(holder, text=label, style="Muted.TLabel").pack(anchor="w")
         ttk.Spinbox(
             holder,
