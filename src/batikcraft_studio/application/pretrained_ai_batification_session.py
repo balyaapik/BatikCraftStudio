@@ -142,15 +142,20 @@ class PretrainedAIBatificationProjectSession(NonMLBatificationProjectSession):
 
         project = self.require_project()
         if project.project_id != plan.project_id:
-            raise ProjectSessionError("Project berubah saat AI berjalan. Jalankan Batifikasi AI kembali.")
+            raise ProjectSessionError(
+                "Project berubah saat AI berjalan. Jalankan Batifikasi AI kembali."
+            )
         if project.revision != plan.project_revision:
             raise ProjectSessionError(
-                "Project diedit saat AI berjalan sehingga hasil lama tidak diterapkan. Jalankan kembali."
+                "Project diedit saat AI berjalan sehingga hasil lama tidak diterapkan. "
+                "Jalankan kembali."
             )
         source = self._require_unlocked_object(plan.source_object_id)
         motif = project.get_object(plan.motif_object_id)
         if project.object_layer_id(source.object_id) != plan.source_layer_id:
-            raise ProjectSessionError("Objek sumber berpindah layer saat AI berjalan. Jalankan kembali.")
+            raise ProjectSessionError(
+                "Objek sumber berpindah layer saat AI berjalan. Jalankan kembali."
+            )
         if not result.content or result.width < 1 or result.height < 1:
             raise ProjectSessionError("Hasil AI tidak valid.")
 
