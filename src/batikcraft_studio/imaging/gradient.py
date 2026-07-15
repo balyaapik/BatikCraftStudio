@@ -1,7 +1,7 @@
 """Non-destructive, Pillow-vectorized gradient compositing.
 
 Gradients are stored in ``LayerObject.properties`` and are applied at render
-time.  The source alpha is multiplied by gradient-stop alpha, so transparent
+time. The source alpha is multiplied by gradient-stop alpha, so transparent
 stops remain effective without changing the original object geometry.
 """
 
@@ -11,7 +11,7 @@ import math
 from io import BytesIO
 from typing import Any
 
-from PIL import Image, ImageChops, ImageColor
+from PIL import Image, ImageChops, ImageColor, ImageOps
 
 
 class GradientError(ValueError):
@@ -54,14 +54,15 @@ def _build_linear_gradient(
     offset_y = max(-1.0, min(1.0, float(props.get("offset_y", 0.0))))
 
     # Build a C-level Pillow gradient on a square large enough that rotating and
-    # cropping never exposes an uninitialised corner.
+    # cropping never exposes an uninitialised corner. Positive angles follow the
+    # editor contract: 0° top-to-bottom and 90° left-to-right.
     diagonal = max(2, int(math.ceil(math.hypot(width, height))) * 2)
     ramp = Image.linear_gradient("L").resize(
         (diagonal, diagonal),
         Image.Resampling.BICUBIC,
     )
     rotated = ramp.rotate(
-        -angle,
+        angle,
         resample=Image.Resampling.BICUBIC,
         expand=False,
     )
@@ -72,6 +73,13 @@ def _build_linear_gradient(
     t_channel = rotated.crop((left, top, left + width, top + height))
     if t_channel.size != (width, height):
         t_channel = t_channel.resize((width, height), Image.Resampling.BICUBIC)
+
+    # With a centred gradient, the visible object bounds represent the complete
+    # start-to-end interval. Stretch the cropped projection to exact 0..255 so
+    # edge pixels receive the configured stop opacities and colors.
+    if abs(offset_x) < 1e-12 and abs(offset_y) < 1e-12:
+        t_channel = ImageOps.autocontrast(t_channel)
+
     return _blend_colors_with_t(
         start_color,
         end_color,
