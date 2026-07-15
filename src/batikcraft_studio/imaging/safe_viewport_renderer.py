@@ -1,7 +1,7 @@
 """Screen-pixel-bounded viewport rendering.
 
 This module replaces the M4J project-space tile assumption with fixed-size
-screen tiles.  A tile is never larger than ``SCREEN_TILE_SIZE`` in either
+screen tiles. A tile is never larger than ``SCREEN_TILE_SIZE`` in either
 output dimension, including at 800% zoom.
 """
 
@@ -38,7 +38,7 @@ def project_visual_fingerprint(project: Project, assets: Mapping[str, bytes]) ->
     """Return a deterministic visual-state fingerprint.
 
     Selection, cursor, tooltips, and other editor-only state are intentionally
-    absent.  Object properties, transforms, layer state, and asset bytes are
+    absent. Object properties, transforms, layer state, and asset bytes are
     included so style and fill edits cannot reuse stale cached artwork.
     """
 
@@ -54,7 +54,11 @@ def project_visual_fingerprint(project: Project, assets: Mapping[str, bytes]) ->
     return digest.hexdigest()[:24]
 
 
-def screen_canvas_size(project_width: int, project_height: int, zoom_scale: float) -> tuple[int, int]:
+def screen_canvas_size(
+    project_width: int,
+    project_height: int,
+    zoom_scale: float,
+) -> tuple[int, int]:
     if zoom_scale <= 0:
         raise ValueError("zoom_scale must be positive")
     return (
@@ -83,23 +87,25 @@ def visible_screen_tile_coords(
         raise ValueError("tile_size must be positive")
 
     canvas_w, canvas_h = screen_canvas_size(
-        project_canvas_width, project_canvas_height, zoom_scale
+        project_canvas_width,
+        project_canvas_height,
+        zoom_scale,
     )
     max_tx = max(0, math.ceil(canvas_w / tile_size) - 1)
     max_ty = max(0, math.ceil(canvas_h / tile_size) - 1)
 
     first_tx = max(0, math.floor(viewport_left / tile_size) - overscan)
     first_ty = max(0, math.floor(viewport_top / tile_size) - overscan)
-    last_tx = min(
-        max_tx,
-        math.floor(max(viewport_left, viewport_left + max(0.0, viewport_width - 1)) / tile_size)
-        + overscan,
+    viewport_right = max(
+        viewport_left,
+        viewport_left + max(0.0, viewport_width - 1),
     )
-    last_ty = min(
-        max_ty,
-        math.floor(max(viewport_top, viewport_top + max(0.0, viewport_height - 1)) / tile_size)
-        + overscan,
+    viewport_bottom = max(
+        viewport_top,
+        viewport_top + max(0.0, viewport_height - 1),
     )
+    last_tx = min(max_tx, math.floor(viewport_right / tile_size) + overscan)
+    last_ty = min(max_ty, math.floor(viewport_bottom / tile_size) + overscan)
 
     if last_tx < first_tx or last_ty < first_ty:
         return []
@@ -122,7 +128,9 @@ def screen_tile_geometry(
     """Return project bounds and bounded output size for one screen tile."""
 
     canvas_w, canvas_h = screen_canvas_size(
-        project_canvas_width, project_canvas_height, zoom_scale
+        project_canvas_width,
+        project_canvas_height,
+        zoom_scale,
     )
     screen_left = tile_x * tile_size
     screen_top = tile_y * tile_size
@@ -133,8 +141,14 @@ def screen_tile_geometry(
 
     project_left = screen_left / zoom_scale
     project_top = screen_top / zoom_scale
-    project_right = min(project_canvas_width, (screen_left + output_w) / zoom_scale)
-    project_bottom = min(project_canvas_height, (screen_top + output_h) / zoom_scale)
+    project_right = min(
+        project_canvas_width,
+        (screen_left + output_w) / zoom_scale,
+    )
+    project_bottom = min(
+        project_canvas_height,
+        (screen_top + output_h) / zoom_scale,
+    )
     return (
         (project_left, project_top, project_right, project_bottom),
         (output_w, output_h),
