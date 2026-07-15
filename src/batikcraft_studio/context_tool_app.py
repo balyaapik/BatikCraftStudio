@@ -105,16 +105,16 @@ class ContextToolApplication(DirectStyleApplication):
         )
 
     def _unload_ai_models(self) -> None:
-        """Release every cached AI pipeline after settings change or on demand."""
+        """Release cached pipelines without clearing the selected offline LoRA."""
 
-        for method_name in (
-            "unload_pretrained_ai",
-            "unload_background_ai",
-            "use_foundation_renderer",
-        ):
+        for method_name in ("unload_pretrained_ai", "unload_background_ai"):
             callback = getattr(self.session, method_name, None)
             if callable(callback):
                 callback()
+        provider = getattr(self.session, "_batification_provider", None)
+        unload = getattr(provider, "unload", None)
+        if callable(unload):
+            unload()
 
 
 __all__ = ["ContextToolApplication"]
