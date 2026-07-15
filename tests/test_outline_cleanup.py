@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from io import BytesIO
-from pathlib import Path
 
 import pytest
 from PIL import Image, ImageDraw
@@ -112,7 +111,7 @@ def test_dark_mode_removes_opaque_white_background() -> None:
     assert result.resolved_source_mode == "dark"
 
 
-def test_preview_does_not_mutate_and_apply_is_one_undo_step(tmp_path: Path) -> None:
+def test_preview_does_not_mutate_and_apply_is_one_undo_step() -> None:
     session = OutlineCleanupProjectSession()
     session.new_project(title="Outline", creator="Test", width=400, height=300)
     item = session.import_external_image("noisy.png", _noisy_transparent_outline())
@@ -160,7 +159,7 @@ def test_stale_outline_preview_is_rejected() -> None:
     session.import_external_image("noisy.png", _noisy_transparent_outline())
     plan = session.prepare_outline_cleanup()
     preview = session.render_outline_cleanup_preview(plan)
-    session.new_object_layer("Perubahan")
+    session.import_external_image("other.png", _noisy_transparent_outline())
 
     with pytest.raises(ProjectSessionError, match="Project berubah"):
         session.commit_outline_cleanup_preview(plan, preview)
