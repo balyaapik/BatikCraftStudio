@@ -13,25 +13,12 @@ from threading import Event
 
 from batikcraft_studio.imaging.batik_asset import load_batik_asset
 
-from .library import (
-    ASSET_PACK_EXTENSION,
-    AssetLibrary,
-    AssetLibraryError,
-    AssetPack,
-    _find_manifest_member,
-    _MAX_MANIFEST_BYTES,
-    _MAX_PACK_FILES,
-    _MAX_SINGLE_ASSET_BYTES,
-    _normalize_relative_path,
-    _pack_from_manifest_path,
-    _safe_join,
-    _validate_manifest,
-)
+from . import library as library_module
 
 _COPY_CHUNK_SIZE = 1024 * 1024
 
 
-class AssetInstallCancelled(AssetLibraryError):
+class AssetInstallCancelled(library_module.AssetLibraryError):
     """Raised when the user cancels an install before the atomic commit stage."""
 
 
@@ -55,13 +42,13 @@ ProgressCallback = Callable[[AssetInstallProgress], None]
 
 
 def install_pack_with_progress(
-    library: AssetLibrary,
+    library: library_module.AssetLibrary,
     archive_path: Path | str,
     *,
     replace: bool = False,
     progress: ProgressCallback | None = None,
     cancel_event: Event | None = None,
-) -> AssetPack:
+) -> library_module.AssetPack:
     """Validate and atomically install a pack while reporting real work progress.
 
     Extraction progress is based on uncompressed archive bytes. Validation progress
@@ -70,12 +57,12 @@ def install_pack_with_progress(
     """
 
     path = Path(archive_path)
-    if path.suffix.casefold() != ASSET_PACK_EXTENSION:
-        raise AssetLibraryError(
-            f"Asset pack harus memakai ekstensi {ASSET_PACK_EXTENSION}."
+    if path.suffix.casefold() != library_module.ASSET_PACK_EXTENSION:
+        raise library_module.AssetLibraryError(
+            f"Asset pack harus memakai ekstensi {library_module.ASSET_PACK_EXTENSION}."
         )
     if not path.is_file():
-        raise AssetLibraryError(f"File asset pack tidak ditemukan: {path}")
+        raise library_module.AssetLibraryError(f"File asset pack tidak ditemukan: {path}")
 
     _emit(progress, "opening", 0.0, 0, 1, "Membuka paket asset…")
     _check_cancel(cancel_event)
@@ -83,20 +70,25 @@ def install_pack_with_progress(
     try:
         with zipfile.ZipFile(path, "r") as archive:
             members = archive.infolist()
-            if len(members) > _MAX_PACK_FILES:
-                raise AssetLibraryError("Asset pack memiliki terlalu banyak file.")
-            manifest_member = _find_manifest_member(members)
-            if manifest_member.file_size > _MAX_MANIFEST_BYTES:
-                raise AssetLibraryError("Manifest asset pack terlalu besar.")
+            if len(members) > library_module._MAX_PACK_FILES:
+                raise library_module.AssetLibraryError(
+                    "Asset pack memiliki terlalu banyak file."
+                )
+            manifest_member = library_module._find_manifest_member(members)
+            if manifest_member.file_size > library_module._MAX_MANIFEST_BYTES:
+                raise library_module.AssetLibraryError(
+                    "Manifest asset pack terlalu besar."
+                )
 
             manifest = json.loads(archive.read(manifest_member).decode("utf-8"))
-            validated = _validate_manifest(manifest)
+            validated = library_module._validate_manifest(manifest)
             pack_data = validated["pack"]
             pack_id = pack_data["id"]
             destination = library.root / pack_id
             if destination.exists() and not replace:
-                raise AssetLibraryError(
-                    f"Asset pack {pack_id!r} sudah terpasang. Gunakan replace untuk mengganti."
+                raise library_module.AssetLibraryError(
+                    f"Asset pack {pack_id!r} sudah terpasang. "
+                    "Gunakan replace untuk mengganti."
                 )
 
             asset_total = len(validated["assets"])
@@ -123,7 +115,9 @@ def install_pack_with_progress(
                     progress=progress,
                     cancel_event=cancel_event,
                 )
-                parsed = _pack_from_manifest_path(staging / "manifest.json")
+                parsed = library_module._pack_from_manifest_path(
+                    staging / "manifest.json"
+                )
                 _validate_pack_with_progress(
                     parsed,
                     progress=progress,
@@ -142,10 +136,17 @@ def install_pack_with_progress(
                 _commit_staging(library.root, staging, destination, pack_id)
     except AssetInstallCancelled:
         raise
-    except AssetLibraryError:
+    except library_module.AssetLibraryError:
         raise
-    except (OSError, zipfile.BadZipFile, UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise AssetLibraryError("Asset pack rusak atau tidak valid.") from exc
+    except (
+        OSError,
+        zipfile.BadZipFile,
+        UnicodeDecodeError,
+        json.JSONDecodeError,
+    ) as exc:
+        raise library_module.AssetLibraryError(
+            "Asset pack rusak atau tidak valid."
+        ) from exc
 
     library.refresh()
     installed = library.get_pack(pack_id)
@@ -176,18 +177,28 @@ def _extract_archive_with_progress(
 
     for member in members:
         _check_cancel(cancel_event)
-        normalized = _normalize_relative_path(member.filename, allow_directory=True)
+        normalized = library_module._normalize_relative_path(
+            member.filename,
+            allow_directory=True,
+        )
         collision_key = normalized.casefold()
         if collision_key in seen:
-            raise AssetLibraryError(f"Path ganda dalam asset pack: {normalized!r}.")
+            raise library_module.AssetLibraryError(
+                f"Path ganda dalam asset pack: {normalized!r}."
+            )
         seen.add(collision_key)
         if member.is_dir():
             (destination / normalized).mkdir(parents=True, exist_ok=True)
             continue
-        if member.file_size > _MAX_SINGLE_ASSET_BYTES and normalized != "manifest.json":
-            raise AssetLibraryError(f"File asset terlalu besar: {normalized!r}.")
+        if (
+            member.file_size > library_module._MAX_SINGLE_ASSET_BYTES
+            and normalized != "manifest.json"
+        ):
+            raise library_module.AssetLibraryError(
+                f"File asset terlalu besar: {normalized!r}."
+            )
 
-        output = _safe_join(destination, normalized)
+        output = library_module._safe_join(destination, normalized)
         output.parent.mkdir(parents=True, exist_ok=True)
         with archive.open(member, "r") as source, output.open("wb") as target:
             while True:
@@ -209,7 +220,7 @@ def _extract_archive_with_progress(
 
 
 def _validate_pack_with_progress(
-    pack: AssetPack,
+    pack: library_module.AssetPack,
     *,
     progress: ProgressCallback | None,
     cancel_event: Event | None,
@@ -217,19 +228,21 @@ def _validate_pack_with_progress(
     total = max(1, len(pack.assets))
     for index, item in enumerate(pack.assets, start=1):
         _check_cancel(cancel_event)
-        asset_path = _safe_join(pack.root, item.relative_path)
+        asset_path = library_module._safe_join(pack.root, item.relative_path)
         if not asset_path.is_file():
-            raise AssetLibraryError(
+            raise library_module.AssetLibraryError(
                 f"File asset tidak ditemukan: {item.relative_path!r}."
             )
         try:
             load_batik_asset(asset_path.read_bytes(), filename=asset_path.name)
         except (OSError, ValueError) as exc:
-            raise AssetLibraryError(f"Asset {item.name!r} tidak valid.") from exc
+            raise library_module.AssetLibraryError(
+                f"Asset {item.name!r} tidak valid."
+            ) from exc
         if item.thumbnail_path is not None:
-            thumbnail = _safe_join(pack.root, item.thumbnail_path)
+            thumbnail = library_module._safe_join(pack.root, item.thumbnail_path)
             if not thumbnail.is_file():
-                raise AssetLibraryError(
+                raise library_module.AssetLibraryError(
                     f"Thumbnail asset tidak ditemukan: {item.thumbnail_path!r}."
                 )
         fraction = 0.60 + 0.35 * index / total
