@@ -9,7 +9,7 @@ from tkinter import ttk
 from batikcraft_studio.application import ProjectSession
 from batikcraft_studio.config import WorkspaceDefinition
 
-from .context_tool_editor_hotfix_v8 import ContextToolEditorWorkspaceView
+from .context_tool_editor_hotfix_v9 import ContextToolEditorWorkspaceView
 from .icons import create_icon
 from .theme import COLORS
 
@@ -64,7 +64,7 @@ def create_workspace_view(
     session: ProjectSession,
     refresh_context: RefreshCallback,
 ) -> ContextToolEditorWorkspaceView:
-    """Return the editor with AI, images, pack progress, and outline cleanup."""
+    """Return the editor with recolor, AI backgrounds, and previous hotfixes."""
 
     return ContextToolEditorWorkspaceView(
         parent,
