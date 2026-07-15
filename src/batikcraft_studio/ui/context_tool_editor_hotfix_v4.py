@@ -11,7 +11,7 @@ from batikcraft_studio.application import (
 from batikcraft_studio.assets import PersonalAssetStore
 
 from .context_tool_editor_hotfix_v3 import ContextToolEditorWorkspaceView as _HotfixV3Editor
-from .non_ml_batification_dialog import NonMLBatificationDialog
+from .non_ml_batification_dialog_compat import NonMLBatificationDialog
 
 
 class ContextToolEditorWorkspaceView(_HotfixV3Editor):
