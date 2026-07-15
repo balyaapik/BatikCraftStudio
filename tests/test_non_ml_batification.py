@@ -4,8 +4,10 @@ from __future__ import annotations
 
 from io import BytesIO
 
+import pytest
 from PIL import Image, ImageDraw
 
+from batikcraft_studio.application import ProjectSessionError
 from batikcraft_studio.application.non_ml_batification_session import (
     NonMLBatificationProjectSession,
 )
@@ -54,6 +56,46 @@ def _motif() -> Image.Image:
     draw.rectangle((12, 12, 23, 23), fill=(78, 42, 30, 255))
     draw.ellipse((7, 7, 17, 17), outline=(170, 69, 55, 255), width=3)
     return image
+
+
+def _session_with_source() -> tuple[NonMLBatificationProjectSession, LayerObject, str]:
+    session = NonMLBatificationProjectSession()
+    project = session.new_project(
+        title="Preview Batification",
+        creator="Test",
+        width=256,
+        height=256,
+    )
+    layer = Layer(
+        name="Objects",
+        kind=LayerKind.BATIKIFIED_OBJECT,
+        node_kind=LayerNodeKind.LAYER,
+        properties={"object_container": True},
+    )
+    project.add_layer(layer)
+    source_ref = "assets/source-preview.png"
+    session._assets[source_ref] = _png(_silhouette())
+    source = LayerObject(
+        name="Random object",
+        kind=ObjectKind.RASTER,
+        asset_ref=source_ref,
+        transform=Transform(
+            x=112,
+            y=104,
+            rotation_degrees=18,
+            scale_x=0.8,
+            scale_y=1.15,
+        ),
+        bounds=ObjectBounds(96, 96),
+        properties={
+            "source_format": "PNG",
+            "source_asset_ref": source_ref,
+            "external_image_import": True,
+        },
+    )
+    project.add_object(layer.layer_id, source, select=True)
+    session.set_selected_objects([source.object_id])
+    return session, source, layer.layer_id
 
 
 def test_fill_outline_clips_real_motif_to_source_silhouette() -> None:
@@ -162,3 +204,73 @@ def test_session_creates_result_in_source_layer_as_one_undo_step() -> None:
     restored = session.require_project().get_layer(layer.layer_id)
     assert len(restored.objects) == 3
     assert not session.require_project().get_object(source.object_id).visible
+
+
+def test_preview_and_cancel_do_not_mutate_project_or_history() -> None:
+    session, source, _layer_id = _session_with_source()
+    project = session.require_project()
+    revision_before = project.revision
+    undo_before = session.snapshot().can_undo
+
+    plan = session.prepare_non_ml_batification()
+    preview = session.render_non_ml_batification_preview(
+        plan,
+        _png(_motif()),
+        motif_name="Kawung Library",
+        motif_library_key="starter:kawung",
+    )
+
+    assert preview.result.content
+    assert project.revision == revision_before
+    assert session.snapshot().can_undo == undo_before
+    assert project.get_object(source.object_id) == source
+
+
+def test_ok_replaces_same_object_in_place_and_undo_restores_original() -> None:
+    session, source, layer_id = _session_with_source()
+    plan = session.prepare_non_ml_batification()
+    preview = session.render_non_ml_batification_preview(
+        plan,
+        _png(_motif()),
+        motif_name="Parang Upload",
+        motif_library_key="user-imports:parang",
+        options=NonMLBatificationOptions(pattern_scale=0.8, pattern_rotation=14),
+    )
+
+    updated = session.commit_non_ml_batification_preview(plan, preview)
+
+    assert updated.object_id == source.object_id
+    assert session.require_project().object_layer_id(updated.object_id) == layer_id
+    assert len(session.require_project().get_layer(layer_id).objects) == 1
+    assert updated.asset_ref != source.asset_ref
+    assert updated.transform == source.transform
+    assert updated.opacity == source.opacity
+    assert updated.kind is ObjectKind.RASTER
+    assert updated.properties["batification_replace_in_place"] is True
+    assert updated.properties["batification_preview_approved"] is True
+    assert updated.properties["batification_motif_library_key"] == "user-imports:parang"
+    assert updated.properties["batification_original_asset_ref"] == source.asset_ref
+
+    assert session.undo() is True
+    restored = session.require_project().get_object(source.object_id)
+    assert restored == source
+    assert len(session.require_project().get_layer(layer_id).objects) == 1
+
+    assert session.redo() is True
+    redone = session.require_project().get_object(source.object_id)
+    assert redone.asset_ref == updated.asset_ref
+    assert redone.transform == source.transform
+
+
+def test_commit_rejects_stale_preview_after_project_changes() -> None:
+    session, source, _layer_id = _session_with_source()
+    plan = session.prepare_non_ml_batification()
+    preview = session.render_non_ml_batification_preview(
+        plan,
+        _png(_motif()),
+        motif_name="Motif",
+    )
+    session.move_object(source.object_id, x=180, y=180)
+
+    with pytest.raises(ProjectSessionError, match="Project berubah"):
+        session.commit_non_ml_batification_preview(plan, preview)
