@@ -24,6 +24,7 @@ from batikcraft_studio.domain import (
     LayerObject,
     ObjectBounds,
     ObjectKind,
+    ObjectNotFoundError,
     Transform,
 )
 
@@ -195,7 +196,7 @@ def test_session_commits_ai_result_in_source_layer_as_one_undo_step() -> None:
 
     assert session.undo() is True
     assert project.get_object(source.object_id).visible is True
-    with pytest.raises(Exception):
+    with pytest.raises(ObjectNotFoundError):
         project.get_object(output.object_id)
 
     assert session.redo() is True
