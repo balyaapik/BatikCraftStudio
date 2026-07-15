@@ -36,6 +36,9 @@ from batikcraft_studio.application.multi_object_session import (
     MultiObjectProjectSession,
     MultiObjectSelection,
 )
+from batikcraft_studio.application.non_ml_batification_session import (
+    NonMLBatificationProjectSession,
+)
 from batikcraft_studio.application.object_session import (
     ObjectLockedError,
     ObjectProjectSession,
@@ -77,8 +80,9 @@ from batikcraft_studio.application.viewport_session import (
     ViewportProjectSession,
 )
 
-# The public desktop session includes the critical active-layer and Fill hotfixes.
-ProjectSession = FinalHotfixProjectSession
+# The public desktop session includes the critical viewport/Fill hotfixes and
+# deterministic two-object Batification without an ML model.
+ProjectSession = NonMLBatificationProjectSession
 
 __all__ = [
     "BATIK_PROCESS_EXTENSION",
@@ -107,6 +111,7 @@ __all__ = [
     "MultiObjectProjectSession",
     "MultiObjectSelection",
     "NoActiveProjectError",
+    "NonMLBatificationProjectSession",
     "ObjectClipboardSnapshot",
     "ObjectLockedError",
     "ObjectProjectSession",
