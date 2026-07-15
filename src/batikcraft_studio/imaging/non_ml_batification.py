@@ -1,7 +1,7 @@
 """Deterministic motif-to-object Batification without an ML model.
 
-The source object supplies silhouette, linework, and optional luminance.  A second
-object supplies the actual Batik motif and palette.  The result is a transparent
+The source object supplies silhouette, linework, and optional luminance. A second
+object supplies the actual Batik motif and palette. The result is a transparent
 RGBA object that can be stored like any other editable raster component.
 """
 
@@ -53,7 +53,9 @@ class NonMLBatificationOptions:
         try:
             mode = NonMLBatificationMode(self.mode)
         except (TypeError, ValueError) as exc:
-            raise NonMLBatificationError(f"Unsupported Batification mode: {self.mode!r}.") from exc
+            raise NonMLBatificationError(
+                f"Unsupported Batification mode: {self.mode!r}."
+            ) from exc
         pattern_scale = _finite(self.pattern_scale, "pattern_scale")
         rotation = _finite(self.pattern_rotation, "pattern_rotation")
         opacity = _unit(self.pattern_opacity, "pattern_opacity")
@@ -63,8 +65,13 @@ class NonMLBatificationOptions:
             raise NonMLBatificationError("pattern_scale must be between 0.08 and 8.0.")
         if isinstance(self.outline_width, bool) or not 1 <= int(self.outline_width) <= 64:
             raise NonMLBatificationError("outline_width must be between 1 and 64.")
-        if isinstance(self.background_tolerance, bool) or not 1 <= int(self.background_tolerance) <= 128:
-            raise NonMLBatificationError("background_tolerance must be between 1 and 128.")
+        invalid_tolerance = isinstance(self.background_tolerance, bool) or not (
+            1 <= int(self.background_tolerance) <= 128
+        )
+        if invalid_tolerance:
+            raise NonMLBatificationError(
+                "background_tolerance must be between 1 and 128."
+            )
         object.__setattr__(self, "mode", mode)
         object.__setattr__(self, "pattern_scale", pattern_scale)
         object.__setattr__(self, "pattern_rotation", rotation % 360.0)
@@ -107,7 +114,7 @@ def batify_with_motif(
 ) -> NonMLBatificationResult:
     """Transfer a real Batik motif into a source object's alpha/silhouette.
 
-    No model, network access, or learned parameters are used.  All operations are
+    No model, network access, or learned parameters are used. All operations are
     deterministic Pillow image operations over object-local images.
     """
 
@@ -181,8 +188,6 @@ def build_object_mask(source: Image.Image, *, tolerance: int = 24) -> Image.Imag
             raise NonMLBatificationError("The source object is fully transparent.")
         return alpha
 
-    # Fully opaque images need conservative background removal. Estimate the
-    # background from corners; reject results that still look like a full rectangle.
     rgb = image.convert("RGB")
     sample_points = (
         (0, 0),
