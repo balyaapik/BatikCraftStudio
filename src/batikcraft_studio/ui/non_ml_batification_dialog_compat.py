@@ -8,8 +8,7 @@ from batikcraft_studio.imaging.non_ml_batification import (
     NonMLBatificationMode,
     NonMLBatificationOptions,
 )
-
-from .non_ml_batification_dialog import (
+from batikcraft_studio.ui.non_ml_batification_dialog import (
     NonMLBatificationDialog as _LegacyNonMLBatificationDialog,
     PreviewRenderer,
 )
