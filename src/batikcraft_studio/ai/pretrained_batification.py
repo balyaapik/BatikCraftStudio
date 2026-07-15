@@ -1,8 +1,8 @@
 """Pretrained img2img Batification without custom model training.
 
 The provider uses the deterministic motif-transfer result as the img2img initial
-image.  A generic pretrained Diffusers model refines that image, after which the
-source alpha and a motif-derived outline are restored.  This keeps the exact
+image. A generic pretrained Diffusers model refines that image, after which the
+source alpha and a motif-derived outline are restored. This keeps the exact
 source silhouette while allowing AI-generated Batik detail before a custom LoRA
 has been trained.
 """
@@ -12,10 +12,11 @@ from __future__ import annotations
 import math
 import os
 import threading
+from collections.abc import Callable
 from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from PIL import Image, ImageChops, ImageColor, ImageFilter
 
@@ -73,7 +74,10 @@ class PretrainedAIBatificationOptions:
         shading = _unit(self.preserve_shading, "preserve_shading")
         if not 0.08 <= pattern_scale <= 8.0:
             raise BatificationError("pattern_scale harus berada antara 0.08 dan 8.0.")
-        if isinstance(self.inference_steps, bool) or not 1 <= int(self.inference_steps) <= 100:
+        invalid_steps = isinstance(self.inference_steps, bool) or not (
+            1 <= int(self.inference_steps) <= 100
+        )
+        if invalid_steps:
             raise BatificationError("inference_steps harus berada antara 1 dan 100.")
         guidance = _finite(self.guidance_scale, "guidance_scale")
         if not 0 <= guidance <= 30:
@@ -86,9 +90,16 @@ class PretrainedAIBatificationOptions:
         precision = str(self.precision).strip().casefold()
         if precision not in {"auto", "float32", "float16", "bfloat16"}:
             raise BatificationError("precision AI tidak didukung.")
-        if not isinstance(self.local_files_only, bool) or not isinstance(self.cpu_offload, bool):
+        invalid_flags = not isinstance(self.local_files_only, bool) or not isinstance(
+            self.cpu_offload,
+            bool,
+        )
+        if invalid_flags:
             raise BatificationError("Pengaturan download/offload AI harus berupa boolean.")
-        if isinstance(self.resolution, bool) or not 256 <= int(self.resolution) <= 1024:
+        invalid_resolution = isinstance(self.resolution, bool) or not (
+            256 <= int(self.resolution) <= 1024
+        )
+        if invalid_resolution:
             raise BatificationError("resolution harus berada antara 256 dan 1024.")
         resolution = max(256, int(round(int(self.resolution) / 8) * 8))
         cache_dir = None if self.cache_dir is None else str(Path(self.cache_dir).expanduser())
@@ -306,7 +317,8 @@ def _default_pipeline_factory(
             cache_dir=settings.cache_dir,
         )
         if settings.cpu_offload and device == "cuda" and hasattr(
-            pipeline, "enable_model_cpu_offload"
+            pipeline,
+            "enable_model_cpu_offload",
         ):
             pipeline.enable_model_cpu_offload()
         else:
@@ -321,7 +333,8 @@ def _default_pipeline_factory(
             if settings.local_files_only
             else "Periksa internet, ruang disk, akses Hugging Face, dan kompatibilitas model."
         )
-        raise BatificationError(f"Model pretrained gagal dimuat. {download_hint} Detail: {exc}") from exc
+        message = f"Model pretrained gagal dimuat. {download_hint} Detail: {exc}"
+        raise BatificationError(message) from exc
     return pipeline, torch, device
 
 
@@ -336,7 +349,11 @@ def _prepare_square(
         (max(1, round(image.width * scale)), max(1, round(image.height * scale))),
         Image.Resampling.LANCZOS,
     )
-    canvas = Image.new("RGBA", (resolution, resolution), (*ImageColor.getrgb(background), 255))
+    canvas = Image.new(
+        "RGBA",
+        (resolution, resolution),
+        (*ImageColor.getrgb(background), 255),
+    )
     left = (resolution - resized.width) // 2
     top = (resolution - resized.height) // 2
     canvas.alpha_composite(resized, dest=(left, top))
