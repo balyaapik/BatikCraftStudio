@@ -9,7 +9,7 @@ from tkinter import ttk
 from batikcraft_studio.application import ProjectSession
 from batikcraft_studio.config import WorkspaceDefinition
 
-from .context_tool_editor_hotfix_v4 import ContextToolEditorWorkspaceView
+from .context_tool_editor_hotfix_v5 import ContextToolEditorWorkspaceView
 from .icons import create_icon
 from .theme import COLORS
 
@@ -64,7 +64,7 @@ def create_workspace_view(
     session: ProjectSession,
     refresh_context: RefreshCallback,
 ) -> ContextToolEditorWorkspaceView:
-    """Return the hotfixed editor with local two-object Batification."""
+    """Return the editor with deterministic and pretrained AI Batification."""
 
     return ContextToolEditorWorkspaceView(
         parent,
