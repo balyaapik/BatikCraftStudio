@@ -16,6 +16,7 @@ from batikcraft_studio.application.destructive_eraser_session import (
     DestructiveEraserProjectSession,
 )
 from batikcraft_studio.application.direct_style_session import DirectStyleProjectSession
+from batikcraft_studio.application.external_image_session import ExternalImageProjectSession
 from batikcraft_studio.application.gradient_session import (
     FILL_MODE_KEY,
     GRADIENT_KEY,
@@ -84,9 +85,8 @@ from batikcraft_studio.application.viewport_session import (
     ViewportProjectSession,
 )
 
-# The public desktop session keeps deterministic motif transfer and adds an
-# optional pretrained Stable Diffusion img2img path that needs no custom training.
-ProjectSession = PretrainedAIBatificationProjectSession
+# The public desktop session includes pretrained AI plus file/drop/clipboard image insertion.
+ProjectSession = ExternalImageProjectSession
 
 __all__ = [
     "BATIK_PROCESS_EXTENSION",
@@ -104,6 +104,7 @@ __all__ = [
     "DestructiveEraserProjectSession",
     "DirectStyleProjectSession",
     "EditableObjectProjectSession",
+    "ExternalImageProjectSession",
     "FinalHotfixProjectSession",
     "GradientProjectSession",
     "HotfixProjectSession",
