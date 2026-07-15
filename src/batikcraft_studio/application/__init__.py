@@ -22,6 +22,7 @@ from batikcraft_studio.application.gradient_session import (
     GradientProjectSession,
 )
 from batikcraft_studio.application.hotfix_session import HotfixProjectSession
+from batikcraft_studio.application.hotfix_session_v2 import FinalHotfixProjectSession
 from batikcraft_studio.application.interactive_transform_session import (
     InteractiveTransformProjectSession,
 )
@@ -77,7 +78,7 @@ from batikcraft_studio.application.viewport_session import (
 )
 
 # The public desktop session includes the critical active-layer and Fill hotfixes.
-ProjectSession = HotfixProjectSession
+ProjectSession = FinalHotfixProjectSession
 
 __all__ = [
     "BATIK_PROCESS_EXTENSION",
@@ -95,6 +96,7 @@ __all__ = [
     "DestructiveEraserProjectSession",
     "DirectStyleProjectSession",
     "EditableObjectProjectSession",
+    "FinalHotfixProjectSession",
     "GradientProjectSession",
     "HotfixProjectSession",
     "InteractiveTransformProjectSession",
