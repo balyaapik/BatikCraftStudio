@@ -11,7 +11,14 @@ from batikcraft_studio.ai.pretrained_background import (
     AIBatikBackgroundResult,
     PretrainedBatikBackgroundProvider,
 )
-from batikcraft_studio.domain import Layer, LayerKind, LayerObject, ObjectBounds, ObjectKind, Transform
+from batikcraft_studio.domain import (
+    Layer,
+    LayerKind,
+    LayerObject,
+    ObjectBounds,
+    ObjectKind,
+    Transform,
+)
 from batikcraft_studio.imaging.structured_batification import BatificationError
 
 from .outline_cleanup_session import OutlineCleanupProjectSession
@@ -173,7 +180,8 @@ class AIBatikBackgroundProjectSession(OutlineCleanupProjectSession):
                     bounds=ObjectBounds(result.width, result.height),
                     properties=properties,
                 )
-                layer_index = project.layers.index(project.get_layer(existing_layer.layer_id))
+                current_layer = project.get_layer(existing_layer.layer_id)
+                layer_index = project.layers.index(current_layer)
                 if layer_index != 0:
                     project.reorder_layer(existing_layer.layer_id, 0)
             else:
