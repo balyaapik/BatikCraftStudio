@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import tkinter as tk
+from tkinter import messagebox
 
 from batikcraft_studio.application import (
     OutlineCleanupProjectSession,
     ProjectSessionError,
 )
+from batikcraft_studio.assets import AssetLibraryError, PersonalAssetStore
 
 from .context_tool_editor_hotfix_v7 import ContextToolEditorWorkspaceView as _HotfixV7Editor
 from .outline_cleanup_dialog import OutlineCleanupDialog
@@ -57,12 +59,41 @@ class ContextToolEditorWorkspaceView(_HotfixV7Editor):
         except ProjectSessionError as exc:
             self.set_status(str(exc))
             return
+
+        saved_to_library = False
+        category = plan.source_object.properties.get("asset_category", "ornamen")
+        if not isinstance(category, str):
+            category = "ornamen"
+        try:
+            PersonalAssetStore(self.asset_library).import_image(
+                f"{plan.source_object.name}-outline-bersih.png",
+                preview.result.content,
+                category=category,
+            )
+        except AssetLibraryError as exc:
+            messagebox.showwarning(
+                "Outline diterapkan, tetapi pustaka gagal diperbarui",
+                str(exc),
+                parent=self.winfo_toplevel(),
+            )
+        else:
+            saved_to_library = True
+            try:
+                self.refresh_library()
+            except (AttributeError, tk.TclError):
+                pass
+
         self.refresh_context()
         self.activate_select_tool()
         removed = preview.result.removed_components
+        suffix = (
+            " Salinan bersih juga disimpan ke Gambar Impor Saya."
+            if saved_to_library
+            else ""
+        )
         self.set_status(
             f"Outline {result.name} dirapikan; {removed} bercak dihapus. "
-            "Gunakan Undo untuk kembali."
+            f"Gunakan Undo untuk kembali.{suffix}"
         )
 
     def _on_outline_cleanup_shortcut(
