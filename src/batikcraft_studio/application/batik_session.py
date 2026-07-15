@@ -6,7 +6,6 @@ from uuid import uuid4
 
 from batikcraft_studio.domain import (
     Layer,
-    LayerKind,
     LayerNodeKind,
     LayerObject,
     ObjectBounds,
@@ -130,42 +129,24 @@ class BatikProjectSession(ShapeProjectSession):
         )
 
     def _prepare_isen_layer(self, target_layer_id: str | None) -> tuple[Layer, bool]:
-        project = self.require_project()
+        """Resolve the target layer for a cap-isen using the shared active-layer resolver.
+
+        When *target_layer_id* is supplied explicitly it is validated and used directly.
+        Otherwise the shared ``_resolve_object_layer`` path is used so that the active
+        tree selection is always honoured, and locked layers are rejected with a clear
+        error instead of silently routing the cap into a different layer.
+        """
         if target_layer_id is not None:
+            project = self.require_project()
             target = project.get_layer(target_layer_id)
             if target.node_kind is LayerNodeKind.GROUP:
                 raise CapIsenError("Cap Isen tidak dapat dimasukkan langsung ke folder.")
             if project.is_layer_effectively_locked(target.layer_id):
                 raise LayerLockedError(f"Lapis {target.name!r} sedang dikunci.")
             return target, False
-        if project.active_layer_id is not None:
-            active = project.get_layer(project.active_layer_id)
-            if (
-                active.node_kind is LayerNodeKind.LAYER
-                and active.asset_ref is None
-                and not project.is_layer_effectively_locked(active.layer_id)
-                and active.properties.get("object_container") is True
-            ):
-                return active, False
-        for layer in project.layers:
-            if (
-                layer.properties.get("object_role") == "isen-isen"
-                and layer.node_kind is LayerNodeKind.LAYER
-                and not project.is_layer_effectively_locked(layer.layer_id)
-            ):
-                return layer, False
-        return (
-            Layer(
-                name="Isen-Isen",
-                kind=LayerKind.BATIKIFIED_OBJECT,
-                node_kind=LayerNodeKind.LAYER,
-                properties={
-                    "object_container": True,
-                    "object_role": "isen-isen",
-                },
-            ),
-            True,
-        )
+        # Use the shared resolver — honours active_layer_id and rejects locks.
+        # Returns (layer, needs_add) tuple; propagate the flag to the caller.
+        return self._resolve_object_layer(None, name="Isen-Isen")
 
 
 __all__ = ["BatikProjectSession", "CapIsenError"]
