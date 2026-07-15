@@ -1,5 +1,7 @@
 """Python 3.13 compatible wrapper for the non-ML Batification dialog."""
 
+# isort: skip_file
+
 from __future__ import annotations
 
 import tkinter as tk
