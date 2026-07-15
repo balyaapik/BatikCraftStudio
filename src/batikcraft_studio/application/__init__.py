@@ -38,6 +38,8 @@ from batikcraft_studio.application.multi_object_session import (
     MultiObjectSelection,
 )
 from batikcraft_studio.application.non_ml_batification_session import (
+    NonMLBatificationPlan,
+    NonMLBatificationPreview,
     NonMLBatificationProjectSession,
 )
 from batikcraft_studio.application.object_session import (
@@ -116,6 +118,8 @@ __all__ = [
     "MultiObjectProjectSession",
     "MultiObjectSelection",
     "NoActiveProjectError",
+    "NonMLBatificationPlan",
+    "NonMLBatificationPreview",
     "NonMLBatificationProjectSession",
     "ObjectClipboardSnapshot",
     "ObjectLockedError",
