@@ -50,6 +50,11 @@ from batikcraft_studio.application.offline_ai_session import (
     OfflineAIProjectSession,
     OfflineRuntimeSelection,
 )
+from batikcraft_studio.application.outline_cleanup_session import (
+    OutlineCleanupPlan,
+    OutlineCleanupPreview,
+    OutlineCleanupProjectSession,
+)
 from batikcraft_studio.application.paint_session import (
     PaintLayerError,
     PaintProjectSession,
@@ -87,8 +92,8 @@ from batikcraft_studio.application.viewport_session import (
     ViewportProjectSession,
 )
 
-# The public desktop session includes pretrained AI plus file/drop/clipboard image insertion.
-ProjectSession = ExternalImageProjectSession
+# The public desktop session includes pretrained AI, external images, and outline cleanup.
+ProjectSession = OutlineCleanupProjectSession
 
 __all__ = [
     "BATIK_PROCESS_EXTENSION",
@@ -126,6 +131,9 @@ __all__ = [
     "ObjectProjectSession",
     "OfflineAIProjectSession",
     "OfflineRuntimeSelection",
+    "OutlineCleanupPlan",
+    "OutlineCleanupPreview",
+    "OutlineCleanupProjectSession",
     "PaintLayerError",
     "PaintProjectSession",
     "PositionLockedError",
