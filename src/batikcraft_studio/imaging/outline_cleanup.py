@@ -194,15 +194,13 @@ def _remove_small_components(
     for start in range(len(pixels)):
         if pixels[start] == 0 or visited[start]:
             continue
+        visited[start] = 1
         stack = [start]
         small_component: list[int] = []
         component_size = 0
 
         while stack:
             index = stack.pop()
-            if visited[index] or pixels[index] == 0:
-                continue
-            visited[index] = 1
             component_size += 1
             if component_size <= minimum_area:
                 small_component.append(index)
@@ -222,6 +220,7 @@ def _remove_small_components(
                         continue
                     neighbor = row + neighbor_x
                     if pixels[neighbor] and not visited[neighbor]:
+                        visited[neighbor] = 1
                         stack.append(neighbor)
 
         if component_size <= minimum_area:
