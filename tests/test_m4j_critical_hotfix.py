@@ -6,10 +6,8 @@ from io import BytesIO
 
 from PIL import Image, ImageDraw
 
-from batikcraft_studio.application.hotfix_session import (
-    HotfixProjectSession,
-    _fill_enclosed_png_complete,
-)
+from batikcraft_studio.application.hotfix_session import _fill_enclosed_png_complete
+from batikcraft_studio.application.hotfix_session_v2 import FinalHotfixProjectSession
 from batikcraft_studio.domain import (
     CanvasSpec,
     Layer,
@@ -43,7 +41,6 @@ def _closed_ring(*, gap: bool = False) -> Image.Image:
     draw = ImageDraw.Draw(image)
     draw.ellipse((5, 5, 34, 34), outline=(20, 20, 20, 255), width=3)
     if gap:
-        # A two-project-pixel accidental endpoint/raster gap.
         draw.rectangle((19, 4, 20, 8), fill=(0, 0, 0, 0))
     return image
 
@@ -127,7 +124,7 @@ def test_small_accidental_gap_is_closed_in_project_space() -> None:
 
 
 def test_public_session_routes_brush_to_active_generic_layer() -> None:
-    session = HotfixProjectSession()
+    session = FinalHotfixProjectSession()
     project = session.new_project(title="Routing", creator="Test", width=100, height=100)
     layer = Layer(
         name="Chosen Layer",
@@ -153,7 +150,7 @@ def test_public_session_routes_brush_to_active_generic_layer() -> None:
 
 
 def test_reapplying_fill_reuses_object_id_in_source_layer() -> None:
-    session = HotfixProjectSession()
+    session = FinalHotfixProjectSession()
     project = session.new_project(title="Fill", creator="Test", width=100, height=100)
     layer = Layer(
         name="Fill Layer",
