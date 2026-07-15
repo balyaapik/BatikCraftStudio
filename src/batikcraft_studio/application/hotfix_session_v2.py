@@ -6,25 +6,17 @@ from uuid import uuid4
 
 from batikcraft_studio.domain import LayerObject, ObjectBounds, ObjectKind
 
-from .hotfix_session import (
-    HotfixProjectSession,
-    _ALPHA_THRESHOLD,
-    _GAP_CLOSE_PROJECT_PIXELS,
-    _SUPERSAMPLE,
-    _fill_enclosed_png_complete,
-    _normalize_color,
-)
+from . import hotfix_session as hotfix
 from .session import ProjectSessionError
 
 
-class FinalHotfixProjectSession(HotfixProjectSession):
+class FinalHotfixProjectSession(hotfix.HotfixProjectSession):
     """Correct the reusable-fill reorder semantics in the first hotfix layer."""
 
     def fill_closed_object(self, object_id: str, color: str) -> tuple[LayerObject, ...]:
         project = self.require_project()
         item = self._require_unlocked_object(object_id)
         if item.kind is ObjectKind.SHAPE:
-            # Skip HotfixProjectSession's raster branch and use the stable vector path.
             return super().fill_closed_object(object_id, color)
         if item.kind is not ObjectKind.PAINT_STROKE or item.asset_ref is None:
             raise ProjectSessionError(
@@ -34,13 +26,14 @@ class FinalHotfixProjectSession(HotfixProjectSession):
         source_content = self._assets.get(item.asset_ref)
         if source_content is None:
             raise ProjectSessionError("The source stroke asset is unavailable.")
-        normalized = _normalize_color(color)
-        filled_content = _fill_enclosed_png_complete(source_content, normalized)
+        normalized = hotfix._normalize_color(color)
+        filled_content = hotfix._fill_enclosed_png_complete(source_content, normalized)
 
         layer_id = project.object_layer_id(item.object_id)
         layer = project.get_layer(layer_id)
         source_index = next(
-            index for index, candidate in enumerate(layer.objects)
+            index
+            for index, candidate in enumerate(layer.objects)
             if candidate.object_id == item.object_id
         )
         existing = next(
@@ -61,9 +54,9 @@ class FinalHotfixProjectSession(HotfixProjectSession):
             "fill_color": normalized,
             "source_stroke_id": item.object_id,
             "fill_source_object_id": item.object_id,
-            "alpha_threshold": _ALPHA_THRESHOLD,
-            "gap_close_project_pixels": _GAP_CLOSE_PROJECT_PIXELS,
-            "supersample": _SUPERSAMPLE,
+            "alpha_threshold": hotfix._ALPHA_THRESHOLD,
+            "gap_close_project_pixels": hotfix._GAP_CLOSE_PROJECT_PIXELS,
+            "supersample": hotfix._SUPERSAMPLE,
         }
 
         if existing is None:
@@ -99,11 +92,13 @@ class FinalHotfixProjectSession(HotfixProjectSession):
                 )
                 refreshed_layer = project.get_layer(layer_id)
                 existing_index = next(
-                    index for index, candidate in enumerate(refreshed_layer.objects)
+                    index
+                    for index, candidate in enumerate(refreshed_layer.objects)
                     if candidate.object_id == existing.object_id
                 )
                 refreshed_source_index = next(
-                    index for index, candidate in enumerate(refreshed_layer.objects)
+                    index
+                    for index, candidate in enumerate(refreshed_layer.objects)
                     if candidate.object_id == item.object_id
                 )
                 desired_index = max(0, refreshed_source_index - 1)
