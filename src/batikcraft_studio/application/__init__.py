@@ -56,6 +56,10 @@ from batikcraft_studio.application.position_lock_session import (
     PositionLockedError,
     PositionLockProjectSession,
 )
+from batikcraft_studio.application.pretrained_ai_batification_session import (
+    PretrainedAIBatificationProjectSession,
+    PretrainedAIPlan,
+)
 from batikcraft_studio.application.process_session import (
     BATIK_PROCESS_EXTENSION,
     BatikProcessProjectSession,
@@ -80,9 +84,9 @@ from batikcraft_studio.application.viewport_session import (
     ViewportProjectSession,
 )
 
-# The public desktop session includes the critical viewport/Fill hotfixes and
-# deterministic two-object Batification without an ML model.
-ProjectSession = NonMLBatificationProjectSession
+# The public desktop session keeps deterministic motif transfer and adds an
+# optional pretrained Stable Diffusion img2img path that needs no custom training.
+ProjectSession = PretrainedAIBatificationProjectSession
 
 __all__ = [
     "BATIK_PROCESS_EXTENSION",
@@ -121,6 +125,8 @@ __all__ = [
     "PaintProjectSession",
     "PositionLockedError",
     "PositionLockProjectSession",
+    "PretrainedAIBatificationProjectSession",
+    "PretrainedAIPlan",
     "ProjectPathRequiredError",
     "ProjectSession",
     "ProjectSessionError",
