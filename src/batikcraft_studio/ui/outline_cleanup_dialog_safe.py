@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import tkinter as tk
 from queue import Empty
 from tkinter import messagebox
 
