@@ -12,7 +12,7 @@ from batikcraft_studio.application import (
 from batikcraft_studio.assets import AssetLibraryError, PersonalAssetStore
 
 from .context_tool_editor_hotfix_v7 import ContextToolEditorWorkspaceView as _HotfixV7Editor
-from .outline_cleanup_dialog import OutlineCleanupDialog
+from .outline_cleanup_dialog_safe import OutlineCleanupDialog
 
 
 class ContextToolEditorWorkspaceView(_HotfixV7Editor):
