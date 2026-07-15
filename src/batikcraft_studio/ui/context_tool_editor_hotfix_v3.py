@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import tkinter as tk
 from typing import Any
 
 from batikcraft_studio.imaging.artwork_viewport_renderer import ArtworkViewportRenderer
@@ -10,7 +11,7 @@ from .context_tool_editor_hotfix_v2 import ContextToolEditorWorkspaceView as _Ho
 
 
 class ContextToolEditorWorkspaceView(_HotfixV2Editor):
-    """Prevent brush refreshes from appearing as opaque tile-sized color blocks."""
+    """Prevent artwork refreshes from exposing an opaque shadow-sized colour block."""
 
     def __init__(self, *args: object, **kwargs: object) -> None:
         self._project_background_id: int | None = None
@@ -47,7 +48,10 @@ class ContextToolEditorWorkspaceView(_HotfixV2Editor):
         background = str(project.canvas.background_color)
 
         background_id = self._project_background_id
-        if background_id is None:
+        if not self._canvas_item_exists(background_id):
+            # Do not use the canvas-chrome tag here. The base viewport intentionally
+            # deletes that tag before every render; retaining the deleted numeric ID
+            # exposed the brown canvas-shadow rectangle after a line/brush mutation.
             background_id = self.canvas.create_rectangle(
                 left,
                 top,
@@ -55,18 +59,24 @@ class ContextToolEditorWorkspaceView(_HotfixV2Editor):
                 bottom,
                 fill=background,
                 outline="",
-                tags=("project-background", "canvas-chrome"),
+                tags=("project-background",),
             )
             self._project_background_id = background_id
         else:
             self.canvas.coords(background_id, left, top, right, bottom)
             self.canvas.itemconfigure(background_id, fill=background)
 
-        # The shadow is created immediately before this method by the base renderer.
-        # Artwork tiles are created afterwards, but existing tiles may still be present.
-        tile_ids = self.canvas.find_withtag("project-tile")
-        if tile_ids:
-            self.canvas.tag_lower(background_id, tile_ids[0])
+        # Keep a deterministic stack: shadow < project background < artwork tiles.
+        self.canvas.tag_raise(background_id, "canvas-shadow")
+        self.canvas.tag_raise("project-tile", background_id)
+
+    def _canvas_item_exists(self, item_id: int | None) -> bool:
+        if item_id is None:
+            return False
+        try:
+            return bool(self.canvas.type(item_id))
+        except (tk.TclError, AttributeError):
+            return False
 
     def _clear_tile_overlays(self) -> None:
         background_id = self._project_background_id
