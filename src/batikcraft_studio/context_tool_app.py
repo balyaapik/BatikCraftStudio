@@ -55,31 +55,50 @@ class ContextToolApplication(DirectStyleApplication):
             command=self.open_ai_runtime_settings,
         )
 
+        editor = self.main_window._editor()
         insert_menu = tk.Menu(menu_bar)
         insert_menu.add_command(
             label=tr("insert.image_file"),
             accelerator="Ctrl+Shift+I",
-            command=self.main_window._editor().import_external_image_dialog,
+            command=editor.import_external_image_dialog,
         )
         insert_menu.add_command(
             label=tr("insert.image_clipboard"),
             accelerator="Ctrl+V",
-            command=self.main_window._editor().paste_external_image,
+            command=editor.paste_external_image,
         )
         menu_bar.insert_cascade(2, label=tr("menu.insert"), menu=insert_menu)
+
+        ai_menu = tk.Menu(menu_bar)
+        ai_menu.add_command(
+            label="Batifikasi Objek dengan Stable Diffusion + LoRA…",
+            accelerator="Ctrl+Alt+B",
+            command=editor.batify_selected_with_pretrained_ai,
+        )
+        ai_menu.add_command(
+            label="AI Batik Background…",
+            accelerator="Ctrl+Alt+G",
+            command=editor.generate_ai_batik_background,
+        )
+        ai_menu.add_separator()
+        ai_menu.add_command(
+            label="Kelola Model LoRA…",
+            command=editor.open_offline_model_manager,
+        )
+        ai_menu.add_command(
+            label="Pengaturan AI & GPU…",
+            accelerator="Ctrl+,",
+            command=self.open_ai_runtime_settings,
+        )
+        menu_bar.insert_cascade(3, label="AI", menu=ai_menu)
+
         self.root.bind_all(
             "<Control-Shift-i>",
-            lambda event: self._run_shortcut(
-                event,
-                self.main_window._editor().import_external_image_dialog,
-            ),
+            lambda event: self._run_shortcut(event, editor.import_external_image_dialog),
         )
         self.root.bind_all(
             "<Control-Shift-I>",
-            lambda event: self._run_shortcut(
-                event,
-                self.main_window._editor().import_external_image_dialog,
-            ),
+            lambda event: self._run_shortcut(event, editor.import_external_image_dialog),
         )
         self.root.bind_all(
             "<Control-comma>",
