@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import Any
 from uuid import uuid4
 
+from batikcraft_studio.ai.default_batik_reference import build_default_batik_reference
 from batikcraft_studio.ai.pretrained_batification import (
     PretrainedAIBatificationOptions,
     PretrainedAIBatificationResult,
@@ -28,7 +29,7 @@ class PretrainedAIPlan:
     project_id: str
     project_revision: int
     source_object_id: str
-    motif_object_id: str
+    motif_object_id: str | None
     source_name: str
     source_layer_id: str
     source_index: int
@@ -38,9 +39,13 @@ class PretrainedAIPlan:
     motif_content: bytes
     options: PretrainedAIBatificationOptions
 
+    @property
+    def uses_selected_motif(self) -> bool:
+        return self.motif_object_id is not None
+
 
 class PretrainedAIBatificationProjectSession(NonMLBatificationProjectSession):
-    """Add two-object Stable Diffusion img2img Batification to the desktop session."""
+    """Add one- or two-object Stable Diffusion img2img Batification."""
 
     def __init__(self, *args: object, **kwargs: object) -> None:
         super().__init__(*args, **kwargs)
@@ -62,36 +67,42 @@ class PretrainedAIBatificationProjectSession(NonMLBatificationProjectSession):
         self,
         options: PretrainedAIBatificationOptions | None = None,
     ) -> PretrainedAIPlan:
-        """Capture source first and motif second without running model inference."""
+        """Capture one source object and an optional second motif reference."""
 
         selected = self.selected_object_ids
-        if len(selected) != 2:
+        if len(selected) not in {1, 2}:
             raise ProjectSessionError(
-                "Pilih tepat dua objek: objek sumber terlebih dahulu, lalu Shift-pilih motif batik."
+                "Pilih satu objek sumber. Shift-pilih satu motif Batik bila ingin memakai "
+                "referensi khusus."
             )
+        motif_object_id = selected[1] if len(selected) == 2 else None
         return self.prepare_pretrained_ai(
             selected[0],
-            selected[1],
+            motif_object_id,
             options=options,
         )
 
     def prepare_pretrained_ai(
         self,
         source_object_id: str,
-        motif_object_id: str,
+        motif_object_id: str | None = None,
         *,
         options: PretrainedAIBatificationOptions | None = None,
     ) -> PretrainedAIPlan:
-        if source_object_id == motif_object_id:
+        if motif_object_id is not None and source_object_id == motif_object_id:
             raise ProjectSessionError("Objek sumber dan motif batik harus berbeda.")
         project = self.require_project()
         source = self._require_unlocked_object(source_object_id)
-        motif = project.get_object(motif_object_id)
-        if motif.kind is ObjectKind.ERASER_STROKE:
+        motif = None if motif_object_id is None else project.get_object(motif_object_id)
+        if motif is not None and motif.kind is ObjectKind.ERASER_STROKE:
             raise ProjectSessionError("Goresan penghapus tidak dapat menjadi referensi motif AI.")
         try:
             source_content = renderable_source_content(source, self._assets)
-            motif_content = renderable_source_content(motif, self._assets)
+            motif_content = (
+                build_default_batik_reference(source_content)
+                if motif is None
+                else renderable_source_content(motif, self._assets)
+            )
             settings = options or PretrainedAIBatificationOptions()
         except BatificationError as exc:
             raise ProjectSessionError(str(exc)) from exc
@@ -107,7 +118,7 @@ class PretrainedAIBatificationProjectSession(NonMLBatificationProjectSession):
             project_id=project.project_id,
             project_revision=project.revision,
             source_object_id=source.object_id,
-            motif_object_id=motif.object_id,
+            motif_object_id=None if motif is None else motif.object_id,
             source_name=source.name,
             source_layer_id=layer_id,
             source_index=source_index,
@@ -151,7 +162,11 @@ class PretrainedAIBatificationProjectSession(NonMLBatificationProjectSession):
                 "Jalankan kembali."
             )
         source = self._require_unlocked_object(plan.source_object_id)
-        motif = project.get_object(plan.motif_object_id)
+        motif = (
+            None
+            if plan.motif_object_id is None
+            else project.get_object(plan.motif_object_id)
+        )
         if project.object_layer_id(source.object_id) != plan.source_layer_id:
             raise ProjectSessionError(
                 "Objek sumber berpindah layer saat AI berjalan. Jalankan kembali."
@@ -160,11 +175,13 @@ class PretrainedAIBatificationProjectSession(NonMLBatificationProjectSession):
             raise ProjectSessionError("Hasil AI tidak valid.")
 
         asset_ref = f"assets/{uuid4()}.png"
+        motif_source = "selected_object" if motif is not None else "generated_batik_reference"
         properties = {
             "source_format": "PRETRAINED_AI_BATIFICATION_V1",
             "batification_provider": result.provider_id,
             "batification_source_object_id": source.object_id,
-            "batification_motif_object_id": motif.object_id,
+            "batification_motif_object_id": None if motif is None else motif.object_id,
+            "batification_motif_source": motif_source,
             "batification_settings": plan.options.to_properties(),
             "batification_metadata": dict(result.metadata),
             "batification_pretrained": True,

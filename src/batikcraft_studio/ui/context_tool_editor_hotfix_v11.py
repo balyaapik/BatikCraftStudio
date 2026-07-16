@@ -21,6 +21,9 @@ from .context_tool_editor_hotfix_v10 import ContextToolEditorWorkspaceView as _H
 from .theme import COLORS
 from .tooltip import ToolTip
 
+_AI_CONTEXT_LABEL = "Batifikasi AI — Stable Diffusion + LoRA…"
+_NON_AI_CONTEXT_LABEL = "Batifikasi Cepat (Non-AI)…"
+
 
 class ContextToolEditorWorkspaceView(_HotfixV10Editor):
     """Show a larger Batik palette and open object AI through a LoRA settings window."""
@@ -28,7 +31,7 @@ class ContextToolEditorWorkspaceView(_HotfixV10Editor):
     def __init__(self, *args: object, **kwargs: object) -> None:
         super().__init__(*args, **kwargs)
         self._remove_background_ai_from_editor_chrome()
-        self._rename_object_ai_context_action()
+        self._configure_object_batification_context_actions()
         if isinstance(self.session, PretrainedAIBatificationProjectSession):
             self.session.set_pretrained_ai_provider(LoraObjectBatificationProvider())
 
@@ -150,15 +153,16 @@ class ContextToolEditorWorkspaceView(_HotfixV10Editor):
         self._update_color_previews()
 
     def batify_selected_with_pretrained_ai(self) -> None:
-        """Open AI settings, then run Stable Diffusion img2img with a required Batik LoRA."""
+        """Open AI settings and Batikify one object with an optional motif reference."""
 
         if self._pretrained_ai_running:
             self.set_status("Batifikasi AI masih berjalan. Tunggu hasil sebelumnya selesai.")
             return
         selected = self._pretrained_ai_session.selected_object_ids
-        if len(selected) != 2:
+        if len(selected) not in {1, 2}:
             self.set_status(
-                "Pilih dua objek: objek sumber terlebih dahulu, lalu Shift-pilih motif referensi."
+                "Pilih satu objek sumber. Shift-pilih satu motif Batik bila ingin memakai "
+                "referensi khusus."
             )
             return
 
@@ -168,6 +172,18 @@ class ContextToolEditorWorkspaceView(_HotfixV10Editor):
             if isinstance(self.session, OfflineAIProjectSession)
             else ()
         )
+        runtime = (
+            self.session.runtime_selection
+            if isinstance(self.session, OfflineAIProjectSession)
+            else None
+        )
+        if runtime is not None:
+            installed_models = tuple(
+                sorted(
+                    installed_models,
+                    key=lambda item: item.manifest.model_id != runtime.model_id,
+                )
+            )
         dialog = AIObjectBatificationDialog(
             self,
             defaults=defaults,
@@ -185,8 +201,9 @@ class ContextToolEditorWorkspaceView(_HotfixV10Editor):
             return
 
         self._pretrained_ai_running = True
+        reference = "motif terpilih" if plan.uses_selected_motif else "referensi Batik otomatis"
         self.set_status(
-            f"Stable Diffusion + LoRA sedang membatikkan {plan.source_name}. "
+            f"Stable Diffusion + LoRA sedang membatikkan {plan.source_name} dengan {reference}. "
             "Bentuk dan alpha objek akan dipertahankan."
         )
 
@@ -219,23 +236,39 @@ class ContextToolEditorWorkspaceView(_HotfixV10Editor):
             self._background_ai_button = None
         _delete_menu_command(self._selection_context_menu, "AI Batik Background…")
 
-    def _rename_object_ai_context_action(self) -> None:
+    def _configure_object_batification_context_actions(self) -> None:
+        """Guarantee that right-click AI opens the Stable Diffusion + LoRA dialog."""
+
         menu = self._selection_context_menu
+        ai_index: int | None = None
+        non_ai_index: int | None = None
         end = menu.index("end")
-        if end is None:
+        if end is not None:
+            for index in range(int(end) + 1):
+                try:
+                    label = str(menu.entrycget(index, "label"))
+                except tk.TclError:
+                    continue
+                if label.startswith(("Batifikasi AI Pretrained", "Batifikasi Objek dengan AI")):
+                    ai_index = index
+                elif label in {"Batifikasi Non-AI…", _NON_AI_CONTEXT_LABEL}:
+                    non_ai_index = index
+
+        if non_ai_index is not None:
+            menu.entryconfigure(non_ai_index, label=_NON_AI_CONTEXT_LABEL)
+        if ai_index is not None:
+            menu.entryconfigure(
+                ai_index,
+                label=_AI_CONTEXT_LABEL,
+                command=self.batify_selected_with_pretrained_ai,
+            )
             return
-        for index in range(int(end) + 1):
-            try:
-                label = str(menu.entrycget(index, "label"))
-            except tk.TclError:
-                continue
-            if label.startswith("Batifikasi AI Pretrained"):
-                menu.entryconfigure(
-                    index,
-                    label="Batifikasi Objek dengan AI & LoRA…",
-                    command=self.batify_selected_with_pretrained_ai,
-                )
-                return
+
+        menu.add_separator()
+        menu.add_command(
+            label=_AI_CONTEXT_LABEL,
+            command=self.batify_selected_with_pretrained_ai,
+        )
 
 
 def _delete_menu_command(menu: tk.Menu, label: str) -> bool:
@@ -262,4 +295,9 @@ def _delete_menu_command(menu: tk.Menu, label: str) -> bool:
     return False
 
 
-__all__ = ["ContextToolEditorWorkspaceView", "_delete_menu_command"]
+__all__ = [
+    "ContextToolEditorWorkspaceView",
+    "_AI_CONTEXT_LABEL",
+    "_NON_AI_CONTEXT_LABEL",
+    "_delete_menu_command",
+]
