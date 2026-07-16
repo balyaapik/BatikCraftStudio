@@ -6,7 +6,10 @@ from types import ModuleType, SimpleNamespace
 
 from PIL import Image
 
-from batikcraft_studio.ai.gemini_generation import generate_gemini_image
+from batikcraft_studio.ai.gemini_generation import (
+    _gemini_error_message,
+    generate_gemini_image,
+)
 from batikcraft_studio.ai.generation_providers import CloudGenerationSettings
 
 
@@ -78,3 +81,16 @@ def test_gemini_uses_models_generate_content_instead_of_interactions(monkeypatch
     assert calls["timeout"] == 60_000
     assert calls["closed"] is True
     assert result == expected
+
+
+def test_gemini_quota_error_is_short_and_actionable() -> None:
+    error = SimpleNamespace(
+        code=429,
+        message="RESOURCE_EXHAUSTED: You exceeded your current quota.",
+    )
+
+    message = _gemini_error_message(error)  # type: ignore[arg-type]
+
+    assert "Kuota Gemini habis" in message
+    assert "Tutup dialog ini" in message
+    assert "provider lain" in message
