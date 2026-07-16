@@ -34,18 +34,10 @@ class BatikBrewGenerationDialog(tk.Toplevel):
         super().__init__(parent)
         self.result: BatikBrewGenerationOptions | None = None
         self.defaults = defaults
-        self._model_by_label: dict[str, InstalledBatikModel] = {}
         self._managed_runtime = find_installed_batikbrew_runtime()
-
-        for model in installed_models:
-            family = model.manifest.base_model_family.casefold()
-            engine = str((model.manifest.metadata or {}).get("generation_engine", "")).casefold()
-            if "sdxl" not in family and "batikbrew" not in engine:
-                continue
-            label = f"{model.manifest.name} · v{model.manifest.version} · SDXL"
-            self._model_by_label[label] = model
-
+        self._model_by_label = self._compatible_models(installed_models)
         labels = tuple(self._model_by_label)
+
         self.title("BatikBrew Generatif — SDXL LoRA")
         self.geometry("820x760")
         self.minsize(740, 680)
@@ -57,8 +49,8 @@ class BatikBrewGenerationDialog(tk.Toplevel):
         self.lora_path_value = tk.StringVar(master=self)
         self.lora_weight_value = tk.DoubleVar(master=self, value=1.0)
         self.trigger_value = tk.StringVar(master=self, value="batikbrew")
-        self.steps_value = tk.IntVar(master=self, value=max(20, defaults.inference_steps))
-        self.guidance_value = tk.DoubleVar(master=self, value=max(5.0, defaults.guidance_scale))
+        self.steps_value = tk.IntVar(master=self, value=max(30, defaults.inference_steps))
+        self.guidance_value = tk.DoubleVar(master=self, value=7.5)
         self.seed_value = tk.StringVar(master=self, value=str(defaults.seed))
         self.resolution_value = tk.IntVar(master=self, value=max(512, defaults.resolution))
         self.variations_value = tk.IntVar(master=self, value=4)
@@ -70,19 +62,29 @@ class BatikBrewGenerationDialog(tk.Toplevel):
         self.grab_set()
         self.focus_set()
 
+    @staticmethod
+    def _compatible_models(
+        models: tuple[InstalledBatikModel, ...],
+    ) -> dict[str, InstalledBatikModel]:
+        compatible: dict[str, InstalledBatikModel] = {}
+        for model in models:
+            family = model.manifest.base_model_family.casefold()
+            engine = str((model.manifest.metadata or {}).get("generation_engine", "")).casefold()
+            if "sdxl" in family or "batikbrew" in engine:
+                label = f"{model.manifest.name} · v{model.manifest.version} · SDXL"
+                compatible[label] = model
+        return compatible
+
     def _initial_base_model(self) -> str:
         if self._managed_runtime is not None:
             return str(self._managed_runtime.base_model)
         current = str(self.defaults.model_id_or_path)
-        if "xl" in current.casefold() or "sdxl" in current.casefold():
-            return current
-        return SDXL_BASE_MODEL_ID
+        return current if "xl" in current.casefold() else SDXL_BASE_MODEL_ID
 
     def _build(self, model_labels: tuple[str, ...]) -> None:
         body = ttk.Frame(self, padding=14)
         body.pack(fill="both", expand=True)
         body.columnconfigure(1, weight=1)
-        body.rowconfigure(12, weight=1)
 
         ttk.Label(
             body,
@@ -92,25 +94,22 @@ class BatikBrewGenerationDialog(tk.Toplevel):
         ttk.Label(
             body,
             text=(
-                "Workflow ini mengikuti notebook BatikCraft: objek dipakai untuk analisis warna, "
-                "kepadatan garis, tema, dan komposisi. SDXL + LoRA kemudian membuat motif Batik "
-                "baru. Gambar sumber tidak dipakai sebagai img2img dan tidak diberi texture fill."
+                "Sesuai notebook BatikCraft: objek dianalisis untuk warna, kepadatan garis, "
+                "tema, dan komposisi. SDXL + LoRA membuat motif baru; tidak ada img2img fill."
             ),
             wraplength=770,
             justify="left",
         ).grid(row=1, column=0, columnspan=3, sticky="ew", pady=(3, 12))
 
         row = 2
-        ttk.Label(body, text="Runtime SDXL").grid(row=row, column=0, sticky="w", padx=(0, 10))
-        ttk.Entry(body, textvariable=self.base_model_value).grid(
-            row=row, column=1, sticky="ew", pady=4
-        )
-        ttk.Button(
+        row = self._path_row(
             body,
-            text="Unduh SDXL…",
-            command=self._install_sdxl,
-        ).grid(row=row, column=2, sticky="e", padx=(6, 0), pady=4)
-        row += 1
+            row,
+            "Runtime SDXL",
+            self.base_model_value,
+            "Unduh SDXL…",
+            self._install_sdxl,
+        )
 
         ttk.Label(body, text="LoRA BatikBrew terpasang").grid(
             row=row, column=0, sticky="w", padx=(0, 10), pady=4
@@ -128,17 +127,14 @@ class BatikBrewGenerationDialog(tk.Toplevel):
         )
         row += 1
 
-        ttk.Label(body, text="File LoRA SDXL").grid(
-            row=row, column=0, sticky="w", padx=(0, 10), pady=4
+        row = self._path_row(
+            body,
+            row,
+            "File LoRA SDXL",
+            self.lora_path_value,
+            "Pilih…",
+            self._browse_lora,
         )
-        ttk.Entry(body, textvariable=self.lora_path_value).grid(
-            row=row, column=1, sticky="ew", pady=4
-        )
-        ttk.Button(body, text="Pilih…", command=self._browse_lora).grid(
-            row=row, column=2, sticky="e", padx=(6, 0), pady=4
-        )
-        row += 1
-
         row = self._entry_row(body, row, "Trigger words", self.trigger_value)
         row = self._scale_row(
             body, row, "Bobot LoRA", self.lora_weight_value, 0.0, 2.0, 0.05
@@ -162,32 +158,27 @@ class BatikBrewGenerationDialog(tk.Toplevel):
         ).grid(row=row, column=0, columnspan=3, sticky="w", pady=(4, 8))
         row += 1
 
-        ttk.Label(body, text="Creative direction").grid(
-            row=row, column=0, sticky="nw", padx=(0, 10), pady=4
+        self.prompt_text, row = self._text_row(
+            body,
+            row,
+            "Creative direction",
+            self.defaults.prompt,
+            height=5,
         )
-        self.prompt_text = tk.Text(body, height=5, wrap="word")
-        self.prompt_text.grid(row=row, column=1, columnspan=2, sticky="nsew", pady=4)
-        self.prompt_text.insert("1.0", defaults.prompt)
-        row += 1
-
-        ttk.Label(body, text="Negative prompt tambahan").grid(
-            row=row, column=0, sticky="nw", padx=(0, 10), pady=4
+        self.negative_text, row = self._text_row(
+            body,
+            row,
+            "Negative prompt tambahan",
+            self.defaults.negative_prompt,
+            height=4,
         )
-        self.negative_text = tk.Text(body, height=4, wrap="word")
-        self.negative_text.grid(row=row, column=1, columnspan=2, sticky="nsew", pady=4)
-        self.negative_text.insert("1.0", defaults.negative_prompt)
-        row += 1
 
         note = (
-            "Pilih satu objek sebagai inspirasi. Shift-pilih objek kedua untuk menggabungkan "
-            "dua sumber inspirasi. Setelah generasi selesai, pilih salah satu dari maksimal "
-            "empat variasi sebelum dimasukkan ke canvas."
+            "Pilih satu objek sebagai inspirasi; Shift-pilih objek kedua untuk menggabungkan "
+            "dua sumber. Setelah generasi, pilih satu dari maksimal empat variasi."
         )
         if not model_labels:
-            note += (
-                " Belum ada model SDXL terpasang; pilih file LoRA hasil notebook BatikCraft "
-                "secara langsung atau instal paket .batikmodel SDXL."
-            )
+            note += " Pilih file LoRA hasil notebook atau instal paket .batikmodel SDXL."
         ttk.Label(
             body,
             text=note,
@@ -203,6 +194,26 @@ class BatikBrewGenerationDialog(tk.Toplevel):
             side="right", padx=(6, 0)
         )
         ttk.Button(actions, text="Generate Variasi", command=self._accept).pack(side="right")
+
+    def _path_row(
+        self,
+        parent: ttk.Frame,
+        row: int,
+        label: str,
+        variable: tk.StringVar,
+        button_text: str,
+        command: object,
+    ) -> int:
+        ttk.Label(parent, text=label).grid(
+            row=row, column=0, sticky="w", padx=(0, 10), pady=4
+        )
+        ttk.Entry(parent, textvariable=variable).grid(
+            row=row, column=1, sticky="ew", pady=4
+        )
+        ttk.Button(parent, text=button_text, command=command).grid(
+            row=row, column=2, sticky="e", padx=(6, 0), pady=4
+        )
+        return row + 1
 
     def _entry_row(
         self,
@@ -242,6 +253,23 @@ class BatikBrewGenerationDialog(tk.Toplevel):
             showvalue=True,
         ).grid(row=row, column=1, columnspan=2, sticky="ew", pady=3)
         return row + 1
+
+    def _text_row(
+        self,
+        parent: ttk.Frame,
+        row: int,
+        label: str,
+        value: str,
+        *,
+        height: int,
+    ) -> tuple[tk.Text, int]:
+        ttk.Label(parent, text=label).grid(
+            row=row, column=0, sticky="nw", padx=(0, 10), pady=4
+        )
+        widget = tk.Text(parent, height=height, wrap="word")
+        widget.grid(row=row, column=1, columnspan=2, sticky="nsew", pady=4)
+        widget.insert("1.0", value)
+        return widget, row + 1
 
     def _spinbox(
         self,
@@ -300,10 +328,9 @@ class BatikBrewGenerationDialog(tk.Toplevel):
         dialog = RuntimeModelInstallDialog(self, family="sdxl")
         self.wait_window(dialog)
         result = dialog.result
-        if not isinstance(result, BatikBrewRuntimePaths):
-            return
-        self._managed_runtime = result
-        self.base_model_value.set(str(result.base_model))
+        if isinstance(result, BatikBrewRuntimePaths):
+            self._managed_runtime = result
+            self.base_model_value.set(str(result.base_model))
 
     def _accept(self) -> None:
         try:
@@ -313,7 +340,6 @@ class BatikBrewGenerationDialog(tk.Toplevel):
                 if part.strip()
             )
             model_source = self.base_model_value.get().strip() or SDXL_BASE_MODEL_ID
-            local_only = Path(model_source).expanduser().exists()
             self.result = BatikBrewGenerationOptions(
                 model_id_or_path=model_source,
                 prompt=self.prompt_text.get("1.0", "end").strip(),
@@ -323,7 +349,7 @@ class BatikBrewGenerationDialog(tk.Toplevel):
                 seed=int(self.seed_value.get().strip()),
                 device=self.defaults.device,
                 precision=self.defaults.precision,
-                local_files_only=local_only,
+                local_files_only=Path(model_source).expanduser().exists(),
                 cpu_offload=self.defaults.cpu_offload,
                 cache_dir=self.defaults.cache_dir,
                 resolution=int(self.resolution_value.get()),
