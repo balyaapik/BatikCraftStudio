@@ -40,8 +40,8 @@ class RuntimeModelInstallDialog(tk.Toplevel):
         self._finished = False
 
         self.title("Instal Runtime AI BatikCraft")
-        self.geometry("610x285")
-        self.minsize(560, 260)
+        self.geometry("610x310")
+        self.minsize(560, 285)
         self.resizable(True, False)
         self.transient(parent.winfo_toplevel())
         self.protocol("WM_DELETE_WINDOW", self._cancel_or_close)
@@ -80,13 +80,15 @@ class RuntimeModelInstallDialog(tk.Toplevel):
 
         self.progress = ttk.Progressbar(body, mode="indeterminate")
         self.progress.grid(row=4, column=0, sticky="ew")
+        self.percent = ttk.Label(body, text="", anchor="e", style="Muted.TLabel")
+        self.percent.grid(row=5, column=0, sticky="e", pady=(3, 0))
         self.status = ttk.Label(
             body,
             text="Menyiapkan instalasi…",
             wraplength=565,
             justify="left",
         )
-        self.status.grid(row=5, column=0, sticky="ew", pady=(8, 4))
+        self.status.grid(row=6, column=0, sticky="ew", pady=(8, 4))
         self.detail = ttk.Label(
             body,
             text=(
@@ -97,10 +99,10 @@ class RuntimeModelInstallDialog(tk.Toplevel):
             wraplength=565,
             justify="left",
         )
-        self.detail.grid(row=6, column=0, sticky="ew")
+        self.detail.grid(row=7, column=0, sticky="ew")
 
         actions = ttk.Frame(body)
-        actions.grid(row=7, column=0, sticky="e", pady=(14, 0))
+        actions.grid(row=8, column=0, sticky="e", pady=(14, 0))
         self.action_button = ttk.Button(
             actions,
             text="Batal",
@@ -150,10 +152,12 @@ class RuntimeModelInstallDialog(tk.Toplevel):
 
     def _handle_event(self, event: object) -> None:
         if isinstance(event, RuntimeModelInstallProgress):
-            self.status.configure(text=event.message)
+            stage_number = max(0, min(event.completed, event.total))
+            self.status.configure(text=f"Tahap {stage_number}/{event.total} — {event.message}")
             if event.stage in {"base", "controlnet"}:
                 self.progress.configure(mode="indeterminate")
                 self.progress.start(12)
+                self.percent.configure(text="Mengunduh…")
             else:
                 self.progress.stop()
                 self.progress.configure(
@@ -161,6 +165,8 @@ class RuntimeModelInstallDialog(tk.Toplevel):
                     maximum=event.total,
                     value=event.completed,
                 )
+                percent = round(event.completed / event.total * 100) if event.total else 0
+                self.percent.configure(text=f"{percent}%")
             return
 
         if not isinstance(event, tuple) or len(event) != 2:
@@ -181,6 +187,7 @@ class RuntimeModelInstallDialog(tk.Toplevel):
         self._finished = True
         self.progress.stop()
         self.progress.configure(mode="determinate", maximum=1, value=1 if success else 0)
+        self.percent.configure(text="100%" if success else "")
         self.status.configure(text=message)
         self.detail.configure(
             text=(
@@ -196,9 +203,8 @@ class RuntimeModelInstallDialog(tk.Toplevel):
             self.destroy()
             return
         self._cancel_event.set()
-        self.status.configure(
-            text="Membatalkan setelah tahap unduhan yang sedang aktif selesai…"
-        )
+        self.status.configure(text="Membatalkan setelah tahap unduhan yang sedang aktif selesai…")
+        self.percent.configure(text="")
         self.action_button.configure(state="disabled")
 
 
