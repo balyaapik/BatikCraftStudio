@@ -1,11 +1,15 @@
-"""Offline LoRA manager adapter that respects the global AI/GPU profile."""
+"""Offline LoRA manager adapter for global SD1.5 and BatikBrew SDXL runtimes."""
 
 from __future__ import annotations
 
 from dataclasses import replace
 from tkinter import messagebox, ttk
 
-from batikcraft_studio.ai.runtime_model_installer import find_installed_runtime_models
+from batikcraft_studio.ai.runtime_model_installer import (
+    BatikBrewRuntimePaths,
+    find_installed_batikbrew_runtime,
+    find_installed_runtime_models,
+)
 from batikcraft_studio.ai.runtime_settings import (
     get_ai_runtime_store,
     load_ai_runtime_settings,
@@ -16,18 +20,58 @@ from .offline_ai_dialogs import OfflineModelManagerWindow as _BaseOfflineModelMa
 
 
 class GlobalOfflineModelManagerWindow(_BaseOfflineModelManagerWindow):
-    """Use managed local model paths and the compute choices from Preferences."""
+    """Manage LoRA packs while routing SDXL packs to the BatikBrew generator."""
 
     def __init__(self, *args: object, **kwargs: object) -> None:
         super().__init__(*args, **kwargs)
-        self._add_runtime_installer_button()
+        self._add_runtime_installer_buttons()
         self._autofill_managed_runtime()
         self._sync_global_runtime_controls()
         self.title(f"{self.title()} — runtime dari Preferences AI & GPU")
 
     def _activate(self) -> None:
+        model_id = self._selected_model_id()
+        if model_id is not None:
+            try:
+                model = self.session.model_library.get(model_id)
+            except Exception:  # noqa: BLE001 - base class shows normalized errors
+                model = None
+            if model is not None and "sdxl" in model.manifest.base_model_family.casefold():
+                self._activate_batikbrew_model(model_id)
+                return
         self._sync_global_runtime_controls()
         super()._activate()
+
+    def _activate_batikbrew_model(self, model_id: str) -> None:
+        paths = find_installed_batikbrew_runtime()
+        if paths is None:
+            messagebox.showerror(
+                self.title(),
+                "Model ini memakai SDXL. Tekan 'Instal BatikBrew SDXL…' terlebih dahulu.",
+                parent=self,
+            )
+            return
+        try:
+            store = get_ai_runtime_store()
+            current = store.load()
+            store.save(
+                replace(
+                    current,
+                    default_model=str(paths.base_model),
+                    local_files_only=True,
+                )
+            )
+        except (OSError, TypeError, ValueError) as exc:
+            messagebox.showerror(self.title(), str(exc), parent=self)
+            return
+        self.tree.selection_set(model_id)
+        self.status.configure(
+            text=(
+                f"Model SDXL {model_id} diprioritaskan untuk Generate Motif BatikBrew. "
+                "Tidak memakai renderer SD1.5/ControlNet."
+            )
+        )
+        self._changed()
 
     def _sync_global_runtime_controls(self) -> None:
         runtime = load_ai_runtime_settings()
@@ -35,14 +79,20 @@ class GlobalOfflineModelManagerWindow(_BaseOfflineModelManagerWindow):
         self.precision_value.set(runtime.precision)
         self.cpu_offload.set(runtime.effective_cpu_offload)
 
-    def _add_runtime_installer_button(self) -> None:
+    def _add_runtime_installer_buttons(self) -> None:
         bottom = self.status.master
         self.runtime_installer_button = ttk.Button(
             bottom,
-            text="Unduh & Instal Runtime AI…",
+            text="Instal Runtime SD1.5…",
             command=self._install_managed_runtime,
         )
         self.runtime_installer_button.pack(side="right", padx=(0, 6))
+        self.batikbrew_runtime_button = ttk.Button(
+            bottom,
+            text="Instal BatikBrew SDXL…",
+            command=self._install_batikbrew_runtime,
+        )
+        self.batikbrew_runtime_button.pack(side="right", padx=(0, 6))
 
     def _autofill_managed_runtime(self) -> None:
         paths = find_installed_runtime_models()
@@ -52,15 +102,14 @@ class GlobalOfflineModelManagerWindow(_BaseOfflineModelManagerWindow):
         self.controlnet_path.set(str(paths.controlnet))
 
     def _install_managed_runtime(self) -> None:
-        dialog = RuntimeModelInstallDialog(self)
+        dialog = RuntimeModelInstallDialog(self, family="sd15")
         self.wait_window(dialog)
         paths = dialog.result
-        if paths is None:
+        if paths is None or isinstance(paths, BatikBrewRuntimePaths):
             return
 
         self.base_path.set(str(paths.base_model))
         self.controlnet_path.set(str(paths.controlnet))
-
         try:
             store = get_ai_runtime_store()
             current = store.load()
@@ -80,9 +129,38 @@ class GlobalOfflineModelManagerWindow(_BaseOfflineModelManagerWindow):
             )
         else:
             self.status.configure(
-                text="Runtime AI lokal siap. Pilih LoRA lalu tekan Aktifkan Model."
+                text="Runtime SD1.5 lokal siap untuk workflow legacy dan ControlNet."
             )
             self._changed()
+
+    def _install_batikbrew_runtime(self) -> None:
+        dialog = RuntimeModelInstallDialog(self, family="sdxl")
+        self.wait_window(dialog)
+        paths = dialog.result
+        if not isinstance(paths, BatikBrewRuntimePaths):
+            return
+        try:
+            store = get_ai_runtime_store()
+            current = store.load()
+            store.save(
+                replace(
+                    current,
+                    default_model=str(paths.base_model),
+                    local_files_only=True,
+                )
+            )
+        except (OSError, TypeError, ValueError) as exc:
+            messagebox.showwarning(
+                self.title(),
+                "SDXL berhasil dipasang, tetapi pengaturan global gagal disimpan: "
+                f"{exc}",
+                parent=self,
+            )
+            return
+        self.status.configure(
+            text="Runtime BatikBrew SDXL siap untuk generasi motif dari objek inspirasi."
+        )
+        self._changed()
 
 
 __all__ = ["GlobalOfflineModelManagerWindow"]
