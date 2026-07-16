@@ -8,7 +8,7 @@ import tkinter as tk
 from tkinter import messagebox
 
 from .config import APP_NAME
-from .context_tool_app import ContextToolApplication
+from .progress_context_tool_app import ProgressContextToolApplication
 
 
 def _configure_logging() -> None:
@@ -24,7 +24,7 @@ def main() -> int:
     _configure_logging()
 
     try:
-        application = ContextToolApplication()
+        application = ProgressContextToolApplication()
         application.run()
     except tk.TclError as exc:
         logging.exception("Tkinter could not initialize")
