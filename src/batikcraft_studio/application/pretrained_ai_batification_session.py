@@ -1,11 +1,15 @@
-"""Application workflow for pretrained AI Batification without custom training."""
+"""Application workflow for pretrained and BatikBrew AI generation."""
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 from uuid import uuid4
 
+from batikcraft_studio.ai.batikbrew_generation import (
+    BatikBrewGenerationOptions,
+    with_plan_context,
+)
 from batikcraft_studio.ai.default_batik_reference import build_default_batik_reference
 from batikcraft_studio.ai.pretrained_batification import (
     PretrainedAIBatificationOptions,
@@ -45,7 +49,7 @@ class PretrainedAIPlan:
 
 
 class PretrainedAIBatificationProjectSession(NonMLBatificationProjectSession):
-    """Add one- or two-object Stable Diffusion img2img Batification."""
+    """Add object AI and notebook-compatible BatikBrew SDXL generation."""
 
     def __init__(self, *args: object, **kwargs: object) -> None:
         super().__init__(*args, **kwargs)
@@ -67,13 +71,13 @@ class PretrainedAIBatificationProjectSession(NonMLBatificationProjectSession):
         self,
         options: PretrainedAIBatificationOptions | None = None,
     ) -> PretrainedAIPlan:
-        """Capture one source object and an optional second motif reference."""
+        """Capture one source object and an optional second inspiration reference."""
 
         selected = self.selected_object_ids
         if len(selected) not in {1, 2}:
             raise ProjectSessionError(
-                "Pilih satu objek sumber. Shift-pilih satu motif Batik bila ingin memakai "
-                "referensi khusus."
+                "Pilih satu objek sumber. Shift-pilih objek kedua bila ingin menggabungkan "
+                "dua sumber inspirasi."
             )
         motif_object_id = selected[1] if len(selected) == 2 else None
         return self.prepare_pretrained_ai(
@@ -90,12 +94,12 @@ class PretrainedAIBatificationProjectSession(NonMLBatificationProjectSession):
         options: PretrainedAIBatificationOptions | None = None,
     ) -> PretrainedAIPlan:
         if motif_object_id is not None and source_object_id == motif_object_id:
-            raise ProjectSessionError("Objek sumber dan motif batik harus berbeda.")
+            raise ProjectSessionError("Objek sumber dan referensi inspirasi harus berbeda.")
         project = self.require_project()
         source = self._require_unlocked_object(source_object_id)
         motif = None if motif_object_id is None else project.get_object(motif_object_id)
         if motif is not None and motif.kind is ObjectKind.ERASER_STROKE:
-            raise ProjectSessionError("Goresan penghapus tidak dapat menjadi referensi motif AI.")
+            raise ProjectSessionError("Goresan penghapus tidak dapat menjadi referensi AI.")
         try:
             source_content = renderable_source_content(source, self._assets)
             motif_content = (
@@ -129,20 +133,52 @@ class PretrainedAIBatificationProjectSession(NonMLBatificationProjectSession):
             options=settings,
         )
 
+    def render_pretrained_ai_variations(
+        self,
+        plan: PretrainedAIPlan,
+    ) -> tuple[PretrainedAIBatificationResult, ...]:
+        """Run one or more generations; safe to call from a worker thread."""
+
+        options = plan.options
+        if isinstance(options, BatikBrewGenerationOptions):
+            options = with_plan_context(
+                options,
+                source_name=plan.source_name,
+                use_secondary_reference=plan.uses_selected_motif,
+            )
+        try:
+            render_many = getattr(self._pretrained_ai_provider, "render_variations", None)
+            if callable(render_many):
+                results = tuple(
+                    render_many(
+                        plan.source_content,
+                        plan.motif_content,
+                        options,
+                    )
+                )
+            else:
+                results = (
+                    self._pretrained_ai_provider.render(
+                        plan.source_content,
+                        plan.motif_content,
+                        options,
+                    ),
+                )
+        except BatificationError as exc:
+            raise ProjectSessionError(str(exc)) from exc
+        if not results:
+            raise ProjectSessionError("Provider AI tidak menghasilkan variasi gambar.")
+        if any(not result.content or result.width < 1 or result.height < 1 for result in results):
+            raise ProjectSessionError("Salah satu hasil AI tidak valid.")
+        return results
+
     def render_pretrained_ai_plan(
         self,
         plan: PretrainedAIPlan,
     ) -> PretrainedAIBatificationResult:
-        """Run model inference; safe to call from a worker thread."""
+        """Compatibility method returning the first generated variation."""
 
-        try:
-            return self._pretrained_ai_provider.render(
-                plan.source_content,
-                plan.motif_content,
-                plan.options,
-            )
-        except BatificationError as exc:
-            raise ProjectSessionError(str(exc)) from exc
+        return self.render_pretrained_ai_variations(plan)[0]
 
     def commit_pretrained_ai_result(
         self,
@@ -154,7 +190,7 @@ class PretrainedAIBatificationProjectSession(NonMLBatificationProjectSession):
         project = self.require_project()
         if project.project_id != plan.project_id:
             raise ProjectSessionError(
-                "Project berubah saat AI berjalan. Jalankan Batifikasi AI kembali."
+                "Project berubah saat AI berjalan. Jalankan generasi AI kembali."
             )
         if project.revision != plan.project_revision:
             raise ProjectSessionError(
@@ -174,29 +210,44 @@ class PretrainedAIBatificationProjectSession(NonMLBatificationProjectSession):
         if not result.content or result.width < 1 or result.height < 1:
             raise ProjectSessionError("Hasil AI tidak valid.")
 
+        metadata = dict(result.metadata)
+        is_batikbrew = metadata.get("generation_mode") == "batikbrew_sdxl_text_to_image"
         asset_ref = f"assets/{uuid4()}.png"
-        motif_source = "selected_object" if motif is not None else "generated_batik_reference"
+        if is_batikbrew:
+            motif_source = (
+                "two_selected_inspirations" if motif is not None else "selected_inspiration"
+            )
+            source_format = "BATIKBREW_SDXL_GENERATION_V1"
+            name = f"Motif BatikBrew dari {plan.source_name}"[:120]
+            output_transform = _batikbrew_output_transform(source, result)
+        else:
+            motif_source = "selected_object" if motif is not None else "generated_batik_reference"
+            source_format = "PRETRAINED_AI_BATIFICATION_V1"
+            name = f"Batifikasi AI {plan.source_name}"[:120]
+            output_transform = plan.source_transform
+
         properties = {
-            "source_format": "PRETRAINED_AI_BATIFICATION_V1",
+            "source_format": source_format,
             "batification_provider": result.provider_id,
             "batification_source_object_id": source.object_id,
             "batification_motif_object_id": None if motif is None else motif.object_id,
             "batification_motif_source": motif_source,
             "batification_settings": plan.options.to_properties(),
-            "batification_metadata": dict(result.metadata),
+            "batification_metadata": metadata,
             "batification_pretrained": True,
             "batification_custom_training_required": False,
             "batification_non_destructive": True,
             "batification_editable_component": True,
+            "batikbrew_generation": is_batikbrew,
         }
         output = LayerObject(
-            name=f"Batifikasi AI {plan.source_name}"[:120],
+            name=name,
             kind=ObjectKind.MOTIF,
             asset_ref=asset_ref,
             visible=True,
             locked=False,
             opacity=plan.source_opacity,
-            transform=plan.source_transform,
+            transform=output_transform,
             bounds=ObjectBounds(result.width, result.height),
             properties=properties,
         )
@@ -229,6 +280,25 @@ class PretrainedAIBatificationProjectSession(NonMLBatificationProjectSession):
         unload = getattr(self._pretrained_ai_provider, "unload", None)
         if callable(unload):
             unload()
+
+
+def _batikbrew_output_transform(
+    source: LayerObject,
+    result: PretrainedAIBatificationResult,
+) -> Transform:
+    """Place a generated square near the visual footprint of its inspiration object."""
+
+    displayed_width = source.bounds.width * abs(source.transform.scale_x)
+    displayed_height = source.bounds.height * abs(source.transform.scale_y)
+    target_side = max(64.0, displayed_width, displayed_height)
+    scale = target_side / max(result.width, result.height)
+    sign_x = -1.0 if source.transform.scale_x < 0 else 1.0
+    sign_y = -1.0 if source.transform.scale_y < 0 else 1.0
+    return replace(
+        source.transform,
+        scale_x=scale * sign_x,
+        scale_y=scale * sign_y,
+    )
 
 
 __all__ = [
