@@ -6,10 +6,11 @@ import threading
 import tkinter as tk
 from dataclasses import replace
 
-from batikcraft_studio.ai.batikbrew_generation import (
-    SDXL_BASE_MODEL_ID,
-    BatikBrewGenerationOptions,
-    BatikBrewSDXLGenerationProvider,
+from batikcraft_studio.ai.batikbrew_generation import SDXL_BASE_MODEL_ID
+from batikcraft_studio.ai.batikbrew_generation_modes import (
+    OUTPUT_MODE_ORNAMENT,
+    BatikBrewModeGenerationOptions,
+    BatikBrewModeGenerationProvider,
 )
 from batikcraft_studio.ai.global_runtime import pretrained_batification_options_from_global
 from batikcraft_studio.ai.pretrained_batification import PretrainedAIBatificationResult
@@ -22,6 +23,7 @@ from batikcraft_studio.application import (
 )
 
 from .batikbrew_generation_dialog import BatikBrewGenerationDialog
+from .batikbrew_output_mode_dialog import BatikBrewOutputModeDialog
 from .batikbrew_variation_dialog import BatikBrewVariationDialog
 from .context_tool_editor_hotfix_v13 import ContextToolEditorWorkspaceView as _HotfixV13Editor
 from .progress_dialog import ProgressDialog, ProgressUpdate
@@ -30,12 +32,12 @@ _BATIKBREW_CONTEXT_LABEL = "Generate Motif BatikBrew — SDXL LoRA…"
 
 
 class ContextToolEditorWorkspaceView(_HotfixV13Editor):
-    """Generate motifs with the same SDXL LoRA approach as the BatikCraft notebook."""
+    """Generate an isolated ornament or a full pattern with BatikBrew SDXL."""
 
     def __init__(self, *args: object, **kwargs: object) -> None:
         super().__init__(*args, **kwargs)
         if isinstance(self.session, PretrainedAIBatificationProjectSession):
-            self.session.set_pretrained_ai_provider(BatikBrewSDXLGenerationProvider())
+            self.session.set_pretrained_ai_provider(BatikBrewModeGenerationProvider())
         self._configure_batikbrew_context_action()
 
     def batify_selected_with_pretrained_ai(self) -> None:
@@ -53,6 +55,13 @@ class ContextToolEditorWorkspaceView(_HotfixV13Editor):
                 "Pilih satu objek inspirasi. Shift-pilih objek kedua untuk menggabungkan "
                 "dua sumber inspirasi."
             )
+            return
+
+        mode_dialog = BatikBrewOutputModeDialog(self)
+        self.wait_window(mode_dialog)
+        output_mode = mode_dialog.result
+        if output_mode is None:
+            self.set_status("Generasi BatikBrew dibatalkan.")
             return
 
         defaults = pretrained_batification_options_from_global()
@@ -77,18 +86,33 @@ class ContextToolEditorWorkspaceView(_HotfixV13Editor):
             defaults=defaults,
             installed_models=installed_models,
         )
+        if output_mode == OUTPUT_MODE_ORNAMENT:
+            dialog.title("BatikBrew — Ornamen Tunggal")
+            dialog.tileable_value.set(False)
+        else:
+            dialog.title("BatikBrew — Pola")
         self.wait_window(dialog)
-        options = dialog.result
-        if options is None:
+        raw_options = dialog.result
+        if raw_options is None:
             self.set_status("Generasi BatikBrew dibatalkan.")
             return
-        if not isinstance(options, BatikBrewGenerationOptions):
-            self.set_status("Pengaturan BatikBrew tidak valid.")
+
+        try:
+            options = BatikBrewModeGenerationOptions(
+                **raw_options.to_properties(),
+                output_mode=output_mode,
+            )
+        except (TypeError, ValueError) as exc:
+            self.set_status(f"Pengaturan BatikBrew tidak valid: {exc}")
             return
 
         progress = ProgressDialog(
             self,
-            title="Generate Motif BatikBrew — SDXL LoRA",
+            title=(
+                "Generate Ornamen BatikBrew"
+                if output_mode == OUTPUT_MODE_ORNAMENT
+                else "Generate Pola BatikBrew"
+            ),
             message="Menyiapkan objek inspirasi…",
             cancellable=False,
             auto_close_ms=None,
@@ -112,10 +136,9 @@ class ContextToolEditorWorkspaceView(_HotfixV13Editor):
             return
 
         self._pretrained_ai_running = True
-        reference = "dua objek inspirasi" if plan.uses_selected_motif else "objek inspirasi"
+        kind = "ornamen tunggal" if output_mode == OUTPUT_MODE_ORNAMENT else "pola penuh"
         self.set_status(
-            f"BatikBrew sedang menganalisis {reference} dan membuat "
-            f"{options.variation_count} variasi motif."
+            f"BatikBrew sedang membuat {options.variation_count} variasi {kind}."
         )
 
         def worker() -> None:
@@ -125,10 +148,7 @@ class ContextToolEditorWorkspaceView(_HotfixV13Editor):
                     "Tahap 2/6 — Menganalisis warna, garis, tema, dan komposisi",
                     2,
                     6,
-                    detail=(
-                        "Mengikuti pipeline notebook: dominant palette, edge density, "
-                        "theme keywords, dan Batik prompt grammar."
-                    ),
+                    detail="Dominant palette, edge density, theme keywords, dan prompt Batik.",
                 )
                 reporter.update(
                     "Tahap 3/6 — Memuat Stable Diffusion XL dan LoRA BatikBrew",
@@ -137,7 +157,7 @@ class ContextToolEditorWorkspaceView(_HotfixV13Editor):
                     detail=f"Base model: {options.model_id_or_path}",
                 )
                 reporter.update(
-                    "Tahap 4/6 — Menghasilkan variasi motif dengan seed berbeda",
+                    "Tahap 4/6 — Menghasilkan variasi dengan seed berbeda",
                     detail=(
                         f"{options.variation_count} variasi · {options.inference_steps} steps · "
                         f"guidance {options.guidance_scale}"
@@ -145,16 +165,16 @@ class ContextToolEditorWorkspaceView(_HotfixV13Editor):
                 )
                 results = self._pretrained_ai_session.render_pretrained_ai_variations(plan)
                 reporter.update(
-                    "Tahap 5/6 — Menyelesaikan motif seamless/tileable",
+                    "Tahap 5/6 — Menyelesaikan transparansi atau tileable output",
                     5,
                     6,
                     detail=(
-                        "Opposite-edge blending aktif"
-                        if options.tileable
-                        else "Tileable processing dinonaktifkan"
+                        "Background dihapus untuk ornamen tunggal"
+                        if output_mode == OUTPUT_MODE_ORNAMENT
+                        else "Opposite-edge blending untuk pola seamless"
                     ),
                 )
-            except Exception as exc:  # noqa: BLE001 - worker failures return to Tk
+            except Exception as exc:  # noqa: BLE001
                 message = str(exc)
                 progress.fail(message)
                 self._post_pretrained_ai_callback(
@@ -200,6 +220,15 @@ class ContextToolEditorWorkspaceView(_HotfixV13Editor):
             self.set_status("Hasil BatikBrew tidak diterapkan karena pemilihan dibatalkan.")
             return
         super()._finish_pretrained_ai_success(plan, selected)
+
+        # Returning focus to the editor is important on Windows: otherwise Ctrl+C may
+        # still target the destroyed modal dialog. Reassert the active AI object so the
+        # normal multi-object clipboard captures its PNG asset and metadata.
+        project = self.session.project
+        if project is not None and project.active_object_id is not None:
+            self.session.set_selected_objects([project.active_object_id])
+        self.focus_set()
+        self.set_status("Hasil AI aktif dan siap disalin dengan Ctrl+C / Ctrl+V.")
 
     def _finish_batikbrew_error(self, message: str) -> None:
         super()._finish_pretrained_ai_error(message)
