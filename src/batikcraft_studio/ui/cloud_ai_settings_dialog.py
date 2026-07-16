@@ -7,12 +7,12 @@ from tkinter import messagebox, ttk
 
 from batikcraft_studio.ai.generation_providers import (
     APISecretStore,
-    CloudGenerationSettings,
-    CloudGenerationSettingsStore,
     PROVIDER_GEMINI,
     PROVIDER_LABELS,
     PROVIDER_OPENAI,
     PROVIDER_WATSONX,
+    CloudGenerationSettings,
+    CloudGenerationSettingsStore,
     get_api_secret_store,
     get_cloud_generation_settings_store,
     provider_id_from_label,
@@ -56,8 +56,14 @@ class CloudAISettingsDialog(tk.Toplevel):
         self.gemini_model_value = tk.StringVar(master=self, value=current.gemini_model)
         self.watsonx_model_value = tk.StringVar(master=self, value=current.watsonx_model)
         self.watsonx_url_value = tk.StringVar(master=self, value=current.watsonx_url)
-        self.watsonx_project_value = tk.StringVar(master=self, value=current.watsonx_project_id)
-        self.watsonx_version_value = tk.StringVar(master=self, value=current.watsonx_api_version)
+        self.watsonx_project_value = tk.StringVar(
+            master=self,
+            value=current.watsonx_project_id,
+        )
+        self.watsonx_version_value = tk.StringVar(
+            master=self,
+            value=current.watsonx_api_version,
+        )
         self.timeout_value = tk.IntVar(master=self, value=current.request_timeout_seconds)
 
         self.openai_key_value = tk.StringVar(master=self)
@@ -66,10 +72,10 @@ class CloudAISettingsDialog(tk.Toplevel):
         self.delete_openai_value = tk.BooleanVar(master=self, value=False)
         self.delete_gemini_value = tk.BooleanVar(master=self, value=False)
         self.delete_watsonx_value = tk.BooleanVar(master=self, value=False)
-        self.status_value = tk.StringVar(
-            master=self,
-            value=self.settings_store.last_error or "API key tidak disimpan di project atau metadata NFT.",
+        initial_status = self.settings_store.last_error or (
+            "API key tidak disimpan di project atau metadata NFT."
         )
+        self.status_value = tk.StringVar(master=self, value=initial_status)
 
         self._build(labels)
         self.bind("<Escape>", lambda _event: self._cancel())
@@ -118,7 +124,11 @@ class CloudAISettingsDialog(tk.Toplevel):
             provider_labels,
         )
         ttk.Label(defaults, text="Timeout request (detik)").grid(
-            row=2, column=0, sticky="w", pady=5, padx=(0, 10)
+            row=2,
+            column=0,
+            sticky="w",
+            pady=5,
+            padx=(0, 10),
         )
         ttk.Spinbox(
             defaults,
@@ -152,7 +162,10 @@ class CloudAISettingsDialog(tk.Toplevel):
         self._entry_row(openai, 2, "Base URL", self.openai_base_url_value)
         ttk.Label(
             openai,
-            text="Contoh model: gpt-image-1. Mode ornamen meminta PNG transparan jika didukung model.",
+            text=(
+                "Contoh model: gpt-image-1. Mode ornamen meminta PNG transparan "
+                "jika didukung model."
+            ),
             style="Muted.TLabel",
             wraplength=680,
         ).grid(row=3, column=0, columnspan=2, sticky="w", pady=(10, 0))
@@ -212,10 +225,14 @@ class CloudAISettingsDialog(tk.Toplevel):
             justify="left",
         ).grid(row=0, column=0, sticky="w")
         ttk.Button(footer, text="Batal", command=self._cancel).grid(
-            row=0, column=1, padx=(8, 0)
+            row=0,
+            column=1,
+            padx=(8, 0),
         )
         ttk.Button(footer, text="Simpan", command=self._save).grid(
-            row=0, column=2, padx=(8, 0)
+            row=0,
+            column=2,
+            padx=(8, 0),
         )
 
     def _combo_row(
@@ -226,7 +243,13 @@ class CloudAISettingsDialog(tk.Toplevel):
         variable: tk.StringVar,
         values: tuple[str, ...],
     ) -> None:
-        ttk.Label(parent, text=label).grid(row=row, column=0, sticky="w", pady=5, padx=(0, 10))
+        ttk.Label(parent, text=label).grid(
+            row=row,
+            column=0,
+            sticky="w",
+            pady=5,
+            padx=(0, 10),
+        )
         ttk.Combobox(
             parent,
             textvariable=variable,
@@ -241,8 +264,19 @@ class CloudAISettingsDialog(tk.Toplevel):
         label: str,
         variable: tk.Variable,
     ) -> None:
-        ttk.Label(parent, text=label).grid(row=row, column=0, sticky="w", pady=5, padx=(0, 10))
-        ttk.Entry(parent, textvariable=variable).grid(row=row, column=1, sticky="ew", pady=5)
+        ttk.Label(parent, text=label).grid(
+            row=row,
+            column=0,
+            sticky="w",
+            pady=5,
+            padx=(0, 10),
+        )
+        ttk.Entry(parent, textvariable=variable).grid(
+            row=row,
+            column=1,
+            sticky="ew",
+            pady=5,
+        )
 
     def _secret_row(
         self,
@@ -254,27 +288,37 @@ class CloudAISettingsDialog(tk.Toplevel):
     ) -> None:
         available = self.secret_store.has(provider_id)
         ttk.Label(parent, text="API key baru").grid(
-            row=row, column=0, sticky="w", pady=5, padx=(0, 10)
+            row=row,
+            column=0,
+            sticky="nw",
+            pady=5,
+            padx=(0, 10),
         )
         holder = ttk.Frame(parent)
         holder.grid(row=row, column=1, sticky="ew", pady=5)
         holder.columnconfigure(0, weight=1)
-        ttk.Entry(holder, textvariable=variable, show="•").grid(row=0, column=0, sticky="ew")
+        ttk.Entry(holder, textvariable=variable, show="•").grid(
+            row=0,
+            column=0,
+            sticky="ew",
+        )
         ttk.Label(
             holder,
             text="Tersedia" if available else "Belum diisi",
             style="Muted.TLabel",
         ).grid(row=0, column=1, padx=(8, 0))
         ttk.Checkbutton(
-            parent,
+            holder,
             text="Hapus API key tersimpan",
             variable=delete_variable,
-        ).grid(row=row + 1, column=1, sticky="w", pady=(0, 7))
+        ).grid(row=1, column=0, columnspan=2, sticky="w", pady=(5, 0))
 
     def _save(self) -> None:
         try:
             settings = CloudGenerationSettings(
-                ornament_provider=provider_id_from_label(self.ornament_provider_value.get()),
+                ornament_provider=provider_id_from_label(
+                    self.ornament_provider_value.get()
+                ),
                 pattern_provider=provider_id_from_label(self.pattern_provider_value.get()),
                 openai_model=self.openai_model_value.get(),
                 openai_base_url=self.openai_base_url_value.get(),
@@ -302,7 +346,11 @@ class CloudAISettingsDialog(tk.Toplevel):
                 bool(self.delete_watsonx_value.get()),
             )
         except (OSError, RuntimeError, TypeError, ValueError) as exc:
-            messagebox.showerror("Pengaturan API tidak dapat disimpan", str(exc), parent=self)
+            messagebox.showerror(
+                "Pengaturan API tidak dapat disimpan",
+                str(exc),
+                parent=self,
+            )
             return
         self.result = settings
         self.destroy()
