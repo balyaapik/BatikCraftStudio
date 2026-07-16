@@ -9,6 +9,7 @@ from batikcraft_studio.ai.lora_object_batification import (
     LoraObjectBatificationOptions,
     LoraObjectBatificationProvider,
     _filled_object_mask,
+    _relaxed_stylization_mask,
 )
 
 
@@ -58,6 +59,7 @@ class _Pipeline:
         self.safety_checker = object()
         self.requires_safety_checker = True
         self.prompts: list[str] = []
+        self.calls: list[dict[str, object]] = []
 
     def load_lora_weights(self, *_args: object, **_kwargs: object) -> None:
         return None
@@ -86,6 +88,7 @@ class _Pipeline:
     def __call__(self, **kwargs: object) -> SimpleNamespace:
         prompt = str(kwargs["prompt"])
         self.prompts.append(prompt)
+        self.calls.append(dict(kwargs))
         initial = kwargs["image"]
         assert isinstance(initial, Image.Image)
         generated = initial.convert("RGBA")
@@ -100,7 +103,15 @@ def test_closed_outline_mask_is_filled_inside() -> None:
     assert filled.getpixel((2, 2)) < 20
 
 
-def test_safe_leaf_false_positive_does_not_block_and_interior_is_batik(tmp_path) -> None:
+def test_relaxed_mask_allows_small_contour_change() -> None:
+    with Image.open(BytesIO(_outline_leaf())) as source:
+        filled = _filled_object_mask(source.getchannel("A"))
+    relaxed = _relaxed_stylization_mask(filled)
+    assert relaxed.getbbox() is not None
+    assert relaxed.getbbox() != filled.getbbox()
+
+
+def test_safe_leaf_is_redrawn_not_marked_as_texture_fill(tmp_path) -> None:
     weights = tmp_path / "batik.safetensors"
     weights.write_bytes(b"lora")
     pipeline = _Pipeline()
@@ -119,7 +130,12 @@ def test_safe_leaf_false_positive_does_not_block_and_interior_is_batik(tmp_path)
     assert pipeline.safety_checker is None
     assert pipeline.requires_safety_checker is False
     assert result.metadata["nsfw_false_positive_ignored"] is True
-    assert result.metadata["interior_batik_fill"] is True
+    assert result.metadata["generation_mode"] == "batik_redraw_stylization"
+    assert result.metadata["motif_fill_only"] is False
+    assert result.metadata["original_outline_reapplied"] is False
+    assert result.metadata["silhouette_relaxed"] is True
+    assert float(result.metadata["strength"]) > options.strength
+    assert "tiled texture fill" in str(result.metadata["negative_prompt"])
     with Image.open(BytesIO(result.content)) as image:
         image.load()
         assert image.getchannel("A").getpixel((48, 36)) > 180

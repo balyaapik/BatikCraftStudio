@@ -8,14 +8,13 @@ from io import BytesIO
 from pathlib import Path
 from typing import Any
 
-from PIL import Image, ImageChops, ImageColor, ImageDraw, ImageFilter, ImageOps
+from PIL import Image, ImageChops, ImageColor, ImageDraw, ImageFilter, ImageOps, ImageStat
 
 from batikcraft_studio.ai.global_runtime import GlobalPretrainedImg2ImgBatificationProvider
 from batikcraft_studio.ai.pretrained_batification import (
     PretrainedAIBatificationOptions,
     PretrainedAIBatificationResult,
     _open_rgba,
-    _outline_from_alpha,
     _prepare_square,
     _restore_square,
 )
@@ -73,7 +72,7 @@ class LoraObjectBatificationOptions(PretrainedAIBatificationOptions):
 
 
 class LoraObjectBatificationProvider(GlobalPretrainedImg2ImgBatificationProvider):
-    """Load one Batik LoRA and generate Batik inside the object's silhouette."""
+    """Redraw a source object as a Batik illustration instead of texture-filling it."""
 
     def __init__(self, pipeline_factory: Any | None = None) -> None:
         super().__init__(pipeline_factory)
@@ -133,19 +132,13 @@ class LoraObjectBatificationProvider(GlobalPretrainedImg2ImgBatificationProvider
         if not isinstance(options, LoraObjectBatificationOptions):
             raise BatificationError("Pilih LoRA Batik sebelum menjalankan Batifikasi AI.")
 
-        trigger = ", ".join(options.lora_trigger_words)
-        user_prompt = f"{trigger}, {options.prompt}" if trigger else options.prompt
-        prompt = (
-            f"{user_prompt}, Batik pattern woven and drawn inside the full object body, "
-            "interior filled with wax-resist motifs and isen-isen, no separate rectangular "
-            "background, preserve the recognizable object anatomy and silhouette"
-        )
-        negative_prompt = (
-            f"{options.negative_prompt}, empty interior, outline only, silhouette sticker, "
-            "pattern only behind object, plain object over textile background"
-        )
+        source = _open_rgba(source_content, "objek sumber")
+        source_alpha = source.getchannel("A")
+        object_mask = _filled_object_mask(source_alpha)
+        if object_mask.getbbox() is None:
+            raise BatificationError("Objek sumber tidak memiliki area yang dapat dibatifikasi.")
 
-        deterministic = batify_with_motif(
+        palette_reference = batify_with_motif(
             source_content,
             motif_content,
             NonMLBatificationOptions(
@@ -154,36 +147,42 @@ class LoraObjectBatificationProvider(GlobalPretrainedImg2ImgBatificationProvider
                 preserve_shading=options.preserve_shading,
             ),
         )
-        source = _open_rgba(source_content, "objek sumber")
-        motif = _open_rgba(motif_content, "motif Batik")
-        source_alpha = source.getchannel("A")
-        object_mask = _filled_object_mask(source_alpha)
-        if object_mask.getbbox() is None:
-            raise BatificationError("Objek sumber tidak memiliki area yang dapat dibatifikasi.")
-
-        base = _build_interior_batik_base(
+        redraw_guide = _build_redraw_guide(
             source,
-            motif,
             object_mask,
-            pattern_scale=options.pattern_scale,
-            preserve_shading=options.preserve_shading,
+            background=palette_reference.palette[-1],
         )
         prepared, restore_box = _prepare_square(
-            base,
+            redraw_guide,
             options.resolution,
-            background=deterministic.palette[-1],
+            background=palette_reference.palette[-1],
         )
-        pipeline, torch, device = self._load_pipeline(options)
-        palette_prompt = ", ".join(deterministic.palette[:6])
-        final_prompt = f"{prompt}, motif palette {palette_prompt}"
+
+        trigger = ", ".join(options.lora_trigger_words)
+        user_prompt = f"{trigger}, {options.prompt}" if trigger else options.prompt
+        palette_prompt = ", ".join(palette_reference.palette[:6])
+        final_prompt = (
+            f"{user_prompt}, redraw the entire subject as an original hand-drawn Indonesian "
+            "Batik illustration, reinterpret its anatomy and contours into wax-resist lines, "
+            "isen-isen, canting strokes and ornamental negative space, Batik visual language "
+            "must shape the object itself, expressive handcrafted contour variation, slightly "
+            f"stylized silhouette allowed, motif palette {palette_prompt}"
+        )
+        negative_prompt = (
+            f"{options.negative_prompt}, tiled texture fill, clipped fabric texture, pattern "
+            "pasted inside mask, exact traced outline, sticker silhouette, unchanged vector "
+            "shape, rectangular textile background, plain object with Batik wallpaper"
+        )
 
         prompt_salt = int.from_bytes(
             hashlib.sha256(final_prompt.encode("utf-8")).digest()[:4],
             "big",
         )
         effective_seed = (int(options.seed) ^ prompt_salt) & 0x7FFFFFFF
+        pipeline, torch, device = self._load_pipeline(options)
         generator_device = device if device in {"cpu", "cuda"} else "cpu"
         generator = torch.Generator(device=generator_device).manual_seed(effective_seed)
+        effective_strength = max(0.62, min(0.88, options.strength + 0.22))
 
         with self._inference_lock:
             try:
@@ -191,7 +190,7 @@ class LoraObjectBatificationProvider(GlobalPretrainedImg2ImgBatificationProvider
                     prompt=final_prompt,
                     negative_prompt=negative_prompt,
                     image=prepared.convert("RGB"),
-                    strength=max(options.strength, 0.48),
+                    strength=effective_strength,
                     num_inference_steps=options.inference_steps,
                     guidance_scale=options.guidance_scale,
                     generator=generator,
@@ -203,18 +202,13 @@ class LoraObjectBatificationProvider(GlobalPretrainedImg2ImgBatificationProvider
         if not images:
             raise BatificationError("Model Stable Diffusion tidak menghasilkan gambar.")
         generated = images[0].convert("RGBA")
-        restored = _restore_square(generated, restore_box, base.size)
-        restored.putalpha(object_mask)
+        restored = _restore_square(generated, restore_box, source.size)
 
-        ai_weight = max(0.68, min(0.92, options.ai_blend + 0.18))
-        combined = Image.blend(base, restored, ai_weight).convert("RGBA")
-        combined.putalpha(object_mask)
-
-        original_outline = _original_outline(source_alpha, deterministic.darkest_color)
-        silhouette_outline = _outline_from_alpha(object_mask, deterministic.darkest_color)
-        combined.alpha_composite(silhouette_outline)
-        combined.alpha_composite(original_outline)
-        combined.putalpha(object_mask)
+        relaxed_mask = _relaxed_stylization_mask(object_mask)
+        restored.putalpha(relaxed_mask)
+        guide_weight = max(0.02, min(0.12, (1.0 - options.ai_blend) * 0.18))
+        combined = Image.blend(restored, redraw_guide, guide_weight).convert("RGBA")
+        combined.putalpha(relaxed_mask)
 
         output = BytesIO()
         combined.save(output, format="PNG", optimize=True)
@@ -230,13 +224,17 @@ class LoraObjectBatificationProvider(GlobalPretrainedImg2ImgBatificationProvider
             "prompt_variation_salt": prompt_salt,
             "inference_steps": options.inference_steps,
             "guidance_scale": options.guidance_scale,
-            "strength": max(options.strength, 0.48),
-            "ai_blend": ai_weight,
-            "motif_palette": list(deterministic.palette),
-            "source_mask_coverage": deterministic.mask_coverage,
-            "line_like_source": deterministic.line_like_source,
-            "filled_object_mask": True,
-            "interior_batik_fill": True,
+            "requested_strength": options.strength,
+            "strength": effective_strength,
+            "ai_blend": 1.0 - guide_weight,
+            "motif_palette": list(palette_reference.palette),
+            "source_mask_coverage": palette_reference.mask_coverage,
+            "line_like_source": palette_reference.line_like_source,
+            "generation_mode": "batik_redraw_stylization",
+            "motif_fill_only": False,
+            "source_used_as_redraw_guide": True,
+            "original_outline_reapplied": False,
+            "silhouette_relaxed": True,
             "prompt": final_prompt,
             "negative_prompt": negative_prompt,
             "local_object_safety_checker_disabled": True,
@@ -252,7 +250,7 @@ class LoraObjectBatificationProvider(GlobalPretrainedImg2ImgBatificationProvider
             height=combined.height,
             provider_id=(
                 f"pretrained-img2img:{options.model_id_or_path}"
-                f"+lora:{Path(options.lora_path).stem}"
+                f"+lora:{Path(options.lora_path).stem}+redraw"
             ),
             metadata=metadata,
         )
@@ -284,50 +282,48 @@ def _filled_object_mask(alpha: Image.Image) -> Image.Image:
     return filled.filter(ImageFilter.GaussianBlur(0.7))
 
 
-def _build_interior_batik_base(
+def _build_redraw_guide(
     source: Image.Image,
-    motif: Image.Image,
     mask: Image.Image,
     *,
-    pattern_scale: float,
-    preserve_shading: float,
+    background: str,
 ) -> Image.Image:
-    width, height = source.size
-    tile_size = max(
-        20,
-        round(min(width, height) * max(0.12, min(pattern_scale, 2.5)) / 2.2),
+    """Build a neutral subject guide, not a repeated Batik texture fill."""
+
+    rgb = source.convert("RGB")
+    alpha = source.getchannel("A")
+    visible = alpha.point(lambda value: 255 if value >= 20 else 0)
+    mean_source = ImageStat.Stat(rgb, mask=visible).mean[:3]
+    if not any(mean_source):
+        mean_source = ImageColor.getrgb(background)
+    mori = ImageColor.getrgb(background)
+    interior = tuple(
+        round(mori[index] * 0.62 + mean_source[index] * 0.38)
+        for index in range(3)
     )
-    motif_rgb = motif.convert("RGB")
-    ratio = max(tile_size / motif_rgb.width, tile_size / motif_rgb.height)
-    resized = motif_rgb.resize(
-        (
-            max(1, round(motif_rgb.width * ratio)),
-            max(1, round(motif_rgb.height * ratio)),
-        ),
-        Image.Resampling.LANCZOS,
-    )
-    left = max(0, (resized.width - tile_size) // 2)
-    top = max(0, (resized.height - tile_size) // 2)
-    tile = resized.crop((left, top, left + tile_size, top + tile_size))
-    texture = Image.new("RGB", (width, height))
-    for y in range(0, height, tile.height):
-        for x in range(0, width, tile.width):
-            texture.paste(tile, (x, y))
 
-    shading = ImageOps.autocontrast(source.convert("L"))
-    shading_rgb = Image.merge("RGB", (shading, shading, shading))
-    shade_weight = max(0.0, min(0.42, preserve_shading * 0.42))
-    textured = Image.blend(texture, ImageChops.multiply(texture, shading_rgb), shade_weight)
-    output = textured.convert("RGBA")
-    output.putalpha(mask)
-    return output
+    guide = Image.new("RGBA", source.size, (*mori, 255))
+    silhouette = Image.new("RGBA", source.size, (*interior, 255))
+    guide.alpha_composite(silhouette)
+    guide.putalpha(mask)
+
+    source_detail = source.copy()
+    source_detail.putalpha(alpha)
+    guide.alpha_composite(source_detail)
+    guide.putalpha(mask)
+    return guide
 
 
-def _original_outline(alpha: Image.Image, color: str) -> Image.Image:
-    edge = alpha.filter(ImageFilter.MaxFilter(3))
-    output = Image.new("RGBA", alpha.size, (*ImageColor.getrgb(color), 0))
-    output.putalpha(edge.point(lambda value: round(value * 0.9)))
-    return output
+def _relaxed_stylization_mask(mask: Image.Image) -> Image.Image:
+    """Allow modest contour changes without exposing the square AI background."""
+
+    minimum_side = max(1, min(mask.size))
+    radius = max(3, round(minimum_side * 0.018))
+    kernel = radius * 2 + 1
+    if kernel % 2 == 0:
+        kernel += 1
+    expanded = mask.convert("L").filter(ImageFilter.MaxFilter(kernel))
+    return expanded.filter(ImageFilter.GaussianBlur(max(0.8, radius * 0.32)))
 
 
 def _mask_coverage(mask: Image.Image) -> float:
