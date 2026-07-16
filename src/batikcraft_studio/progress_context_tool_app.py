@@ -45,7 +45,7 @@ class ContextToolApplication(_BaseApplication):
         self.root.update_idletasks()
         try:
             super().open_recent_project(value)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - preserve application error handling
             progress.fail(str(exc))
             raise
         else:
@@ -57,6 +57,10 @@ class ContextToolApplication(_BaseApplication):
             progress.finish("Project berhasil dibuka")
 
     def save_project(self) -> bool:
+        # Unsaved projects must show the native Save As chooser before a modal progress
+        # window grabs focus. Existing projects can display progress immediately.
+        if self.session.path is None:
+            return super().save_project()
         progress = ProgressDialog(
             self.root,
             title="Menyimpan Project",
@@ -67,7 +71,7 @@ class ContextToolApplication(_BaseApplication):
         self.root.update_idletasks()
         try:
             saved = super().save_project()
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - preserve application error handling
             progress.fail(str(exc))
             raise
         if saved:
@@ -78,25 +82,10 @@ class ContextToolApplication(_BaseApplication):
         return saved
 
     def save_project_as(self) -> bool:
-        progress = ProgressDialog(
-            self.root,
-            title="Simpan Project Sebagai",
-            message="Menyiapkan project dan asset…",
-            cancellable=False,
-        )
-        progress.reporter.update("Tahap 1/3 — Menyiapkan data", 1, 3)
-        self.root.update_idletasks()
-        try:
-            saved = super().save_project_as()
-        except Exception as exc:
-            progress.fail(str(exc))
-            raise
-        if saved:
-            progress.reporter.update("Tahap 3/3 — Menyelesaikan arsip", 3, 3)
-            progress.finish("Project berhasil disimpan")
-        else:
-            progress.close()
-        return saved
+        # The base method owns a native file chooser. Avoid placing a grabbed modal
+        # progress window in front of that chooser; saving an existing path is covered
+        # by save_project above.
+        return super().save_project_as()
 
     def export_project_image(self, suffix: str) -> None:
         project = self.session.project
@@ -144,7 +133,10 @@ class ContextToolApplication(_BaseApplication):
                 target.write_bytes(content)
                 reporter.update("Tahap 3/3 — Memverifikasi hasil", 3, 3)
             except (OSError, ProjectRenderError, ValueError) as exc:
-                self.root.after(0, lambda: self._finish_export_error(progress, exc))
+                self.root.after(
+                    0,
+                    lambda error=exc: self._finish_export_error(progress, error),
+                )
                 return
             self.root.after(0, lambda: self._finish_image_export(progress, target))
 
@@ -205,7 +197,10 @@ class ContextToolApplication(_BaseApplication):
                 reporter.update("Tahap 4/5 — Menulis manifest dan seal", 4, 5)
                 reporter.update("Tahap 5/5 — Memverifikasi paket", 5, 5)
             except (BatikNFTError, OSError, ProjectRenderError, ValueError) as exc:
-                self.root.after(0, lambda: self._finish_export_error(progress, exc))
+                self.root.after(
+                    0,
+                    lambda error=exc: self._finish_export_error(progress, error),
+                )
                 return
             self.root.after(0, lambda: self._finish_nft_export(progress, target))
 
