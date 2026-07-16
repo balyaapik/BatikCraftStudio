@@ -2,15 +2,14 @@
 
 from __future__ import annotations
 
+import threading
+
 from batikcraft_studio.ai.global_runtime import pretrained_batification_options_from_global
-from batikcraft_studio.application import (
-    OfflineAIProjectSession,
-    ProjectSessionError,
-)
+from batikcraft_studio.application import OfflineAIProjectSession, ProjectSessionError
 
 from .ai_object_batification_dialog import AIObjectBatificationDialog
 from .context_tool_editor_hotfix_v11 import ContextToolEditorWorkspaceView as _HotfixV11Editor
-from .task_progress import TaskProgressDialog, TaskProgressReporter
+from .progress_dialog import ProgressDialog
 
 
 class ContextToolEditorWorkspaceView(_HotfixV11Editor):
@@ -68,56 +67,73 @@ class ContextToolEditorWorkspaceView(_HotfixV11Editor):
         self._pretrained_ai_running = True
         reference = "motif terpilih" if plan.uses_selected_motif else "referensi Batik otomatis"
         self.set_status(f"Batifikasi AI {plan.source_name} sedang berjalan…")
-        progress = TaskProgressDialog(
+        progress = ProgressDialog(
             self,
             title="Batifikasi AI — Stable Diffusion + LoRA",
-            initial_message="Menyiapkan objek sumber…",
+            message="Menyiapkan objek sumber…",
             cancellable=False,
             auto_close_ms=750,
         )
 
-        def worker(reporter: TaskProgressReporter):
-            reporter.update(
-                1,
-                6,
-                "Memvalidasi objek sumber…",
-                detail=plan.source_name,
+        def worker() -> None:
+            reporter = progress.reporter
+            try:
+                reporter.update(
+                    "Tahap 1/6 — Memvalidasi objek sumber",
+                    1,
+                    6,
+                    detail=plan.source_name,
+                )
+                reporter.update(
+                    "Tahap 2/6 — Menyiapkan referensi motif Batik",
+                    2,
+                    6,
+                    detail=reference,
+                )
+                reporter.update(
+                    "Tahap 3/6 — Memuat Stable Diffusion, ControlNet, dan LoRA",
+                    3,
+                    6,
+                    detail="Pemakaian pertama dapat membutuhkan waktu lebih lama.",
+                )
+                reporter.update(
+                    "Tahap 4/6 — Menjalankan inferensi Stable Diffusion + LoRA",
+                    detail=(
+                        f"{plan.options.inference_steps} inference steps · "
+                        f"seed {plan.options.seed}. Aplikasi tetap responsif."
+                    ),
+                )
+                result = self._pretrained_ai_session.render_pretrained_ai_plan(plan)
+                reporter.update(
+                    "Tahap 5/6 — Memulihkan siluet, alpha, dan outline objek",
+                    5,
+                    6,
+                )
+                reporter.update("Tahap 6/6 — Menerapkan hasil ke canvas", 6, 6)
+            except Exception as exc:  # noqa: BLE001 - surface worker failure in UI
+                self.after(
+                    0,
+                    lambda error=exc: self._finish_progress_ai_error(progress, error),
+                )
+                return
+            self.after(
+                0,
+                lambda: self._finish_progress_ai_success(progress, plan, result),
             )
-            reporter.update(
-                2,
-                6,
-                "Menyiapkan referensi motif Batik…",
-                detail=reference,
-            )
-            reporter.update(
-                3,
-                6,
-                "Memuat Stable Diffusion, ControlNet, dan LoRA…",
-                detail="Pemakaian pertama dapat membutuhkan waktu lebih lama.",
-            )
-            reporter.indeterminate(
-                "Menjalankan inferensi Stable Diffusion + LoRA…",
-                detail=(
-                    f"{plan.options.inference_steps} inference steps · "
-                    f"seed {plan.options.seed}. Aplikasi tetap responsif."
-                ),
-            )
-            result = self._pretrained_ai_session.render_pretrained_ai_plan(plan)
-            reporter.update(
-                5,
-                6,
-                "Memulihkan siluet, alpha, dan outline objek…",
-            )
-            reporter.update(6, 6, "Menerapkan hasil ke canvas…")
-            return result
 
-        def success(result: object) -> None:
-            self._finish_pretrained_ai_success(plan, result)
+        threading.Thread(
+            target=worker,
+            daemon=True,
+            name="batikcraft-object-ai-progress",
+        ).start()
 
-        def failure(error: BaseException) -> None:
-            self._finish_pretrained_ai_error(str(error))
+    def _finish_progress_ai_success(self, progress: ProgressDialog, plan, result) -> None:
+        progress.finish("Batifikasi AI selesai")
+        self._finish_pretrained_ai_success(plan, result)
 
-        progress.run(worker, on_success=success, on_error=failure)
+    def _finish_progress_ai_error(self, progress: ProgressDialog, error: Exception) -> None:
+        progress.fail(str(error))
+        self._finish_pretrained_ai_error(str(error))
 
 
 __all__ = ["ContextToolEditorWorkspaceView"]
