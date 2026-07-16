@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import tkinter as tk
 from tkinter import filedialog, messagebox
 
 from batikcraft_studio.ai.global_runtime import pretrained_batification_options_from_global
