@@ -4,6 +4,7 @@ from pathlib import Path
 
 from batikcraft_studio.ai.runtime_model_installer import (
     SDXL_BASE_MODEL_REPO_ID,
+    RuntimeModelInstallProgress,
     find_installed_batikbrew_runtime,
     install_batikbrew_runtime,
     validate_batikbrew_runtime,
@@ -32,7 +33,7 @@ def _fake_sdxl_download(**kwargs: object) -> str:
 
 
 def test_install_and_find_managed_batikbrew_runtime(tmp_path) -> None:
-    progress: list[object] = []
+    progress: list[RuntimeModelInstallProgress] = []
 
     paths = install_batikbrew_runtime(
         tmp_path,
@@ -44,6 +45,6 @@ def test_install_and_find_managed_batikbrew_runtime(tmp_path) -> None:
     assert paths.base_model.name == "stable-diffusion-xl-base-1.0"
     assert find_installed_batikbrew_runtime(tmp_path) == paths
     assert progress
-    assert getattr(progress[-1], "stage") == "complete"
-    assert getattr(progress[-1], "completed") == 3
-    assert getattr(progress[-1], "total") == 3
+    assert progress[-1].stage == "complete"
+    assert progress[-1].completed == 3
+    assert progress[-1].total == 3
