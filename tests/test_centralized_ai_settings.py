@@ -7,8 +7,10 @@ from batikcraft_studio.ai.batikbrew_model_settings import (
     BatikBrewLocalModelSettingsStore,
 )
 from batikcraft_studio.batikbrew_context_tool_app import ContextToolApplication
-from batikcraft_studio.ui import batikbrew_request_dialog
-from batikcraft_studio.ui import context_tool_editor_hotfix_v15
+from batikcraft_studio.ui import (
+    batikbrew_request_dialog,
+    context_tool_editor_hotfix_v15,
+)
 from batikcraft_studio.ui.views import ContextToolEditorWorkspaceView
 
 
