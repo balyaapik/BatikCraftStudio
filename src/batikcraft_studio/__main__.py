@@ -8,7 +8,7 @@ import tkinter as tk
 from tkinter import messagebox
 
 from .config import APP_NAME
-from .context_tool_app import ContextToolApplication
+from .progress_context_tool_app import ContextToolApplication
 
 
 def _configure_logging() -> None:
