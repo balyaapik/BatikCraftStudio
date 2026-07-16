@@ -29,7 +29,10 @@ ai = [
   "huggingface-hub>=0.27",
   "peft>=0.17",
   "safetensors>=0.4",
-  "numpy>=1.26,<3"
+  "numpy>=1.26,<3",
+  "openai>=1.0,<3",
+  "google-genai>=1.0,<2",
+  "keyring>=25,<27"
 ]
 
 [project.scripts]
@@ -57,6 +60,7 @@ select = ["E", "F", "I", "UP", "B"]
 "notebooks/kaggle_train_batik_style_any_object.ipynb" = ["E701", "E702", "B007"]
 "src/batikcraft_studio/ai/batikbrew_generation.py" = ["E501", "F401"]
 "src/batikcraft_studio/ai/batikbrew_generation_modes.py" = ["E501"]
+"src/batikcraft_studio/ai/cloud_generation.py" = ["E501"]
 "src/batikcraft_studio/ai/model_pack.py" = ["E501"]
 "src/batikcraft_studio/ai/runtime_settings.py" = ["UP035"]
 "src/batikcraft_studio/application/process_session.py" = ["E501"]
