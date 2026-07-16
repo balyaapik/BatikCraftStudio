@@ -76,14 +76,16 @@ class ProgressDialog(tk.Toplevel):
         self._cancel_event = threading.Event()
         self.reporter = ProgressReporter(self._events, self._cancel_event)
         self._finished = False
+        self._cancellable = bool(cancellable)
         self._auto_close_ms = auto_close_ms
 
         self.title(title)
-        self.geometry("560x220")
-        self.minsize(500, 210)
-        self.resizable(True, False)
+        self.geometry("600x260")
+        self.minsize(500, 220)
+        self.resizable(True, True)
         self.transient(parent.winfo_toplevel())
-        self.protocol("WM_DELETE_WINDOW", self.cancel if cancellable else lambda: None)
+        self.protocol("WM_DELETE_WINDOW", self._request_window_close)
+        self.bind("<Escape>", self._request_window_close)
 
         body = ttk.Frame(self, padding=16)
         body.pack(fill="both", expand=True)
@@ -97,7 +99,7 @@ class ProgressDialog(tk.Toplevel):
             body,
             textvariable=self.message_value,
             font=("TkDefaultFont", 11, "bold"),
-            wraplength=520,
+            wraplength=560,
             justify="left",
         ).grid(row=0, column=0, sticky="ew")
         self.progress = ttk.Progressbar(body, mode="indeterminate")
@@ -110,14 +112,15 @@ class ProgressDialog(tk.Toplevel):
             body,
             textvariable=self.detail_value,
             style="Muted.TLabel",
-            wraplength=520,
+            wraplength=560,
             justify="left",
-        ).grid(row=3, column=0, sticky="ew", pady=(4, 0))
+        ).grid(row=3, column=0, sticky="nsew", pady=(4, 0))
+        body.rowconfigure(3, weight=1)
 
         actions = ttk.Frame(body)
         actions.grid(row=4, column=0, sticky="e", pady=(14, 0))
         self.cancel_button = ttk.Button(actions, text="Batal", command=self.cancel)
-        if cancellable:
+        if self._cancellable:
             self.cancel_button.pack(side="right")
 
         self.grab_set()
@@ -136,9 +139,29 @@ class ProgressDialog(tk.Toplevel):
     def fail(self, message: str) -> None:
         self._events.put(("error", message))
 
+    def _request_window_close(self, _event: object | None = None) -> None:
+        """Close finished dialogs while protecting non-cancellable active work."""
+
+        if self._finished:
+            self.close()
+            return
+        if self._cancellable:
+            self.cancel()
+            return
+        try:
+            self.bell()
+        except tk.TclError:
+            pass
+
     def cancel(self) -> None:
         if self._finished:
-            self.destroy()
+            self.close()
+            return
+        if not self._cancellable:
+            try:
+                self.bell()
+            except tk.TclError:
+                pass
             return
         self._cancel_event.set()
         self.message_value.set("Membatalkan proses…")
@@ -146,8 +169,14 @@ class ProgressDialog(tk.Toplevel):
         self.cancel_button.configure(state="disabled")
 
     def close(self) -> None:
-        if self.winfo_exists():
-            self.destroy()
+        if not self.winfo_exists():
+            return
+        try:
+            if self.grab_current() is self:
+                self.grab_release()
+        except tk.TclError:
+            pass
+        self.destroy()
 
     def _poll(self) -> None:
         if not self.winfo_exists():
@@ -194,6 +223,7 @@ class ProgressDialog(tk.Toplevel):
             self.cancel_button.configure(text="Tutup", state="normal", command=self.close)
             if not self.cancel_button.winfo_manager():
                 self.cancel_button.pack(side="right")
+            self.cancel_button.focus_set()
 
 
 __all__ = ["ProgressDialog", "ProgressReporter", "ProgressUpdate"]
