@@ -1,7 +1,7 @@
 """Download and validate the default offline Stable Diffusion runtime.
 
 The desktop application uses this module to install the large base-model and
-ControlNet assets into a stable per-user directory.  Downloads are resumable
+ControlNet assets into a stable per-user directory. Downloads are resumable
 through ``huggingface_hub.snapshot_download`` and are kept outside the Python
 package so application upgrades do not remove them.
 """
@@ -12,7 +12,6 @@ import threading
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 
 from .runtime_settings import default_ai_cache_dir
 
@@ -135,9 +134,9 @@ def install_default_runtime_models(
 ) -> RuntimeModelPaths:
     """Download SD 1.5 and Canny ControlNet into the managed runtime folder.
 
-    Cancellation is checked before each network stage.  An active Hugging Face
+    Cancellation is checked before each network stage. An active Hugging Face
     file transfer is allowed to finish safely, after which cancellation takes
-    effect.  Partial downloads remain in place and are resumed on the next run.
+    effect. Partial downloads remain in place and are resumed on the next run.
     """
 
     paths = runtime_model_paths(root)
@@ -226,7 +225,6 @@ def _download_snapshot(
 
 
 def _base_model_is_complete(path: Path) -> bool:
-    candidate = RuntimeModelPaths(base_model=path, controlnet=path)
     if not (path / "model_index.json").is_file():
         return False
     required_folders = ("scheduler", "text_encoder", "tokenizer", "unet", "vae")
