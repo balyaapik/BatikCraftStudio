@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import hashlib
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path
 from typing import Any
@@ -91,10 +91,6 @@ class LoraObjectBatificationProvider(GlobalPretrainedImg2ImgBatificationProvider
             raise BatificationError("Batifikasi objek AI memerlukan pengaturan LoRA Batik.")
         pipeline, torch, device = super()._load_pipeline(settings)
 
-        # Object Batification is a local, user-supplied image transformation. The stock
-        # SD1.5 checker frequently marks harmless leaves, flowers, and ornaments as NSFW.
-        # Disable it only for this object-only pipeline; AI background generation keeps
-        # its own safety behaviour.
         if hasattr(pipeline, "safety_checker"):
             pipeline.safety_checker = None
         if hasattr(pipeline, "requires_safety_checker"):
@@ -181,9 +177,6 @@ class LoraObjectBatificationProvider(GlobalPretrainedImg2ImgBatificationProvider
         palette_prompt = ", ".join(deterministic.palette[:6])
         final_prompt = f"{prompt}, motif palette {palette_prompt}"
 
-        # The displayed seed remains the user's seed, but prompt text contributes a
-        # deterministic variation salt. Different prompts therefore cannot collapse to
-        # the exact same latent noise while the same prompt+seed remains reproducible.
         prompt_salt = int.from_bytes(
             hashlib.sha256(final_prompt.encode("utf-8")).digest()[:4],
             "big",
@@ -213,8 +206,6 @@ class LoraObjectBatificationProvider(GlobalPretrainedImg2ImgBatificationProvider
         restored = _restore_square(generated, restore_box, base.size)
         restored.putalpha(object_mask)
 
-        # AI gets the dominant contribution so prompt changes remain visible. The
-        # deterministic motif base stabilizes colour and prevents an unrelated object.
         ai_weight = max(0.68, min(0.92, options.ai_blend + 0.18))
         combined = Image.blend(base, restored, ai_weight).convert("RGBA")
         combined.putalpha(object_mask)
@@ -276,7 +267,6 @@ def _filled_object_mask(alpha: Image.Image) -> Image.Image:
     if coverage >= 0.22:
         return alpha
 
-    # Join small gaps in hand-drawn outlines before flood-filling the outside.
     closed = binary.filter(ImageFilter.MaxFilter(7)).filter(ImageFilter.MinFilter(5))
     inverse = ImageOps.invert(closed)
     outside_removed = inverse.copy()
@@ -303,7 +293,10 @@ def _build_interior_batik_base(
     preserve_shading: float,
 ) -> Image.Image:
     width, height = source.size
-    tile_size = max(20, round(min(width, height) * max(0.12, min(pattern_scale, 2.5)) / 2.2))
+    tile_size = max(
+        20,
+        round(min(width, height) * max(0.12, min(pattern_scale, 2.5)) / 2.2),
+    )
     motif_rgb = motif.convert("RGB")
     ratio = max(tile_size / motif_rgb.width, tile_size / motif_rgb.height)
     resized = motif_rgb.resize(
