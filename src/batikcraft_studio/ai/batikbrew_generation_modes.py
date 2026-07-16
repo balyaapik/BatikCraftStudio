@@ -196,7 +196,7 @@ def _background_alpha(image: Image.Image) -> Image.Image:
     ):
         background = _border_connected_background(distances, width, height, threshold)
         candidate = Image.new("L", (width, height), 0)
-        candidate.putdata(255 if not value else 0 for value in background)
+        candidate.putdata([255 if not value else 0 for value in background])
         candidate = _keep_ornament_components(candidate)
         coverage = _mask_coverage(candidate)
         if 0.012 <= coverage <= 0.78:
@@ -408,7 +408,7 @@ def _fallback_center_mask(image: Image.Image) -> Image.Image:
     distances = _background_distance_map(image, corners)
     threshold = max(48, _percentile(_border_values(distances, width, height), 0.95) + 24)
     mask = Image.new("L", (width, height), 0)
-    mask.putdata(255 if distance > threshold else 0 for distance in distances)
+    mask.putdata([255 if distance > threshold else 0 for distance in distances])
     return _keep_ornament_components(mask)
 
 
