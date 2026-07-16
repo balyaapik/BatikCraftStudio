@@ -6,8 +6,6 @@ import re
 from collections.abc import Mapping
 from io import BytesIO
 
-from PIL import Image
-
 from batikcraft_studio.domain import ObjectKind, Project
 from batikcraft_studio.imaging import render_project_preview
 
