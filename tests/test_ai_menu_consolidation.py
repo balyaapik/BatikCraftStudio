@@ -41,8 +41,8 @@ def test_find_ai_menu_by_label_instead_of_fixed_position() -> None:
     assert child is menu.children["ai-menu"]
 
 
-def test_find_ai_menu_reports_missing_cascade() -> None:
+def test_find_menu_reports_expected_labels_when_missing() -> None:
     menu = _FakeMenu()
 
-    with pytest.raises(RuntimeError, match="AI Batik"):
+    with pytest.raises(RuntimeError, match="Menu tidak ditemukan: AI"):
         _find_cascade_menu(menu, "AI")  # type: ignore[arg-type]
