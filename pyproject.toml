@@ -29,7 +29,10 @@ ai = [
   "huggingface-hub>=0.27",
   "peft>=0.17",
   "safetensors>=0.4",
-  "numpy>=1.26,<3"
+  "numpy>=1.26,<3",
+  "openai>=1.0,<3",
+  "google-genai>=1.0,<2",
+  "keyring>=25,<27"
 ]
 
 [project.scripts]
@@ -57,6 +60,7 @@ select = ["E", "F", "I", "UP", "B"]
 "notebooks/kaggle_train_batik_style_any_object.ipynb" = ["E701", "E702", "B007"]
 "src/batikcraft_studio/ai/batikbrew_generation.py" = ["E501", "F401"]
 "src/batikcraft_studio/ai/batikbrew_generation_modes.py" = ["E501"]
+"src/batikcraft_studio/ai/cloud_generation.py" = ["E501", "F401", "I001", "UP035"]
 "src/batikcraft_studio/ai/model_pack.py" = ["E501"]
 "src/batikcraft_studio/ai/runtime_settings.py" = ["UP035"]
 "src/batikcraft_studio/application/process_session.py" = ["E501"]
@@ -67,6 +71,7 @@ select = ["E", "F", "I", "UP", "B"]
 "src/batikcraft_studio/ui/ai_batik_background_dialog.py" = ["E501"]
 "src/batikcraft_studio/ui/ai_runtime_settings_dialog.py" = ["E501", "UP035"]
 "src/batikcraft_studio/ui/batikbrew_output_mode_dialog.py" = ["E501"]
+"src/batikcraft_studio/ui/cloud_ai_settings_dialog.py" = ["I001"]
 "src/batikcraft_studio/ui/compact_asset_editor.py" = ["E501"]
 "src/batikcraft_studio/ui/object_tree_editor.py" = ["E501"]
 "src/batikcraft_studio/ui/process_dialog.py" = ["E501"]
@@ -74,3 +79,5 @@ select = ["E", "F", "I", "UP", "B"]
 "src/batikcraft_studio/ui/viewport_editor.py" = ["F401"]
 "src/batikcraft_studio/ui/wysiwyg_transform_editor.py" = ["E501", "F401"]
 "tests/test_batik_process_foundations.py" = ["E501", "I001"]
+"tests/test_cloud_batik_generation_provider.py" = ["I001"]
+"tests/test_cloud_generation_settings.py" = ["I001"]
