@@ -65,15 +65,25 @@ def generate_gemini_image(
     except BatificationError:
         raise
     except Exception as exc:  # noqa: BLE001 - SDK error classes vary by version
-        code = getattr(exc, "code", None)
-        message = getattr(exc, "message", None) or str(exc)
-        if code is not None:
-            raise BatificationError(f"Gemini API HTTP {code}: {message}") from exc
-        raise BatificationError(f"Generasi Gemini gagal: {message}") from exc
+        raise BatificationError(_gemini_error_message(exc)) from exc
     finally:
         close = getattr(client, "close", None)
         if callable(close):
             close()
+
+
+def _gemini_error_message(error: Exception) -> str:
+    code = getattr(error, "code", None)
+    message = str(getattr(error, "message", None) or error)
+    normalized = message.casefold()
+    if str(code) == "429" or "resource_exhausted" in normalized or "quota" in normalized:
+        return (
+            "Kuota Gemini habis atau batas permintaan tercapai. Tutup dialog ini, tunggu "
+            "kuota direset, atau gunakan API key, model, maupun provider lain."
+        )
+    if code is not None:
+        return f"Gemini API HTTP {code}: {message}"
+    return f"Generasi Gemini gagal: {message}"
 
 
 def _extract_gemini_image(response: object) -> bytes | None:
