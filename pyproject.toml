@@ -28,7 +28,8 @@ ai = [
   "accelerate>=1.2",
   "huggingface-hub>=0.27",
   "peft>=0.17",
-  "safetensors>=0.4"
+  "safetensors>=0.4",
+  "numpy>=1.26,<3"
 ]
 
 [project.scripts]
