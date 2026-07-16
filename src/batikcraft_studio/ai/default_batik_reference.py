@@ -87,7 +87,11 @@ def build_default_batik_reference(
     return output.getvalue()
 
 
-def _mix(left: tuple[int, int, int], right: tuple[int, int, int], amount: float) -> tuple[int, int, int]:
+def _mix(
+    left: tuple[int, int, int],
+    right: tuple[int, int, int],
+    amount: float,
+) -> tuple[int, int, int]:
     return tuple(
         max(0, min(255, round(a * (1.0 - amount) + b * amount)))
         for a, b in zip(left, right, strict=True)
