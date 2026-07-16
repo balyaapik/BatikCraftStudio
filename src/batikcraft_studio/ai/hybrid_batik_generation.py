@@ -14,6 +14,7 @@ from batikcraft_studio.ai.batikbrew_generation_modes import (
     _with_mode_metadata,
 )
 from batikcraft_studio.ai.cloud_generation import CloudBatikGenerationProvider
+from batikcraft_studio.ai.gemini_generation import generate_gemini_image
 from batikcraft_studio.ai.generation_providers import (
     PROVIDER_GEMINI,
     PROVIDER_OPENAI,
@@ -106,7 +107,9 @@ class HybridBatikGenerationProvider:
         cloud_provider: CloudBatikGenerationProvider | None = None,
     ) -> None:
         self.local_provider = local_provider or BatikBrewModeGenerationProvider()
-        self.cloud_provider = cloud_provider or CloudBatikGenerationProvider()
+        self.cloud_provider = cloud_provider or CloudBatikGenerationProvider(
+            generators={PROVIDER_GEMINI: generate_gemini_image}
+        )
 
     @property
     def is_loaded(self) -> bool:
