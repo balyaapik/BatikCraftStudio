@@ -5,9 +5,7 @@ import zipfile
 from io import BytesIO
 from pathlib import Path
 
-from PIL import Image, ImageDraw
-
-from batikcraft_studio.application import BatikProcessProjectSession, GROUP_ID_KEY
+from batikcraft_studio.application import GROUP_ID_KEY, BatikProcessProjectSession
 from batikcraft_studio.domain import (
     BatikProcessPlan,
     ColorRecipe,
@@ -16,6 +14,7 @@ from batikcraft_studio.domain import (
     ProcessAction,
     ProcessStep,
 )
+from PIL import Image, ImageDraw
 
 
 def _png() -> bytes:
@@ -97,7 +96,8 @@ def test_process_plan_persists_in_project_without_changing_canvas_objects(
     assert reopened.require_project().object_count == object_count
     assert reopened.process_plan.title == "Proses Batik Wayang"
     assert reopened.process_plan.steps[0].group_ids == (group_id,)
-    assert reopened.require_project().get_object(first.object_id).properties[GROUP_ID_KEY] == group_id
+    properties = reopened.require_project().get_object(first.object_id).properties
+    assert properties[GROUP_ID_KEY] == group_id
 
 
 def test_process_package_contains_machine_and_human_readable_files(tmp_path: Path) -> None:
