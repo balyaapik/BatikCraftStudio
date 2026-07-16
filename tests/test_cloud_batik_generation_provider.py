@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from io import BytesIO
 
+from PIL import Image, ImageDraw
+
 from batikcraft_studio.ai.cloud_generation import CloudBatikGenerationProvider
 from batikcraft_studio.ai.generation_providers import (
     PROVIDER_OPENAI,
@@ -12,7 +14,6 @@ from batikcraft_studio.ai.hybrid_batik_generation import (
     CloudBatikBrewOptions,
     HybridBatikGenerationProvider,
 )
-from PIL import Image, ImageDraw
 
 
 class _Secrets:
