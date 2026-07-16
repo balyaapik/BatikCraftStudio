@@ -69,41 +69,47 @@ class ContextToolApplication(DirectStyleApplication):
         )
         menu_bar.insert_cascade(2, label=tr("menu.insert"), menu=insert_menu)
 
-        ai_menu = tk.Menu(menu_bar)
+        # Structured Batification already creates the AI Batik menu. Reuse that
+        # cascade instead of adding a second top-level "AI" menu with overlapping
+        # functions. Unique Stable Diffusion workflows are appended to the same menu.
+        ai_index, ai_menu = _find_cascade_menu(
+            menu_bar,
+            tr("menu.ai"),
+            "AI Batik",
+            "Batik AI",
+            "AI",
+        )
+        menu_bar.entryconfigure(ai_index, label=tr("menu.ai"))
+        ai_menu.add_separator()
         ai_menu.add_command(
             label="Batifikasi Objek dengan Stable Diffusion + LoRA…",
-            accelerator="Ctrl+Alt+B",
+            accelerator="Ctrl+Alt+Shift+B",
             command=editor.batify_selected_with_pretrained_ai,
         )
         ai_menu.add_command(
             label="AI Batik Background…",
-            accelerator="Ctrl+Alt+G",
+            accelerator="Ctrl+Alt+Shift+G",
             command=editor.generate_ai_batik_background,
         )
         ai_menu.add_separator()
-        ai_menu.add_command(
-            label="Kelola Model LoRA…",
-            command=editor.open_offline_model_manager,
-        )
         ai_menu.add_command(
             label="Pengaturan AI & GPU…",
             accelerator="Ctrl+,",
             command=self.open_ai_runtime_settings,
         )
-        menu_bar.insert_cascade(3, label="AI", menu=ai_menu)
 
-        self.root.bind_all(
-            "<Control-Shift-i>",
-            lambda event: self._run_shortcut(event, editor.import_external_image_dialog),
+        bindings = (
+            ("<Control-Shift-i>", editor.import_external_image_dialog),
+            ("<Control-Shift-I>", editor.import_external_image_dialog),
+            ("<Control-comma>", self.open_ai_runtime_settings),
+            ("<Control-Alt-Shift-b>", editor.batify_selected_with_pretrained_ai),
+            ("<Control-Alt-Shift-g>", editor.generate_ai_batik_background),
         )
-        self.root.bind_all(
-            "<Control-Shift-I>",
-            lambda event: self._run_shortcut(event, editor.import_external_image_dialog),
-        )
-        self.root.bind_all(
-            "<Control-comma>",
-            lambda event: self._run_shortcut(event, self.open_ai_runtime_settings),
-        )
+        for sequence, command in bindings:
+            self.root.bind_all(
+                sequence,
+                lambda event, action=command: self._run_shortcut(event, action),
+            )
 
     def open_ai_runtime_settings(self) -> None:
         """Open the one persistent compute profile used by all AI workflows."""
@@ -134,6 +140,22 @@ class ContextToolApplication(DirectStyleApplication):
         unload = getattr(provider, "unload", None)
         if callable(unload):
             unload()
+
+
+def _find_cascade_menu(menu_bar: tk.Menu, *labels: str) -> tuple[int, tk.Menu]:
+    """Find a top-level cascade by label without depending on a fixed index."""
+
+    expected = {str(label) for label in labels}
+    end = menu_bar.index(tk.END)
+    if end is not None:
+        for index in range(end + 1):
+            if menu_bar.type(index) != "cascade":
+                continue
+            if str(menu_bar.entrycget(index, "label")) not in expected:
+                continue
+            child = menu_bar.nametowidget(str(menu_bar.entrycget(index, "menu")))
+            return index, child
+    raise RuntimeError("Menu AI Batik tidak ditemukan.")
 
 
 __all__ = ["ContextToolApplication"]
