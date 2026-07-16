@@ -66,9 +66,12 @@ class ProgressTaskDialog(tk.Toplevel):
             raise RuntimeError("Progress task sudah dijalankan.")
         self._set_indeterminate(True)
 
+        def report(update: ProgressUpdate) -> None:
+            self._events.put(("update", update))
+
         def worker() -> None:
             try:
-                value = operation(self._events.put, self._cancel_event.is_set)
+                value = operation(report, self._cancel_event.is_set)
                 if self._cancel_event.is_set():
                     raise OperationCancelledError("Proses dibatalkan oleh pengguna.")
             except OperationCancelledError as exc:
@@ -144,9 +147,6 @@ class ProgressTaskDialog(tk.Toplevel):
                 break
             if kind == "update" and isinstance(payload, ProgressUpdate):
                 self._apply_update(payload)
-            elif isinstance(payload, ProgressUpdate):
-                # ``Queue.put`` is intentionally accepted directly as a progress callback.
-                self._apply_update(payload)
             elif kind == "success":
                 self.result = payload
                 self._finish_success()
@@ -157,7 +157,11 @@ class ProgressTaskDialog(tk.Toplevel):
                 self._finish_cancelled(str(payload))
                 terminal = True
             elif kind == "error":
-                self.error = payload if isinstance(payload, BaseException) else RuntimeError(str(payload))
+                self.error = (
+                    payload
+                    if isinstance(payload, BaseException)
+                    else RuntimeError(str(payload))
+                )
                 self._finish_error(str(payload))
                 terminal = True
         if not terminal and not self._finished:
@@ -194,7 +198,11 @@ class ProgressTaskDialog(tk.Toplevel):
         self.percent_value.set("100%")
         self.stage_value.set("Selesai")
         self.status_value.set("Proses berhasil diselesaikan.")
-        self.action_button.configure(text="Selesai", state="normal", command=self._close)
+        self.action_button.configure(
+            text="Selesai",
+            state="normal",
+            command=self._close,
+        )
         self.after(self._auto_close_ms, self._close)
 
     def _finish_cancelled(self, message: str) -> None:
@@ -203,7 +211,11 @@ class ProgressTaskDialog(tk.Toplevel):
         self.stage_value.set("Dibatalkan")
         self.status_value.set(message or "Proses dibatalkan oleh pengguna.")
         self.percent_value.set("")
-        self.action_button.configure(text="Tutup", state="normal", command=self._close)
+        self.action_button.configure(
+            text="Tutup",
+            state="normal",
+            command=self._close,
+        )
         self.after(max(500, self._auto_close_ms), self._close)
 
     def _finish_error(self, message: str) -> None:
@@ -213,7 +225,11 @@ class ProgressTaskDialog(tk.Toplevel):
         self.status_value.set("Terjadi kesalahan saat menjalankan proses.")
         self.detail_value.set(message)
         self.percent_value.set("")
-        self.action_button.configure(text="Tutup", state="normal", command=self._close)
+        self.action_button.configure(
+            text="Tutup",
+            state="normal",
+            command=self._close,
+        )
 
     def _cancel_or_close(self) -> None:
         if self._finished:
@@ -222,7 +238,9 @@ class ProgressTaskDialog(tk.Toplevel):
         if not self._cancelable:
             return
         self._cancel_event.set()
-        self.status_value.set("Permintaan pembatalan diterima. Menunggu tahap yang aman…")
+        self.status_value.set(
+            "Permintaan pembatalan diterima. Menunggu tahap yang aman…"
+        )
         self.action_button.configure(state="disabled")
 
     def _close(self) -> None:
