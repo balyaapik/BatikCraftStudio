@@ -60,7 +60,7 @@ Default model:
 gemini-3.1-flash-image
 ```
 
-The integration first uses the current `interactions.create` image workflow from `google-genai`, with a compatibility fallback to `models.generate_content`. Gemini output is normalized to PNG before being committed to the project.
+The integration uses the documented `client.models.generate_content` image-generation workflow from `google-genai`, with `response_modalities=["IMAGE"]`. It intentionally does not call the preview `client.interactions` API. Gemini output is normalized to PNG before being committed to the project.
 
 ## IBM watsonx.ai
 
