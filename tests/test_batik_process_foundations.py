@@ -5,6 +5,8 @@ import zipfile
 from io import BytesIO
 from pathlib import Path
 
+from PIL import Image, ImageDraw
+
 from batikcraft_studio.application import GROUP_ID_KEY, BatikProcessProjectSession
 from batikcraft_studio.domain import (
     BatikProcessPlan,
@@ -14,7 +16,6 @@ from batikcraft_studio.domain import (
     ProcessAction,
     ProcessStep,
 )
-from PIL import Image, ImageDraw
 
 
 def _png() -> bytes:
