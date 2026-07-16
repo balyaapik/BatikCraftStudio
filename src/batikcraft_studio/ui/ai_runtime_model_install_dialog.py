@@ -1,4 +1,4 @@
-"""Responsive Tk dialog for installing the managed offline AI runtime."""
+"""Responsive Tk dialog for installing managed AI runtimes."""
 
 from __future__ import annotations
 
@@ -9,26 +9,33 @@ from pathlib import Path
 from tkinter import ttk
 
 from batikcraft_studio.ai.runtime_model_installer import (
+    BatikBrewRuntimePaths,
     RuntimeModelInstallCancelled,
     RuntimeModelInstallError,
     RuntimeModelInstallProgress,
     RuntimeModelPaths,
     default_runtime_model_root,
+    install_batikbrew_runtime,
     install_default_runtime_models,
 )
 
 
 class RuntimeModelInstallDialog(tk.Toplevel):
-    """Download SD 1.5 and ControlNet on a worker thread with resumable state."""
+    """Download either the legacy SD1.5 stack or BatikBrew SDXL runtime."""
 
     def __init__(
         self,
         parent: tk.Misc,
         *,
         install_root: str | Path | None = None,
+        family: str = "sd15",
     ) -> None:
         super().__init__(parent)
-        self.result: RuntimeModelPaths | None = None
+        normalized = str(family).strip().casefold()
+        if normalized not in {"sd15", "sdxl"}:
+            raise ValueError("family harus sd15 atau sdxl")
+        self.family = normalized
+        self.result: RuntimeModelPaths | BatikBrewRuntimePaths | None = None
         self.install_root = (
             Path(install_root).expanduser()
             if install_root is not None
@@ -40,8 +47,8 @@ class RuntimeModelInstallDialog(tk.Toplevel):
         self._finished = False
 
         self.title("Instal Runtime AI BatikCraft")
-        self.geometry("610x310")
-        self.minsize(560, 285)
+        self.geometry("640x330")
+        self.minsize(580, 300)
         self.resizable(True, False)
         self.transient(parent.winfo_toplevel())
         self.protocol("WM_DELETE_WINDOW", self._cancel_or_close)
@@ -54,19 +61,31 @@ class RuntimeModelInstallDialog(tk.Toplevel):
         body.pack(fill="both", expand=True)
         body.columnconfigure(0, weight=1)
 
+        if self.family == "sdxl":
+            heading = "Instal BatikBrew — Stable Diffusion XL"
+            description = (
+                "Runtime ini sama dengan base model pada notebook BatikCraft. "
+                "SDXL dan LoRA BatikBrew digunakan untuk menghasilkan motif baru dari "
+                "analisis objek inspirasi, bukan untuk menempelkan tekstur pada objek."
+            )
+            size_note = "Unduhan SDXL sekitar 7 GB. File parsial dapat dilanjutkan."
+        else:
+            heading = "Instal Stable Diffusion 1.5 + ControlNet"
+            description = (
+                "Runtime legacy untuk workflow img2img/ControlNet. Internet hanya "
+                "diperlukan saat instalasi pertama."
+            )
+            size_note = "Jika koneksi terputus, instalasi dapat dilanjutkan tanpa mengulang."
+
         ttk.Label(
             body,
-            text="Instal Stable Diffusion 1.5 + ControlNet",
+            text=heading,
             font=("TkDefaultFont", 12, "bold"),
         ).grid(row=0, column=0, sticky="w")
         ttk.Label(
             body,
-            text=(
-                "BatikCraft akan mengunduh model resmi ke folder aplikasi. "
-                "Internet hanya diperlukan saat instalasi pertama; setelah selesai "
-                "runtime dapat dipakai secara offline."
-            ),
-            wraplength=565,
+            text=description,
+            wraplength=595,
             justify="left",
         ).grid(row=1, column=0, sticky="ew", pady=(8, 4))
 
@@ -85,18 +104,15 @@ class RuntimeModelInstallDialog(tk.Toplevel):
         self.status = ttk.Label(
             body,
             text="Menyiapkan instalasi…",
-            wraplength=565,
+            wraplength=595,
             justify="left",
         )
         self.status.grid(row=6, column=0, sticky="ew", pady=(8, 4))
         self.detail = ttk.Label(
             body,
-            text=(
-                "Jika koneksi terputus, tekan instal lagi. File yang sudah selesai "
-                "tidak akan diunduh ulang."
-            ),
+            text=size_note,
             style="Muted.TLabel",
-            wraplength=565,
+            wraplength=595,
             justify="left",
         )
         self.detail.grid(row=7, column=0, sticky="ew")
@@ -116,15 +132,20 @@ class RuntimeModelInstallDialog(tk.Toplevel):
         self.progress.start(12)
         self._worker = threading.Thread(
             target=self._run_install,
-            name="batikcraft-runtime-installer",
+            name=f"batikcraft-runtime-installer-{self.family}",
             daemon=True,
         )
         self._worker.start()
         self.after(100, self._poll_events)
 
     def _run_install(self) -> None:
+        installer = (
+            install_batikbrew_runtime
+            if self.family == "sdxl"
+            else install_default_runtime_models
+        )
         try:
-            paths = install_default_runtime_models(
+            paths = installer(
                 self.install_root,
                 progress=self._events.put,
                 cancel_event=self._cancel_event,
@@ -154,7 +175,7 @@ class RuntimeModelInstallDialog(tk.Toplevel):
         if isinstance(event, RuntimeModelInstallProgress):
             stage_number = max(0, min(event.completed, event.total))
             self.status.configure(text=f"Tahap {stage_number}/{event.total} — {event.message}")
-            if event.stage in {"base", "controlnet"}:
+            if event.stage in {"base", "controlnet", "sdxl"}:
                 self.progress.configure(mode="indeterminate")
                 self.progress.start(12)
                 self.percent.configure(text="Mengunduh…")
@@ -172,10 +193,13 @@ class RuntimeModelInstallDialog(tk.Toplevel):
         if not isinstance(event, tuple) or len(event) != 2:
             return
         kind, payload = event
-        if kind == "complete" and isinstance(payload, RuntimeModelPaths):
+        if kind == "complete" and isinstance(
+            payload, (RuntimeModelPaths, BatikBrewRuntimePaths)
+        ):
             self.result = payload
+            label = "Runtime BatikBrew SDXL" if self.family == "sdxl" else "Runtime AI"
             self._finish(
-                "Runtime AI berhasil dipasang. Tekan Selesai untuk kembali ke pengelola model.",
+                f"{label} berhasil dipasang. Tekan Selesai untuk kembali.",
                 success=True,
             )
         elif kind == "cancelled":
@@ -203,7 +227,7 @@ class RuntimeModelInstallDialog(tk.Toplevel):
             self.destroy()
             return
         self._cancel_event.set()
-        self.status.configure(text="Membatalkan setelah tahap unduhan yang sedang aktif selesai…")
+        self.status.configure(text="Membatalkan setelah unduhan aktif selesai dengan aman…")
         self.percent.configure(text="")
         self.action_button.configure(state="disabled")
 
