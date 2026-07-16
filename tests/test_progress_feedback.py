@@ -11,7 +11,11 @@ from batikcraft_studio.ui.offline_ai_dialogs_progress import (
     ProgressDatasetStudioWindow,
     ProgressOfflineModelManagerWindow,
 )
-from batikcraft_studio.ui.progress_dialog import ProgressReporter, ProgressUpdate
+from batikcraft_studio.ui.progress_dialog import (
+    ProgressDialog,
+    ProgressReporter,
+    ProgressUpdate,
+)
 from batikcraft_studio.ui.progress_main_window import ProgressViewportMainWindow
 
 
@@ -37,6 +41,38 @@ def test_progress_reporter_is_worker_thread_safe() -> None:
     assert reporter.cancelled is False
     cancelled.set()
     assert reporter.cancelled is True
+
+
+def test_progress_dialog_close_policy_changes_after_finish() -> None:
+    class DialogState:
+        def __init__(self, *, finished: bool, cancellable: bool) -> None:
+            self._finished = finished
+            self._cancellable = cancellable
+            self.closed = False
+            self.cancelled = False
+            self.rang = False
+
+        def close(self) -> None:
+            self.closed = True
+
+        def cancel(self) -> None:
+            self.cancelled = True
+
+        def bell(self) -> None:
+            self.rang = True
+
+    active_locked = DialogState(finished=False, cancellable=False)
+    ProgressDialog._request_window_close(active_locked)  # type: ignore[arg-type]
+    assert active_locked.rang is True
+    assert active_locked.closed is False
+
+    active_cancellable = DialogState(finished=False, cancellable=True)
+    ProgressDialog._request_window_close(active_cancellable)  # type: ignore[arg-type]
+    assert active_cancellable.cancelled is True
+
+    failed_or_finished = DialogState(finished=True, cancellable=False)
+    ProgressDialog._request_window_close(failed_or_finished)  # type: ignore[arg-type]
+    assert failed_or_finished.closed is True
 
 
 def test_progress_aware_entry_points_are_active() -> None:
