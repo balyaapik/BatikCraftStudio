@@ -4,10 +4,15 @@ import queue
 import threading
 
 from batikcraft_studio.progress_context_tool_app import ContextToolApplication
-from batikcraft_studio.ui.context_tool_editor_hotfix_v12 import (
+from batikcraft_studio.ui.context_tool_editor_hotfix_v13 import (
     ContextToolEditorWorkspaceView,
 )
+from batikcraft_studio.ui.offline_ai_dialogs_progress import (
+    ProgressDatasetStudioWindow,
+    ProgressOfflineModelManagerWindow,
+)
 from batikcraft_studio.ui.progress_dialog import ProgressReporter, ProgressUpdate
+from batikcraft_studio.ui.progress_main_window import ProgressViewportMainWindow
 
 
 def test_progress_update_reports_clamped_percentage() -> None:
@@ -37,5 +42,18 @@ def test_progress_reporter_is_worker_thread_safe() -> None:
 def test_progress_aware_entry_points_are_active() -> None:
     assert ContextToolApplication.__module__.endswith("progress_context_tool_app")
     assert ContextToolEditorWorkspaceView.__module__.endswith(
-        "context_tool_editor_hotfix_v12"
+        "context_tool_editor_hotfix_v13"
     )
+    assert issubclass(ProgressViewportMainWindow, object)
+
+
+def test_remaining_long_workflows_use_progress_aware_dialogs() -> None:
+    assert ProgressDatasetStudioWindow.__module__.endswith(
+        "offline_ai_dialogs_progress"
+    )
+    assert ProgressOfflineModelManagerWindow.__module__.endswith(
+        "offline_ai_dialogs_progress"
+    )
+    assert "save_project_as" in ContextToolApplication.__dict__
+    assert "open_project" in ContextToolApplication.__dict__
+    assert "install_asset_pack_dialog" in ContextToolEditorWorkspaceView.__dict__
