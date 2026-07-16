@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import threading
 import tkinter as tk
-from dataclasses import replace
+from dataclasses import asdict, replace
 
 from batikcraft_studio.ai.batikbrew_generation import SDXL_BASE_MODEL_ID
 from batikcraft_studio.ai.batikbrew_generation_modes import (
@@ -99,7 +99,7 @@ class ContextToolEditorWorkspaceView(_HotfixV13Editor):
 
         try:
             options = BatikBrewModeGenerationOptions(
-                **raw_options.to_properties(),
+                **asdict(raw_options),
                 output_mode=output_mode,
             )
         except (TypeError, ValueError) as exc:
@@ -221,9 +221,8 @@ class ContextToolEditorWorkspaceView(_HotfixV13Editor):
             return
         super()._finish_pretrained_ai_success(plan, selected)
 
-        # Returning focus to the editor is important on Windows: otherwise Ctrl+C may
-        # still target the destroyed modal dialog. Reassert the active AI object so the
-        # normal multi-object clipboard captures its PNG asset and metadata.
+        # A destroyed modal can retain keyboard focus on Windows. Return focus to the
+        # editor and reassert the generated object as the current clipboard selection.
         project = self.session.project
         if project is not None and project.active_object_id is not None:
             self.session.set_selected_objects([project.active_object_id])
