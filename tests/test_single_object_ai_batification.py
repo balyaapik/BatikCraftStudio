@@ -12,9 +12,9 @@ from batikcraft_studio.application.pretrained_ai_batification_session import (
 )
 from batikcraft_studio.domain import Layer, LayerObject, ObjectBounds, ObjectKind
 from batikcraft_studio.ui.context_tool_editor_hotfix_v11 import (
-    ContextToolEditorWorkspaceView,
     _AI_CONTEXT_LABEL,
     _NON_AI_CONTEXT_LABEL,
+    ContextToolEditorWorkspaceView,
 )
 
 
