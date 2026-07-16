@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox
 
@@ -85,7 +84,14 @@ class ProgressContextToolApplication(ContextToolApplication):
         def operation(report, _cancelled):  # type: ignore[no-untyped-def]
             report(ProgressUpdate("membuka project", "Membaca arsip project…", 1, 4))
             project = self.session.open_project(path)
-            report(ProgressUpdate("memuat asset", "Memuat asset dan struktur canvas…", 3, 4))
+            report(
+                ProgressUpdate(
+                    "memuat asset",
+                    "Memuat asset dan struktur canvas…",
+                    3,
+                    4,
+                )
+            )
             report(ProgressUpdate("menyelesaikan", "Menyiapkan editor…", 4, 4))
             return project
 
@@ -122,7 +128,14 @@ class ProgressContextToolApplication(ContextToolApplication):
         def operation(report, _cancelled):  # type: ignore[no-untyped-def]
             report(ProgressUpdate("menyiapkan", "Menyiapkan snapshot project…", 1, 3))
             destination = self.session.save()
-            report(ProgressUpdate("menulis file", "Menulis arsip project ke penyimpanan…", 2, 3))
+            report(
+                ProgressUpdate(
+                    "menulis file",
+                    "Menulis arsip project ke penyimpanan…",
+                    2,
+                    3,
+                )
+            )
             report(ProgressUpdate("verifikasi", "Memastikan project tersimpan…", 3, 3))
             return destination
 
@@ -203,13 +216,34 @@ class ProgressContextToolApplication(ContextToolApplication):
         assets = dict(self.session.assets)
 
         def operation(report, cancelled):  # type: ignore[no-untyped-def]
-            report(ProgressUpdate("render canvas", "Merender seluruh objek dan layer…", 1, 3))
+            report(
+                ProgressUpdate(
+                    "render canvas",
+                    "Merender seluruh objek dan layer…",
+                    1,
+                    3,
+                )
+            )
             content = render_project_jpeg(project, assets)
             ensure_not_cancelled(cancelled)
-            report(ProgressUpdate("menulis gambar", "Menyimpan JPEG berkualitas tinggi…", 2, 3))
+            report(
+                ProgressUpdate(
+                    "menulis gambar",
+                    "Menyimpan JPEG berkualitas tinggi…",
+                    2,
+                    3,
+                )
+            )
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes(content)
-            report(ProgressUpdate("selesai", "Memastikan file gambar selesai ditulis…", 3, 3))
+            report(
+                ProgressUpdate(
+                    "selesai",
+                    "Memastikan file gambar selesai ditulis…",
+                    3,
+                    3,
+                )
+            )
             return target
 
         try:
@@ -224,7 +258,11 @@ class ProgressContextToolApplication(ContextToolApplication):
             self.main_window.flash_status("Ekspor gambar dibatalkan.")
             return
         except (OSError, ProjectRenderError, ValueError) as exc:
-            messagebox.showerror(tr("status.export_failed"), str(exc), parent=self.root)
+            messagebox.showerror(
+                tr("status.export_failed"),
+                str(exc),
+                parent=self.root,
+            )
             return
         self.main_window.flash_status(tr("status.image_exported", name=output.name))
 
@@ -248,7 +286,10 @@ class ProgressContextToolApplication(ContextToolApplication):
             parent=self.root,
             title=tr("dialog.export_nft.title"),
             defaultextension=BATIKCRAFT_NFT_EXTENSION,
-            initialfile=f"{_filename_stem(project.metadata.title)}{BATIKCRAFT_NFT_EXTENSION}",
+            initialfile=(
+                f"{_filename_stem(project.metadata.title)}"
+                f"{BATIKCRAFT_NFT_EXTENSION}"
+            ),
             filetypes=(
                 ("BatikCraft NFT", f"*{BATIKCRAFT_NFT_EXTENSION}"),
                 ("All files", "*.*"),
@@ -262,8 +303,22 @@ class ProgressContextToolApplication(ContextToolApplication):
             report(ProgressUpdate("render preview", "Merender gambar showcase…", 1, 5))
             preview = render_project_jpeg(project, assets)
             ensure_not_cancelled(cancelled)
-            report(ProgressUpdate("metadata", "Menyusun identitas, filosofi, motif, dan warna…", 2, 5))
-            report(ProgressUpdate("checksum", "Menghitung checksum seluruh project dan asset…", 3, 5))
+            report(
+                ProgressUpdate(
+                    "metadata",
+                    "Menyusun identitas, filosofi, motif, dan warna…",
+                    2,
+                    5,
+                )
+            )
+            report(
+                ProgressUpdate(
+                    "checksum",
+                    "Menghitung checksum seluruh project dan asset…",
+                    3,
+                    5,
+                )
+            )
             target = export_batikcraft_nft(
                 destination,
                 project,
@@ -272,8 +327,22 @@ class ProgressContextToolApplication(ContextToolApplication):
                 metadata,
             )
             ensure_not_cancelled(cancelled)
-            report(ProgressUpdate("seal", "Memverifikasi manifest dan seal paket…", 4, 5))
-            report(ProgressUpdate("selesai", "Paket BatikCraft NFT siap diunggah…", 5, 5))
+            report(
+                ProgressUpdate(
+                    "seal",
+                    "Memverifikasi manifest dan seal paket…",
+                    4,
+                    5,
+                )
+            )
+            report(
+                ProgressUpdate(
+                    "selesai",
+                    "Paket BatikCraft NFT siap diunggah…",
+                    5,
+                    5,
+                )
+            )
             return target
 
         try:
@@ -288,7 +357,11 @@ class ProgressContextToolApplication(ContextToolApplication):
             self.main_window.flash_status("Ekspor BatikCraft NFT dibatalkan.")
             return
         except (BatikNFTError, OSError, ProjectRenderError, ValueError) as exc:
-            messagebox.showerror(tr("status.export_failed"), str(exc), parent=self.root)
+            messagebox.showerror(
+                tr("status.export_failed"),
+                str(exc),
+                parent=self.root,
+            )
             return
         self.main_window.flash_status(tr("status.nft_exported", name=target.name))
 
