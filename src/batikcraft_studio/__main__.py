@@ -7,8 +7,8 @@ import sys
 import tkinter as tk
 from tkinter import messagebox
 
+from .batikbrew_context_tool_app import ContextToolApplication
 from .config import APP_NAME
-from .progress_context_tool_app import ContextToolApplication
 
 
 def _configure_logging() -> None:
