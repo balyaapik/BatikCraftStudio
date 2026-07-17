@@ -168,7 +168,7 @@ class DependencyManagerWindow(tk.Toplevel):
         for item in self.tree.get_children(""):
             self.tree.delete(item)
         for module, requirement in PYTHON_AI_DEPENDENCIES:
-            installed = importlib.util.find_spec(module) is not None
+            installed = module_available(module)
             self.tree.insert(
                 "",
                 tk.END,
@@ -266,6 +266,15 @@ class DependencyManagerWindow(tk.Toplevel):
         self.destroy()
 
 
+def module_available(module: str) -> bool:
+    """Check import availability without importing heavyweight AI packages."""
+
+    try:
+        return importlib.util.find_spec(module) is not None
+    except (ImportError, ModuleNotFoundError, ValueError):
+        return False
+
+
 def reveal_path(path: str | Path) -> None:
     """Open one folder with the native file manager."""
 
@@ -285,5 +294,6 @@ def reveal_path(path: str | Path) -> None:
 __all__ = [
     "DependencyManagerWindow",
     "PYTHON_AI_DEPENDENCIES",
+    "module_available",
     "reveal_path",
 ]
