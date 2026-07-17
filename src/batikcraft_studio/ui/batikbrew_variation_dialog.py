@@ -203,6 +203,7 @@ class BatikBrewVariationDialog(tk.Toplevel):
 
     def _accept(self) -> None:
         index = max(0, min(int(self.selected_index.get()), len(self.results) - 1))
+        self.copy_selected()
         self.result = self.results[index]
         self.destroy()
 
