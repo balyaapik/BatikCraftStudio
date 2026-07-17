@@ -29,6 +29,8 @@ _GCLP_HICONSM = -34
 
 
 class _IconWindow(Protocol):
+    _batikcraft_taskbar_icon_handles: tuple[int, ...]
+
     def iconbitmap(self, bitmap: str | None = None, default: str | None = None) -> object: ...
 
     def update_idletasks(self) -> object: ...
@@ -163,7 +165,7 @@ def _apply_windows_taskbar_icon(window: _IconWindow, icon_path: str) -> bool:
             handles.get(_ICON_SMALL, 0),
         )
         # Keep HICON handles alive for the lifetime of the root window.
-        setattr(window, "_batikcraft_taskbar_icon_handles", tuple(handles.values()))
+        window._batikcraft_taskbar_icon_handles = tuple(handles.values())
     except (AttributeError, OSError, TypeError, ValueError, tk.TclError):
         return False
     return True
