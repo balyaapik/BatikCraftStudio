@@ -45,8 +45,8 @@ def test_active_editor_uses_centralized_settings_hotfix() -> None:
 
 def test_generation_requires_model_selection_after_output_mode() -> None:
     method = (
-        context_tool_editor_hotfix_v15.ContextToolEditorWorkspaceView.
-        batify_selected_with_pretrained_ai
+        context_tool_editor_hotfix_v15.ContextToolEditorWorkspaceView
+        .batify_selected_with_pretrained_ai
     )
     flow = inspect.getsource(method)
     assert "BatikBrewOutputModeDialog" in flow
