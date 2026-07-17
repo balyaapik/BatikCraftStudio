@@ -10,6 +10,8 @@ on:
       - "src/**"
       - "pyproject.toml"
   push:
+    branches:
+      - "agent/cross-platform-desktop-builds"
     tags:
       - "v*"
 
