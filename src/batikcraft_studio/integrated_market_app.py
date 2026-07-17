@@ -15,7 +15,7 @@ from batikcraft_studio.ui.keyboard import (
 )
 from batikcraft_studio.ui.library_asset_nft_dialog import PublishLibraryAssetNFTDialog
 
-from .app_icon import apply_app_icon
+from .app_icon import apply_app_icon, prepare_windows_app_identity
 from .batikbrew_context_tool_app import ContextToolApplication as _BaseApplication
 from .context_tool_app import _find_cascade_menu
 
@@ -24,6 +24,9 @@ class ContextToolApplication(_BaseApplication):
     """Expose complete BatikBrew and marketplace workflows from the menu bar."""
 
     def __init__(self) -> None:
+        # This must run before super().__init__ creates the Tk root window so
+        # Windows does not group the app under the generic Python taskbar icon.
+        prepare_windows_app_identity()
         super().__init__()
         apply_app_icon(self.root)
 
