@@ -1,11 +1,14 @@
-"""Application shell with AI settings and BatikCraftWeb marketplace bridge."""
+"""Application shell with clearly separated AI, effects, dependencies, and market menus."""
 
 from __future__ import annotations
 
 import tkinter as tk
+import webbrowser
 from tkinter import messagebox
 
+from batikcraft_studio.ai import default_ai_cache_dir
 from batikcraft_studio.ai.generation_providers import provider_label
+from batikcraft_studio.ai.local_lora_training import default_training_root
 from batikcraft_studio.web_bridge import (
     BatikCraftWebClient,
     BatikCraftWebError,
@@ -14,10 +17,22 @@ from batikcraft_studio.web_bridge import (
 
 from .context_tool_app import _find_cascade_menu
 from .progress_context_tool_app import ContextToolApplication as _ProgressApplication
+from .ui.ai_runtime_model_install_dialog import RuntimeModelInstallDialog
 from .ui.cloud_ai_settings_dialog import CloudAISettingsDialog
+from .ui.dependency_manager_dialog import DependencyManagerWindow, reveal_path
+from .ui.enhanced_humanize_dialog import (
+    EnhancedHumanizeWindow,
+    HUMANIZE_PRESETS,
+    apply_humanize_preset,
+)
+from .ui.local_training_dialog import (
+    LocalLoraTrainingWindow,
+    SDXLDatasetStudioWindow,
+    TrainingResultsWindow,
+)
+from .ui.marketplace_mint_dialog import MintCurrentProjectDialog
 from .ui.web_marketplace_dialogs import (
     PublishModelDialog,
-    PublishNFTDialog,
     WebAccountWindow,
     WebLoginDialog,
     WebMarketplaceWindow,
@@ -25,7 +40,7 @@ from .ui.web_marketplace_dialogs import (
 
 
 class ContextToolApplication(_ProgressApplication):
-    """Keep generation settings centralized and connect the desktop marketplace."""
+    """Keep each major workflow in its own top-level menu."""
 
     def __init__(self, *args: object, **kwargs: object) -> None:
         self.web_client = BatikCraftWebClient()
@@ -45,32 +60,120 @@ class ContextToolApplication(_ProgressApplication):
         )
         _remove_commands_containing(ai_menu, "Pengaturan AI")
         _remove_commands_containing(ai_menu, "Stable Diffusion + LoRA", rename=True)
-        ai_menu.add_separator()
-        ai_menu.add_command(
+        _remove_commands_containing(ai_menu, "Login / Akun")
+        _remove_commands_containing(ai_menu, "Marketplace")
+        _remove_commands_containing(ai_menu, "Library Model")
+        _remove_commands_containing(ai_menu, "Publish Motif")
+        _remove_commands_containing(ai_menu, "Publish Model")
+        _normalize_separators(ai_menu)
+
+        self._remove_nft_export_from_file(menu_bar)
+        self._remove_humanize_from_asset(menu_bar)
+
+        effects_menu = tk.Menu(menu_bar, tearoff=False)
+        effects_menu.add_command(
+            label="Humanize…",
+            command=self.open_humanize_effect,
+        )
+        preset_menu = tk.Menu(effects_menu, tearoff=False)
+        for key, preset in HUMANIZE_PRESETS.items():
+            preset_menu.add_command(
+                label=preset.label,
+                command=lambda selected=key: apply_humanize_preset(editor, selected),
+            )
+        effects_menu.add_cascade(label="Preset Humanize", menu=preset_menu)
+        effects_menu.add_command(
+            label="Acak Seed Humanize",
+            command=self.randomize_humanize_seed,
+        )
+        effects_menu.add_separator()
+        effects_menu.add_command(
+            label="Reset Humanize ke Asset Sumber",
+            command=editor.reset_humanize,
+        )
+        _insert_before_help(menu_bar, "Effects", effects_menu)
+
+        dependencies_menu = tk.Menu(menu_bar, tearoff=False)
+        dependencies_menu.add_command(
+            label="Dependency Manager…",
+            command=self.open_dependency_manager,
+        )
+        dependencies_menu.add_command(
+            label="Instal / Reparasi Python AI Packages…",
+            command=self.open_dependency_manager,
+        )
+        dependencies_menu.add_separator()
+        dependencies_menu.add_command(
+            label="Unduh / Instal BatikBrew SDXL…",
+            command=lambda: self.install_runtime_models("sdxl"),
+        )
+        dependencies_menu.add_command(
+            label="Unduh / Instal SD1.5 + ControlNet…",
+            command=lambda: self.install_runtime_models("sd15"),
+        )
+        dependencies_menu.add_command(
+            label="Instal / Kelola LoRA & Model Lokal…",
+            command=editor.open_offline_model_manager,
+        )
+        dependencies_menu.add_separator()
+        dependencies_menu.add_command(
+            label="Buka Folder Unduhan AI",
+            command=lambda: self.open_folder(default_ai_cache_dir()),
+        )
+        _insert_before_help(menu_bar, "Dependencies", dependencies_menu)
+
+        marketplace_menu = tk.Menu(menu_bar, tearoff=False)
+        marketplace_menu.add_command(
             label="Login / Akun BatikCraftWeb…",
             command=self.open_web_account,
         )
-        ai_menu.add_command(
+        marketplace_menu.add_command(
+            label="Buka BatikCraftWeb",
+            command=self.open_marketplace_website,
+        )
+        marketplace_menu.add_separator()
+        marketplace_menu.add_command(
             label="NFT Marketplace…",
             command=lambda: self.open_web_marketplace("nfts"),
         )
-        ai_menu.add_command(
+        marketplace_menu.add_command(
             label="Model Marketplace…",
             command=lambda: self.open_web_marketplace("models"),
         )
-        ai_menu.add_command(
+        marketplace_menu.add_command(
             label="Library Model Saya…",
             command=lambda: self.open_web_marketplace("library"),
         )
-        ai_menu.add_separator()
-        ai_menu.add_command(
-            label="Publish Motif sebagai NFT…",
-            command=self.publish_nft_to_web,
+        marketplace_menu.add_separator()
+        marketplace_menu.add_command(
+            label="Mint & Publish Project Aktif sebagai NFT…",
+            command=self.mint_current_project_to_web,
         )
-        ai_menu.add_command(
-            label="Publish Model ke Marketplace…",
+        marketplace_menu.add_command(
+            label="Jual Model ke Marketplace…",
             command=self.publish_model_to_web,
         )
+        _insert_before_help(menu_bar, "Marketplace", marketplace_menu)
+
+        training_menu = tk.Menu(menu_bar, tearoff=False)
+        training_menu.add_command(
+            label="Dataset Studio SDXL…",
+            command=self.open_dataset_studio,
+        )
+        training_menu.add_command(
+            label="Train LoRA di Komputer Ini…",
+            command=self.open_local_training,
+        )
+        training_menu.add_command(
+            label="Hasil Training Lokal…",
+            command=self.open_training_results,
+        )
+        training_menu.add_separator()
+        training_menu.add_command(
+            label="Buka Folder Training",
+            command=lambda: self.open_folder(default_training_root()),
+        )
+        _insert_before_help(menu_bar, "Training AI Lokal", training_menu)
 
         try:
             _edit_index, edit_menu = _find_cascade_menu(menu_bar, "Edit")
@@ -78,6 +181,7 @@ class ContextToolApplication(_ProgressApplication):
             edit_menu = None
         if edit_menu is not None:
             _remove_commands_containing(edit_menu, "Preferences → AI")
+            _normalize_separators(edit_menu)
 
         settings_menu = tk.Menu(menu_bar, tearoff=False)
         settings_menu.add_command(
@@ -85,7 +189,7 @@ class ContextToolApplication(_ProgressApplication):
             command=self.open_cloud_ai_settings,
         )
         settings_menu.add_command(
-            label="Model Lokal, Runtime & LoRA…",
+            label="Model Lokal Aktif, Runtime & LoRA…",
             command=editor.open_offline_model_manager,
         )
         settings_menu.add_separator()
@@ -94,12 +198,68 @@ class ContextToolApplication(_ProgressApplication):
             accelerator="Ctrl+,",
             command=self.open_ai_runtime_settings,
         )
+        _insert_before_help(menu_bar, "Settings", settings_menu)
 
-        end = menu_bar.index(tk.END)
-        if end is None:
-            menu_bar.add_cascade(label="Settings", menu=settings_menu)
-        else:
-            menu_bar.insert_cascade(end, label="Settings", menu=settings_menu)
+    def _remove_nft_export_from_file(self, menu_bar: tk.Menu) -> None:
+        try:
+            _index, file_menu = _find_cascade_menu(menu_bar, "Berkas", "File")
+        except RuntimeError:
+            return
+        _remove_nested_commands(file_menu, lambda label: "nft" in label.casefold())
+        _normalize_separators_recursive(file_menu)
+
+    def _remove_humanize_from_asset(self, menu_bar: tk.Menu) -> None:
+        try:
+            _index, asset_menu = _find_cascade_menu(menu_bar, "Asset", "Aset")
+        except RuntimeError:
+            return
+        _remove_nested_commands(asset_menu, lambda label: "humanize" in label.casefold())
+        _normalize_separators_recursive(asset_menu)
+
+    def open_humanize_effect(self) -> None:
+        window = EnhancedHumanizeWindow(self.root, self.main_window._editor())
+        window.focus_set()
+
+    def randomize_humanize_seed(self) -> None:
+        window = EnhancedHumanizeWindow(self.root, self.main_window._editor())
+        window.randomize_seed()
+        window.focus_set()
+
+    def open_dependency_manager(self) -> None:
+        editor = self.main_window._editor()
+        window = DependencyManagerWindow(
+            self.root,
+            install_sdxl=lambda: self.install_runtime_models("sdxl"),
+            install_sd15=lambda: self.install_runtime_models("sd15"),
+            manage_lora=editor.open_offline_model_manager,
+        )
+        window.focus_set()
+
+    def install_runtime_models(self, family: str) -> None:
+        dialog = RuntimeModelInstallDialog(self.root, family=family)
+        self.root.wait_window(dialog)
+        if dialog.result is None:
+            return
+        label = "BatikBrew SDXL" if family == "sdxl" else "SD1.5 + ControlNet"
+        self.main_window.flash_status(f"Dependency {label} berhasil dipasang.")
+
+    def open_folder(self, path: object) -> None:
+        try:
+            reveal_path(str(path))
+        except RuntimeError as exc:
+            messagebox.showerror("Folder tidak dapat dibuka", str(exc), parent=self.root)
+
+    def open_dataset_studio(self) -> None:
+        window = SDXLDatasetStudioWindow(self.root)
+        window.focus_set()
+
+    def open_local_training(self) -> None:
+        window = LocalLoraTrainingWindow(self.root)
+        window.focus_set()
+
+    def open_training_results(self) -> None:
+        window = TrainingResultsWindow(self.root)
+        window.focus_set()
 
     def open_cloud_ai_settings(self) -> None:
         """Configure provider defaults, API models, endpoints, and API keys."""
@@ -135,6 +295,10 @@ class ContextToolApplication(_ProgressApplication):
         )
         window.focus_set()
 
+    def open_marketplace_website(self) -> None:
+        url = self.web_client.base_url.rstrip("/") + "/market/"
+        webbrowser.open(url)
+
     def open_web_marketplace(self, tab: str) -> None:
         if self._ensure_web_session() is None:
             return
@@ -149,11 +313,38 @@ class ContextToolApplication(_ProgressApplication):
             return
         window.focus_set()
 
-    def publish_nft_to_web(self) -> None:
-        if self._ensure_web_session() is None:
+    def mint_current_project_to_web(self) -> None:
+        session = self._ensure_web_session()
+        if session is None:
             return
-        dialog = PublishNFTDialog(self.root, self.web_client)
+        if session.account.role != "creator":
+            messagebox.showerror(
+                "Akun creator diperlukan",
+                "Hanya akun Creator / User yang dapat mint dan menjual NFT.",
+                parent=self.root,
+            )
+            return
+        project = self.session.project
+        if project is None:
+            messagebox.showerror(
+                "Project belum dibuka",
+                "Buat atau buka project sebelum minting NFT.",
+                parent=self.root,
+            )
+            return
+        dialog = MintCurrentProjectDialog(
+            self.root,
+            client=self.web_client,
+            session=session,
+            project=project,
+            assets=self.session.assets,
+        )
         dialog.focus_set()
+
+    def publish_nft_to_web(self) -> None:
+        """Compatibility alias for the new Marketplace minting workflow."""
+
+        self.mint_current_project_to_web()
 
     def publish_model_to_web(self) -> None:
         session = self._ensure_web_session()
@@ -189,6 +380,21 @@ class ContextToolApplication(_ProgressApplication):
         self.main_window.flash_status("Akun BatikCraftWeb telah logout.")
 
 
+def _insert_before_help(menu_bar: tk.Menu, label: str, menu: tk.Menu) -> None:
+    end = menu_bar.index(tk.END)
+    if end is None:
+        menu_bar.add_cascade(label=label, menu=menu)
+        return
+    for index in range(int(end) + 1):
+        if menu_bar.type(index) != "cascade":
+            continue
+        current = str(menu_bar.entrycget(index, "label")).casefold()
+        if current in {"help", "bantuan"}:
+            menu_bar.insert_cascade(index, label=label, menu=menu)
+            return
+    menu_bar.add_cascade(label=label, menu=menu)
+
+
 def _remove_commands_containing(
     menu: tk.Menu,
     fragment: str,
@@ -198,15 +404,56 @@ def _remove_commands_containing(
     end = menu.index(tk.END)
     if end is None:
         return
+    needle = fragment.casefold()
     for index in range(int(end), -1, -1):
         if menu.type(index) != "command":
             continue
         label = str(menu.entrycget(index, "label"))
-        if fragment not in label:
+        if needle not in label.casefold():
             continue
         if rename:
             menu.entryconfigure(index, label="Generate Motif BatikBrew…")
         else:
+            menu.delete(index)
+
+
+def _remove_nested_commands(menu: tk.Menu, predicate: object) -> None:
+    end = menu.index(tk.END)
+    if end is None:
+        return
+    for index in range(int(end), -1, -1):
+        item_type = menu.type(index)
+        if item_type == "cascade":
+            child = menu.nametowidget(str(menu.entrycget(index, "menu")))
+            _remove_nested_commands(child, predicate)
+            continue
+        if item_type != "command":
+            continue
+        label = str(menu.entrycget(index, "label"))
+        if predicate(label):
+            menu.delete(index)
+
+
+def _normalize_separators_recursive(menu: tk.Menu) -> None:
+    end = menu.index(tk.END)
+    if end is not None:
+        for index in range(int(end) + 1):
+            if menu.type(index) == "cascade":
+                child = menu.nametowidget(str(menu.entrycget(index, "menu")))
+                _normalize_separators_recursive(child)
+    _normalize_separators(menu)
+
+
+def _normalize_separators(menu: tk.Menu) -> None:
+    end = menu.index(tk.END)
+    if end is None:
+        return
+    for index in range(int(end), -1, -1):
+        if menu.type(index) != "separator":
+            continue
+        previous_separator = index == 0 or menu.type(index - 1) == "separator"
+        last_item = index == menu.index(tk.END)
+        if previous_separator or last_item:
             menu.delete(index)
 
 
