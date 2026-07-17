@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import tempfile
 import tkinter as tk
+from collections.abc import Mapping
 from pathlib import Path
 from tkinter import messagebox, ttk
-from typing import Mapping
 
 from batikcraft_studio.domain import Project
 from batikcraft_studio.imaging import ProjectRenderError
@@ -175,18 +175,18 @@ class MintCurrentProjectDialog(tk.Toplevel):
             )
             return
 
-        metadata = NFTExportMetadata(
-            creator_user_id=str(self.session.account.user_id),
-            philosophy=philosophy,
-            motifs=_csv(self.motifs_value.get()),
-            colors=_csv(self.colors_value.get()),
-            license_name=self.license_value.get(),
-        )
         self.mint_button.configure(state="disabled")
         self.configure(cursor="watch")
         self.status_value.set("Membuat package ID, checksum, preview, dan listing NFT…")
         self.update_idletasks()
         try:
+            metadata = NFTExportMetadata(
+                creator_user_id=str(self.session.account.user_id),
+                philosophy=philosophy,
+                motifs=_csv(self.motifs_value.get()),
+                colors=_csv(self.colors_value.get()),
+                license_name=self.license_value.get(),
+            )
             preview = render_project_jpeg(self.project, self.assets)
             with tempfile.TemporaryDirectory(prefix="batikcraft-mint-") as temp:
                 package = export_batikcraft_nft(
