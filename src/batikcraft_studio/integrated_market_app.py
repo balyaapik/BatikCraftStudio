@@ -69,7 +69,7 @@ class ContextToolApplication(_BaseApplication):
             _ensure_command(
                 edit_menu,
                 label="Copy Objek / Hasil AI",
-                command=editor.copy_active_object,
+                command=self.copy_canvas_selection,
                 accelerator="Ctrl+C",
             )
             _ensure_command(
@@ -142,6 +142,12 @@ class ContextToolApplication(_BaseApplication):
         )
         dialog.focus_set()
 
+    def copy_canvas_selection(self) -> None:
+        """Copy selected canvas objects and make them the active paste source."""
+
+        get_generated_image_clipboard().clear()
+        self.main_window._editor().copy_active_object()
+
     def paste_canvas_clipboard(self) -> None:
         editor = self.main_window._editor()
         generated = get_generated_image_clipboard().read()
@@ -181,7 +187,7 @@ class ContextToolApplication(_BaseApplication):
     def _copy_canvas_shortcut(self, event: tk.Event[tk.Misc]) -> str | None:
         if event_targets_text_input(event):
             return None
-        self.main_window._editor().copy_active_object()
+        self.copy_canvas_selection()
         return "break"
 
     def _paste_canvas_shortcut(self, event: tk.Event[tk.Misc]) -> str | None:
