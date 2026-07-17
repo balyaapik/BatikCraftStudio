@@ -1,0 +1,101 @@
+name: Build desktop applications
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/build-desktop.yml"
+      - "packaging/**"
+      - "scripts/build_desktop.py"
+      - "src/**"
+      - "pyproject.toml"
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build ${{ matrix.label }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-2022
+            label: Windows x64
+            artifact: BatikCraftStudio-Windows-x64
+          - os: ubuntu-22.04
+            label: Linux x64
+            artifact: BatikCraftStudio-Linux-x64
+          - os: macos-15-intel
+            label: macOS Intel
+            artifact: BatikCraftStudio-macOS-x64
+          - os: macos-15
+            label: macOS Apple Silicon
+            artifact: BatikCraftStudio-macOS-arm64
+
+    env:
+      PYINSTALLER_CONFIG_DIR: ${{ runner.temp }}/pyinstaller
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install desktop build dependencies
+        run: python -m pip install --upgrade pip && python -m pip install -e ".[desktop-build]"
+
+      - name: Build native desktop package
+        run: python scripts/build_desktop.py
+
+      - name: Verify release artifact
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          artifacts = [path for path in Path("release").iterdir() if path.is_file()]
+          assert len(artifacts) == 1, artifacts
+          assert artifacts[0].stat().st_size > 0, artifacts[0]
+          print(f"Verified {artifacts[0]} ({artifacts[0].stat().st_size:,} bytes)")
+          PY
+
+      - name: Upload native package
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: release/*
+          if-no-files-found: error
+          retention-days: 14
+
+  publish-release:
+    name: Publish tagged release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download all native packages
+        uses: actions/download-artifact@v4
+        with:
+          pattern: BatikCraftStudio-*
+          path: release-assets
+          merge-multiple: true
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" release-assets/* \
+            --repo "${GITHUB_REPOSITORY}" \
+            --title "BatikCraft Studio ${GITHUB_REF_NAME}" \
+            --generate-notes
