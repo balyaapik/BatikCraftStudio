@@ -11,6 +11,7 @@ from batikcraft_studio.ai.batikbrew_model_settings import (
 from batikcraft_studio.ai.generation_providers import (
     PROVIDER_IDS,
     PROVIDER_LOCAL,
+    CloudGenerationSettings,
     CloudGenerationSettingsStore,
     get_api_secret_store,
     get_cloud_generation_settings_store,
@@ -105,7 +106,7 @@ class BatikAIProviderDialog(tk.Toplevel):
         combo.focus_set()
         self.grab_set()
 
-    def _model_choices(self, settings: object) -> dict[str, str]:
+    def _model_choices(self, settings: CloudGenerationSettings) -> dict[str, str]:
         choices: dict[str, str] = {}
         local = get_batikbrew_model_settings_store().load()
         local_name = local.model_id if local.configured else "belum diatur"
