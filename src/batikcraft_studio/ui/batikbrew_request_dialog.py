@@ -28,20 +28,31 @@ class BatikBrewRequestDialog(tk.Toplevel):
         prompt: str,
         negative_prompt: str,
         seed: int,
+        default_variation_count: int = 1,
+        request_notice: str = "",
     ) -> None:
         super().__init__(parent)
         self.output_mode = output_mode
         self.result: BatikBrewRequest | None = None
         self.seed_value = tk.StringVar(master=self, value=str(seed))
-        self.variations_value = tk.IntVar(master=self, value=4)
+        initial_variations = max(1, min(4, int(default_variation_count)))
+        self.variations_value = tk.IntVar(master=self, value=initial_variations)
         self.tileable_value = tk.BooleanVar(master=self, value=output_mode == "pattern")
 
         mode_label = "Ornamen Tunggal" if output_mode == "ornament" else "Pola"
         self.title(f"Generate BatikBrew — {mode_label}")
-        self.geometry("720x560")
-        self.minsize(640, 500)
+        self.geometry("720x580")
+        self.minsize(640, 520)
         self.transient(parent.winfo_toplevel())
         self.protocol("WM_DELETE_WINDOW", self._cancel)
+
+        summary = (
+            f"Konfigurasi aktif: {provider_summary}. Provider, model API, runtime, GPU, "
+            "dan LoRA dikelola dari menu Settings → Pengaturan AI, Model & LoRA."
+        )
+        notice = str(request_notice).strip()
+        if notice:
+            summary = f"{summary}\n\n{notice}"
 
         body = ttk.Frame(self, padding=16)
         body.pack(fill="both", expand=True)
@@ -55,10 +66,7 @@ class BatikBrewRequestDialog(tk.Toplevel):
         ).grid(row=0, column=0, columnspan=2, sticky="w")
         ttk.Label(
             body,
-            text=(
-                f"Konfigurasi aktif: {provider_summary}. Provider, model API, runtime, GPU, "
-                "dan LoRA dikelola dari menu Settings → Pengaturan AI, Model & LoRA."
-            ),
+            text=summary,
             style="Muted.TLabel",
             wraplength=680,
             justify="left",

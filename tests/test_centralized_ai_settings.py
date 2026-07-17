@@ -60,6 +60,16 @@ def test_request_dialog_contains_only_creative_controls() -> None:
     assert "Jumlah variasi" in source
 
 
+def test_cloud_generation_defaults_to_one_api_request() -> None:
+    request_source = inspect.getsource(batikbrew_request_dialog)
+    editor_source = inspect.getsource(context_tool_editor_hotfix_v15)
+
+    assert "default_variation_count: int = 1" in request_source
+    assert "default_variation_count=1 if cloud_request else 4" in editor_source
+    assert "Setiap variasi cloud mengirim satu request gambar terpisah" in editor_source
+    assert "mencegah error 429 Too Many Requests" in editor_source
+
+
 def test_application_exposes_settings_menu_as_ai_configuration_home() -> None:
     source = inspect.getsource(ContextToolApplication)
     assert 'label="Settings"' in source
