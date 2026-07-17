@@ -167,6 +167,7 @@ class ContextToolEditorWorkspaceView(_HotfixV14Editor):
         provider_summary = self._provider_summary(provider_id)
         if provider_summary is None:
             return None
+        cloud_request = provider_id != PROVIDER_LOCAL
         dialog = BatikBrewRequestDialog(
             self,
             output_mode=output_mode,
@@ -174,6 +175,13 @@ class ContextToolEditorWorkspaceView(_HotfixV14Editor):
             prompt=defaults.prompt,
             negative_prompt=defaults.negative_prompt,
             seed=defaults.seed,
+            default_variation_count=1 if cloud_request else 4,
+            request_notice=(
+                "Setiap variasi cloud mengirim satu request gambar terpisah. Default dibuat "
+                "1 variasi untuk mengurangi biaya dan mencegah error 429 Too Many Requests."
+                if cloud_request
+                else "Generasi lokal tidak memakai kuota API; default tetap 4 variasi."
+            ),
         )
         self.wait_window(dialog)
         request = dialog.result
