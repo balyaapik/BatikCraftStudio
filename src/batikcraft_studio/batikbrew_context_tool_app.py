@@ -1,18 +1,36 @@
-"""Application shell with one menu-bar home for every AI model setting."""
+"""Application shell with AI settings and BatikCraftWeb marketplace bridge."""
 
 from __future__ import annotations
 
 import tkinter as tk
+from tkinter import messagebox
 
 from batikcraft_studio.ai.generation_providers import provider_label
+from batikcraft_studio.web_bridge import (
+    BatikCraftWebClient,
+    BatikCraftWebError,
+    WebSession,
+)
 
 from .context_tool_app import _find_cascade_menu
 from .progress_context_tool_app import ContextToolApplication as _ProgressApplication
 from .ui.cloud_ai_settings_dialog import CloudAISettingsDialog
+from .ui.web_marketplace_dialogs import (
+    PublishModelDialog,
+    PublishNFTDialog,
+    WebAccountWindow,
+    WebLoginDialog,
+    WebMarketplaceWindow,
+)
 
 
 class ContextToolApplication(_ProgressApplication):
-    """Keep generation actions separate from persistent AI configuration."""
+    """Keep generation settings centralized and connect the desktop marketplace."""
+
+    def __init__(self, *args: object, **kwargs: object) -> None:
+        self.web_client = BatikCraftWebClient()
+        self.web_session: WebSession | None = None
+        super().__init__(*args, **kwargs)
 
     def _build_menu(self) -> None:
         super()._build_menu()
@@ -27,6 +45,32 @@ class ContextToolApplication(_ProgressApplication):
         )
         _remove_commands_containing(ai_menu, "Pengaturan AI")
         _remove_commands_containing(ai_menu, "Stable Diffusion + LoRA", rename=True)
+        ai_menu.add_separator()
+        ai_menu.add_command(
+            label="Login / Akun BatikCraftWeb…",
+            command=self.open_web_account,
+        )
+        ai_menu.add_command(
+            label="NFT Marketplace…",
+            command=lambda: self.open_web_marketplace("nfts"),
+        )
+        ai_menu.add_command(
+            label="Model Marketplace…",
+            command=lambda: self.open_web_marketplace("models"),
+        )
+        ai_menu.add_command(
+            label="Library Model Saya…",
+            command=lambda: self.open_web_marketplace("library"),
+        )
+        ai_menu.add_separator()
+        ai_menu.add_command(
+            label="Publish Motif sebagai NFT…",
+            command=self.publish_nft_to_web,
+        )
+        ai_menu.add_command(
+            label="Publish Model ke Marketplace…",
+            command=self.publish_model_to_web,
+        )
 
         try:
             _edit_index, edit_menu = _find_cascade_menu(menu_bar, "Edit")
@@ -70,6 +114,79 @@ class ContextToolApplication(_ProgressApplication):
             f"Ornamen {provider_label(settings.ornament_provider)} · "
             f"Pola {provider_label(settings.pattern_provider)}."
         )
+
+    def open_web_account(self) -> None:
+        session = self._restore_web_session()
+        if session is None:
+            dialog = WebLoginDialog(self.root, self.web_client)
+            self.root.wait_window(dialog)
+            session = dialog.result
+            if session is None:
+                return
+            self.web_session = session
+            self.main_window.flash_status(
+                f"Login BatikCraftWeb berhasil: {session.account.public_name}."
+            )
+        window = WebAccountWindow(
+            self.root,
+            self.web_client,
+            session,
+            on_logout=self._on_web_logout,
+        )
+        window.focus_set()
+
+    def open_web_marketplace(self, tab: str) -> None:
+        if self._ensure_web_session() is None:
+            return
+        try:
+            window = WebMarketplaceWindow(
+                self.root,
+                self.web_client,
+                initial_tab=tab,
+            )
+        except BatikCraftWebError as exc:
+            messagebox.showerror("BatikCraftWeb", str(exc), parent=self.root)
+            return
+        window.focus_set()
+
+    def publish_nft_to_web(self) -> None:
+        if self._ensure_web_session() is None:
+            return
+        dialog = PublishNFTDialog(self.root, self.web_client)
+        dialog.focus_set()
+
+    def publish_model_to_web(self) -> None:
+        session = self._ensure_web_session()
+        if session is None:
+            return
+        if session.account.role != "creator":
+            messagebox.showerror(
+                "Akun creator diperlukan",
+                "Hanya akun Creator / User yang dapat menjual model.",
+                parent=self.root,
+            )
+            return
+        dialog = PublishModelDialog(self.root, self.web_client)
+        dialog.focus_set()
+
+    def _ensure_web_session(self) -> WebSession | None:
+        session = self._restore_web_session()
+        if session is not None:
+            return session
+        dialog = WebLoginDialog(self.root, self.web_client)
+        self.root.wait_window(dialog)
+        self.web_session = dialog.result
+        return self.web_session
+
+    def _restore_web_session(self) -> WebSession | None:
+        if self.web_session is not None:
+            return self.web_session
+        self.web_session = self.web_client.restore_session()
+        return self.web_session
+
+    def _on_web_logout(self) -> None:
+        self.web_session = None
+        self.main_window.flash_status("Akun BatikCraftWeb telah logout.")
 
 
 def _remove_commands_containing(
