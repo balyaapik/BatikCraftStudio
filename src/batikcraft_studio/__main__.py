@@ -4,11 +4,6 @@ from __future__ import annotations
 
 import logging
 import sys
-import tkinter as tk
-from tkinter import messagebox
-
-from .config import APP_NAME
-from .integrated_market_app import ContextToolApplication
 
 
 def _configure_logging() -> None:
@@ -22,6 +17,19 @@ def main() -> int:
     """Launch the desktop application and return a process exit code."""
 
     _configure_logging()
+
+    # This must happen before tkinter or any application shell is imported.
+    # Otherwise ``python -m batikcraft_studio`` is grouped under python.exe and
+    # Windows may keep the Python icon in the taskbar.
+    from .windows_identity import prepare_windows_app_identity
+
+    prepare_windows_app_identity()
+
+    import tkinter as tk
+    from tkinter import messagebox
+
+    from .config import APP_NAME
+    from .integrated_market_app import ContextToolApplication
 
     try:
         application = ContextToolApplication()
