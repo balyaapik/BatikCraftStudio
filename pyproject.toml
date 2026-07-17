@@ -41,6 +41,9 @@ batikcraft-studio = "batikcraft_studio.__main__:main"
 [tool.setuptools]
 package-dir = {"" = "src"}
 
+[tool.setuptools.package-data]
+batikcraft_studio = ["resources/*.ico"]
+
 [tool.setuptools.packages.find]
 where = ["src"]
 
