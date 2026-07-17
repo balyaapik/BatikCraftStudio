@@ -15,12 +15,17 @@ from batikcraft_studio.ui.keyboard import (
 )
 from batikcraft_studio.ui.library_asset_nft_dialog import PublishLibraryAssetNFTDialog
 
+from .app_icon import apply_app_icon
 from .batikbrew_context_tool_app import ContextToolApplication as _BaseApplication
 from .context_tool_app import _find_cascade_menu
 
 
 class ContextToolApplication(_BaseApplication):
     """Expose complete BatikBrew and marketplace workflows from the menu bar."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        apply_app_icon(self.root)
 
     def _build_menu(self) -> None:
         super()._build_menu()
