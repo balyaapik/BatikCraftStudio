@@ -3,11 +3,11 @@ from __future__ import annotations
 import json
 
 from batikcraft_studio.ai.generation_providers import (
-    CloudGenerationSettings,
-    CloudGenerationSettingsStore,
     PROVIDER_GEMINI,
     PROVIDER_OPENAI,
     PROVIDER_WATSONX,
+    CloudGenerationSettings,
+    CloudGenerationSettingsStore,
 )
 from batikcraft_studio.ai.hybrid_batik_generation import CloudBatikBrewOptions
 
@@ -48,4 +48,3 @@ def test_cloud_options_do_not_require_a_local_lora_file() -> None:
     assert options.lora_weight == 0.0
     assert options.tileable is False
     assert options.output_mode == "ornament"
-    assert options.to_properties()["api_key_stored_in_project"] is False

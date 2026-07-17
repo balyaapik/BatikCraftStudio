@@ -5,6 +5,10 @@ from __future__ import annotations
 from dataclasses import replace
 from tkinter import messagebox, ttk
 
+from batikcraft_studio.ai.batikbrew_model_settings import (
+    BatikBrewLocalModelSettings,
+    get_batikbrew_model_settings_store,
+)
 from batikcraft_studio.ai.runtime_model_installer import (
     BatikBrewRuntimePaths,
     find_installed_batikbrew_runtime,
@@ -20,14 +24,25 @@ from .offline_ai_dialogs import OfflineModelManagerWindow as _BaseOfflineModelMa
 
 
 class GlobalOfflineModelManagerWindow(_BaseOfflineModelManagerWindow):
-    """Manage LoRA packs while routing SDXL packs to the BatikBrew generator."""
+    """Manage and persist the one local model profile used by generation."""
 
     def __init__(self, *args: object, **kwargs: object) -> None:
         super().__init__(*args, **kwargs)
         self._add_runtime_installer_buttons()
         self._autofill_managed_runtime()
         self._sync_global_runtime_controls()
-        self.title(f"{self.title()} — runtime dari Preferences AI & GPU")
+        self.title(f"{self.title()} — Settings AI, Model & LoRA")
+        self._refresh()
+
+    def _refresh(self) -> None:
+        super()._refresh()
+        active = get_batikbrew_model_settings_store().load()
+        if active.configured and self.tree.exists(active.model_id):
+            self.tree.selection_set(active.model_id)
+            self.tree.see(active.model_id)
+            self.status.configure(
+                text=f"Model aktif untuk BatikBrew: {active.model_id} · {active.resolution}px."
+            )
 
     def _activate(self) -> None:
         model_id = self._selected_model_id()
@@ -52,26 +67,55 @@ class GlobalOfflineModelManagerWindow(_BaseOfflineModelManagerWindow):
             )
             return
         try:
-            store = get_ai_runtime_store()
-            current = store.load()
-            store.save(
+            model = self.session.model_library.get(model_id)
+            runtime_store = get_ai_runtime_store()
+            current = runtime_store.load()
+            runtime_store.save(
                 replace(
                     current,
                     default_model=str(paths.base_model),
                     local_files_only=True,
                 )
             )
-        except (OSError, TypeError, ValueError) as exc:
+            resolution = min(1024, max(512, int(model.manifest.resolution)))
+            supported = min((512, 640, 768, 896, 1024), key=lambda value: abs(value - resolution))
+            get_batikbrew_model_settings_store().save(
+                BatikBrewLocalModelSettings(
+                    model_id=model.model_id,
+                    base_model_path=str(paths.base_model),
+                    lora_path=str(model.lora_path),
+                    lora_weight=float(self.lora_value.get()),
+                    trigger_words=tuple(model.manifest.trigger_words) or ("batikbrew",),
+                    inference_steps=max(10, int(self.steps_value.get())),
+                    guidance_scale=max(1.0, float(self.guidance_value.get())),
+                    resolution=supported,
+                )
+            )
+        except (OSError, TypeError, ValueError, RuntimeError) as exc:
             messagebox.showerror(self.title(), str(exc), parent=self)
             return
         self.tree.selection_set(model_id)
         self.status.configure(
             text=(
-                f"Model SDXL {model_id} diprioritaskan untuk Generate Motif BatikBrew. "
-                "Tidak memakai renderer SD1.5/ControlNet."
+                f"Model SDXL {model_id} disimpan sebagai model BatikBrew aktif. "
+                "Generasi berikutnya akan memakainya otomatis."
             )
         )
         self._changed()
+
+    def _uninstall(self) -> None:
+        model_id = self._selected_model_id()
+        super()._uninstall()
+        if model_id is None or self.tree.exists(model_id):
+            return
+        store = get_batikbrew_model_settings_store()
+        if store.load().model_id == model_id:
+            try:
+                store.clear()
+            except OSError as exc:
+                messagebox.showwarning(self.title(), str(exc), parent=self)
+            else:
+                self.status.configure(text="Model BatikBrew aktif dihapus. Pilih model lain.")
 
     def _sync_global_runtime_controls(self) -> None:
         runtime = load_ai_runtime_settings()
@@ -158,7 +202,10 @@ class GlobalOfflineModelManagerWindow(_BaseOfflineModelManagerWindow):
             )
             return
         self.status.configure(
-            text="Runtime BatikBrew SDXL siap untuk generasi motif dari objek inspirasi."
+            text=(
+                "Runtime BatikBrew SDXL siap. Pilih paket LoRA SDXL lalu tekan "
+                "Aktifkan Model untuk menjadikannya default."
+            )
         )
         self._changed()
 
