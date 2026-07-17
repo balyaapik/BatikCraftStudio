@@ -11,9 +11,11 @@ from PIL import Image, ImageTk
 from batikcraft_studio.ai.batikbrew_generation import create_tile_preview
 from batikcraft_studio.ai.pretrained_batification import PretrainedAIBatificationResult
 
+from .generated_image_clipboard import get_generated_image_clipboard
+
 
 class BatikBrewVariationDialog(tk.Toplevel):
-    """Show up to four generated motifs and return the selected variation."""
+    """Show generated motifs and expose standard copy semantics."""
 
     def __init__(
         self,
@@ -27,16 +29,22 @@ class BatikBrewVariationDialog(tk.Toplevel):
         self.result: PretrainedAIBatificationResult | None = None
         self.selected_index = tk.IntVar(master=self, value=0)
         self.tile_preview_value = tk.BooleanVar(master=self, value=False)
+        self.status_value = tk.StringVar(
+            master=self,
+            value="Pilih variasi. Tekan Ctrl+C untuk menyalin gambar terpilih.",
+        )
         self._images: list[Image.Image] = []
         self._photos: list[ImageTk.PhotoImage] = []
         self._image_labels: list[ttk.Label] = []
 
         self.title("Pilih Variasi BatikBrew")
-        self.geometry("980x780")
-        self.minsize(820, 650)
+        self.geometry("980x800")
+        self.minsize(820, 670)
         self.transient(parent.winfo_toplevel())
         self.protocol("WM_DELETE_WINDOW", self._cancel)
         self._build()
+        self.bind("<Control-c>", self._copy_shortcut)
+        self.bind("<Control-C>", self._copy_shortcut)
         self.grab_set()
         self.focus_set()
 
@@ -54,8 +62,8 @@ class BatikBrewVariationDialog(tk.Toplevel):
         ttk.Label(
             body,
             text=(
-                "Setiap gambar dibuat oleh SDXL + LoRA dengan seed berbeda. "
-                "Objek canvas hanya menjadi sumber inspirasi warna, tema, dan kepadatan garis."
+                "Klik salah satu variasi. Hasil terpilih dapat langsung disalin dengan "
+                "Ctrl+C, lalu ditempel ke canvas memakai Ctrl+V tanpa menyimpan file."
             ),
             wraplength=920,
             justify="left",
@@ -112,6 +120,10 @@ class BatikBrewVariationDialog(tk.Toplevel):
                 "<Button-1>",
                 lambda _event, value=index: self._select(value),
             )
+            image_label.bind(
+                "<Double-Button-1>",
+                lambda _event, value=index: self._select_and_copy(value),
+            )
 
         footer = ttk.Frame(body)
         footer.grid(row=3, column=0, sticky="ew", pady=(12, 0))
@@ -123,8 +135,22 @@ class BatikBrewVariationDialog(tk.Toplevel):
         ).pack(side="left")
         actions = ttk.Frame(footer)
         actions.pack(side="right")
-        ttk.Button(actions, text="Batal", command=self._cancel).pack(side="right", padx=(6, 0))
+        ttk.Button(actions, text="Batal", command=self._cancel).pack(
+            side="right",
+            padx=(6, 0),
+        )
         ttk.Button(actions, text="Gunakan Variasi", command=self._accept).pack(side="right")
+        ttk.Button(
+            actions,
+            text="Salin Variasi (Ctrl+C)",
+            command=self.copy_selected,
+        ).pack(side="right", padx=(0, 6))
+        ttk.Label(
+            body,
+            textvariable=self.status_value,
+            style="Muted.TLabel",
+            wraplength=920,
+        ).grid(row=4, column=0, sticky="ew", pady=(8, 0))
         self._refresh_selection()
 
     def _photo_for(self, image: Image.Image) -> ImageTk.PhotoImage:
@@ -135,6 +161,10 @@ class BatikBrewVariationDialog(tk.Toplevel):
     def _select(self, index: int) -> None:
         self.selected_index.set(index)
         self._refresh_selection()
+
+    def _select_and_copy(self, index: int) -> None:
+        self._select(index)
+        self.copy_selected()
 
     def _refresh_selection(self) -> None:
         selected = int(self.selected_index.get())
@@ -149,6 +179,27 @@ class BatikBrewVariationDialog(tk.Toplevel):
             photo = self._photo_for(preview)
             self._photos.append(photo)
             label.configure(image=photo)
+
+    def copy_selected(self) -> None:
+        index = max(0, min(int(self.selected_index.get()), len(self.results) - 1))
+        selected = self.results[index]
+        seed = selected.metadata.get("seed", index + 1)
+        get_generated_image_clipboard().copy(
+            selected.content,
+            name=f"BatikBrew seed {seed}",
+            metadata={
+                **dict(selected.metadata),
+                "source": "batikbrew-generation",
+                "variation_index": index,
+            },
+        )
+        self.status_value.set(
+            f"Variasi {index + 1} disalin. Kembali ke canvas lalu tekan Ctrl+V."
+        )
+
+    def _copy_shortcut(self, _event: tk.Event[tk.Misc]) -> str:
+        self.copy_selected()
+        return "break"
 
     def _accept(self) -> None:
         index = max(0, min(int(self.selected_index.get()), len(self.results) - 1))
