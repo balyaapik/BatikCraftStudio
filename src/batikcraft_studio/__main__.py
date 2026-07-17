@@ -28,11 +28,18 @@ def main() -> int:
     import tkinter as tk
     from tkinter import messagebox
 
+    from .app_icon import apply_app_icon
     from .config import APP_NAME
     from .integrated_market_app import ContextToolApplication
 
     try:
         application = ContextToolApplication()
+        # Apply once to the newly created HWND, then again after the window is
+        # mapped. The second pass is important for TkinterDnD and python.exe
+        # launches because Windows creates a native wrapper HWND lazily.
+        apply_app_icon(application.root)
+        application.root.after_idle(lambda: apply_app_icon(application.root))
+        application.root.after(300, lambda: apply_app_icon(application.root))
         application.run()
     except tk.TclError as exc:
         logging.exception("Tkinter could not initialize")
