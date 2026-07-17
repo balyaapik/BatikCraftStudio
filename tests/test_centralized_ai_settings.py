@@ -86,7 +86,7 @@ def test_cloud_generation_defaults_to_one_api_request() -> None:
 
 def test_application_exposes_settings_menu_as_ai_configuration_home() -> None:
     source = inspect.getsource(ContextToolApplication)
-    assert 'label="Settings"' in source
+    assert '_insert_before_help(menu_bar, "Settings", settings_menu)' in source
     assert "Provider Cloud & Model API" in source
-    assert "Model Lokal, Runtime & LoRA" in source
+    assert "Model Lokal Aktif, Runtime & LoRA" in source
     assert "Runtime AI & GPU" in source

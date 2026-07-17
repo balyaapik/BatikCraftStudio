@@ -43,10 +43,12 @@ def test_inspect_model_pack_reads_manifest(tmp_path) -> None:
     assert inspect_model_pack(path)["model"]["model_id"] == "ornament-v1"
 
 
-def test_ai_batik_menu_exposes_account_and_marketplace_actions() -> None:
+def test_marketplace_menu_exposes_account_and_marketplace_actions() -> None:
     source = inspect.getsource(batikbrew_context_tool_app.ContextToolApplication)
+    assert "marketplace_menu =" in source
     assert "Login / Akun BatikCraftWeb" in source
     assert "NFT Marketplace" in source
     assert "Model Marketplace" in source
-    assert "Publish Motif sebagai NFT" in source
-    assert "Publish Model ke Marketplace" in source
+    assert "Mint & Publish Project Aktif sebagai NFT" in source
+    assert "Jual Model ke Marketplace" in source
+    assert '_insert_before_help(menu_bar, "Marketplace", marketplace_menu)' in source
