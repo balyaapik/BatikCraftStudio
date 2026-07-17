@@ -25,6 +25,7 @@ from batikcraft_studio.ai.pretrained_batification import PretrainedAIBatificatio
 from batikcraft_studio.application import ProjectSessionError
 from batikcraft_studio.imaging.structured_batification import BatificationError
 
+from .batik_ai_provider_dialog import BatikAIProviderDialog
 from .batikbrew_output_mode_dialog import BatikBrewOutputModeDialog
 from .batikbrew_request_dialog import BatikBrewRequest, BatikBrewRequestDialog
 from .context_tool_editor_hotfix_v14 import ContextToolEditorWorkspaceView as _HotfixV14Editor
@@ -32,7 +33,7 @@ from .progress_dialog import ProgressDialog, ProgressUpdate
 
 
 class ContextToolEditorWorkspaceView(_HotfixV14Editor):
-    """Generate with the provider, API model, runtime, and LoRA saved in Settings."""
+    """Generate with a model explicitly selected from centrally saved settings."""
 
     def batify_selected_with_pretrained_ai(self) -> None:
         if self._pretrained_ai_running:
@@ -56,8 +57,13 @@ class ContextToolEditorWorkspaceView(_HotfixV14Editor):
             self.set_status("Generasi BatikBrew dibatalkan.")
             return
 
-        cloud_settings = get_cloud_generation_settings_store().load()
-        provider_id = cloud_settings.provider_for_mode(output_mode)
+        model_dialog = BatikAIProviderDialog(self, output_mode=output_mode)
+        self.wait_window(model_dialog)
+        provider_id = model_dialog.result
+        if provider_id is None:
+            self.set_status("Pemilihan model BatikBrew dibatalkan.")
+            return
+
         defaults = pretrained_batification_options_from_global()
         options = self._collect_centralized_options(
             defaults=defaults,
