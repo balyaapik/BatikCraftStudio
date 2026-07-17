@@ -8,6 +8,7 @@ from batikcraft_studio.ai.batikbrew_model_settings import (
 )
 from batikcraft_studio.batikbrew_context_tool_app import ContextToolApplication
 from batikcraft_studio.ui import (
+    batik_ai_provider_dialog,
     batikbrew_request_dialog,
     context_tool_editor_hotfix_v15,
 )
@@ -42,13 +43,25 @@ def test_active_editor_uses_centralized_settings_hotfix() -> None:
     )
 
 
-def test_generation_flow_does_not_open_provider_or_model_settings() -> None:
-    source = inspect.getsource(context_tool_editor_hotfix_v15)
-    assert "BatikAIProviderDialog" not in source
-    assert "CloudBatikGenerationDialog" not in source
-    assert "BatikBrewGenerationDialog" not in source
-    assert "provider_for_mode" in source
+def test_generation_requires_model_selection_after_output_mode() -> None:
+    flow = inspect.getsource(
+        context_tool_editor_hotfix_v15.ContextToolEditorWorkspaceView.
+        batify_selected_with_pretrained_ai
+    )
+    assert "BatikBrewOutputModeDialog" in flow
+    assert "BatikAIProviderDialog" in flow
+    assert "BatikBrewRequestDialog" not in flow
+    assert flow.index("BatikBrewOutputModeDialog") < flow.index("BatikAIProviderDialog")
+    assert "provider_id = model_dialog.result" in flow
+
+
+def test_model_dialog_uses_models_saved_in_settings_without_editing_them() -> None:
+    source = inspect.getsource(batik_ai_provider_dialog)
+    assert 'self.title("Pilih Model Generasi AI")' in source
+    assert "settings.model_for(provider_id)" in source
     assert "get_batikbrew_model_settings_store" in source
+    assert "CloudAISettingsDialog" not in source
+    assert "self.settings_store.save" not in source
 
 
 def test_request_dialog_contains_only_creative_controls() -> None:
