@@ -10,8 +10,8 @@ def test_desktop_build_uses_native_onedir_packages() -> None:
     assert '"--windowed"' in source
     assert '"--icon"' in source
     assert '"--osx-bundle-identifier"' in source
-    assert "BatikCraftStudio.exe" in source
-    assert "BatikCraftStudio.app" in source
+    assert 'f"{APP_NAME}.exe"' in source
+    assert 'f"{APP_NAME}.app"' in source
 
 
 def test_portable_build_excludes_large_local_ai_frameworks() -> None:
