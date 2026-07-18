@@ -56,13 +56,26 @@ def run_runtime_model_installer(
     event_file: str | Path,
     installer_override: Callable[..., object] | None = None,
 ) -> int:
-    """Run one managed model installer and serialize progress as JSON lines."""
+    """Run one managed model installer and serialize progress as JSON lines.
 
+    The downloader runs in a child process, so every compatibility and integrity
+    policy required by the desktop process must be installed again here.  Without
+    that, an interrupted SDXL folder could pass the legacy folder-only check and
+    emit a false ``complete`` event immediately.
+    """
+
+    from batikcraft_studio.ai.model_connectivity import apply_saved_model_connectivity
+    from batikcraft_studio.ai.sdxl_runtime_integrity import (
+        install_sdxl_runtime_integrity,
+        validate_batikbrew_runtime_strict,
+    )
     from batikcraft_studio.dependency_bootstrap import activate_managed_ai_packages
     from batikcraft_studio.runtime_compatibility import install_runtime_compatibility
 
     activate_managed_ai_packages()
     install_runtime_compatibility()
+    apply_saved_model_connectivity()
+    install_sdxl_runtime_integrity()
 
     from batikcraft_studio.ai.runtime_model_installer import (
         RuntimeModelInstallCancelled,
@@ -86,7 +99,11 @@ def run_runtime_model_installer(
             _write_event(stream, "progress", **asdict(event))
 
         try:
-            installer(Path(root).expanduser().resolve(), progress=report)
+            installed = installer(Path(root).expanduser().resolve(), progress=report)
+            if normalized == "sdxl":
+                # Never trust a return code alone. Validate the exact folder that the
+                # worker is about to report as complete.
+                validate_batikbrew_runtime_strict(installed)
         except RuntimeModelInstallCancelled as exc:
             _write_event(stream, "cancelled", message=str(exc))
             return 2
