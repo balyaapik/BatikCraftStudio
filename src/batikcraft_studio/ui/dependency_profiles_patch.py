@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import tkinter as tk
-from typing import Any
 from tkinter import ttk
+from typing import Any
 
 from batikcraft_studio.ai.dependency_profiles import (
     DEPENDENCIES,
@@ -84,7 +84,9 @@ def install_dependency_profiles_patch() -> None:
             button = ttk.Button(
                 profile_actions,
                 text=label,
-                command=lambda selected=profile_id: window.install_dependency_profile(selected),
+                command=lambda selected=profile_id: window.install_dependency_profile(
+                    selected
+                ),
             )
             button.grid(
                 row=0,
@@ -116,7 +118,9 @@ def install_dependency_profiles_patch() -> None:
         requirements = missing_requirements(profile)
         label = PROFILE_LABELS[profile]
         if not requirements:
-            window._append_log(f"{label} sudah lengkap; tidak ada paket yang diunduh ulang.")
+            window._append_log(
+                f"{label} sudah lengkap; tidak ada paket yang diunduh ulang."
+            )
             window.refresh()
             if continue_with_sdxl:
                 window._continue_with_sdxl = False
@@ -134,7 +138,6 @@ def install_dependency_profiles_patch() -> None:
             f"Memasang {label}: {len(selected)} paket belum ada atau versinya tidak cocok."
         )
 
-        previous = dependency_dialog.PYTHON_AI_DEPENDENCIES
         dependency_dialog.PYTHON_AI_DEPENDENCIES = selected
         try:
             original_install(window, continue_with_sdxl=continue_with_sdxl)
@@ -144,8 +147,6 @@ def install_dependency_profiles_patch() -> None:
             dependency_dialog.PYTHON_AI_DEPENDENCIES = tuple(
                 (item.module, item.requirement) for item in DEPENDENCIES
             )
-            if not previous:
-                dependency_dialog.PYTHON_AI_DEPENDENCIES = previous
 
     def install_python_dependencies(
         window: Any,
@@ -190,13 +191,14 @@ def install_dependency_profiles_patch() -> None:
         )
         window.profile_status_value.set(
             summary
-            + "\nPaket yang sudah tersedia di executable tidak dipasang ulang ke folder dependencies."
+            + "\nPaket yang tersedia di executable tidak dipasang ulang ke dependencies."
         )
 
         runtime_lines = str(window.runtime_status.get()).splitlines()
         if runtime_lines and runtime_lines[0].startswith("Python AI Packages:"):
             runtime_lines.pop(0)
-        window.runtime_status.set(summary + ("\n" + "\n".join(runtime_lines) if runtime_lines else ""))
+        runtime_suffix = "\n" + "\n".join(runtime_lines) if runtime_lines else ""
+        window.runtime_status.set(summary + runtime_suffix)
 
     def set_installing(window: Any, installing: bool) -> None:
         original_set_installing(window, installing)
@@ -206,12 +208,22 @@ def install_dependency_profiles_patch() -> None:
 
     window_class._build = build  # type: ignore[assignment]
     window_class.refresh = refresh  # type: ignore[assignment]
-    window_class.install_dependency_profile = install_dependency_profile  # type: ignore[attr-defined]
-    window_class.install_python_dependencies = install_python_dependencies  # type: ignore[assignment]
-    window_class.install_complete_batikbrew = install_complete_batikbrew  # type: ignore[assignment]
-    window_class._missing_requirements = missing_local_requirements  # type: ignore[assignment]
+    window_class.install_dependency_profile = (  # type: ignore[attr-defined]
+        install_dependency_profile
+    )
+    window_class.install_python_dependencies = (  # type: ignore[assignment]
+        install_python_dependencies
+    )
+    window_class.install_complete_batikbrew = (  # type: ignore[assignment]
+        install_complete_batikbrew
+    )
+    window_class._missing_requirements = (  # type: ignore[assignment]
+        missing_local_requirements
+    )
     window_class._set_installing = set_installing  # type: ignore[assignment]
-    window_class._batikcraft_dependency_profiles_patch = True  # type: ignore[attr-defined]
+    window_class._batikcraft_dependency_profiles_patch = (  # type: ignore[attr-defined]
+        True
+    )
     _INSTALLED = True
 
 
