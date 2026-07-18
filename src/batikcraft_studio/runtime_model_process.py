@@ -63,6 +63,9 @@ def run_runtime_model_installer(
     """
 
     from batikcraft_studio.ai.model_connectivity import apply_saved_model_connectivity
+    from batikcraft_studio.ai.sdxl_repository_repair import (
+        install_sdxl_repository_repair,
+    )
     from batikcraft_studio.ai.sdxl_runtime_integrity import (
         install_sdxl_runtime_integrity,
         validate_batikbrew_runtime_strict,
@@ -76,6 +79,7 @@ def run_runtime_model_installer(
     install_runtime_compatibility()
     apply_saved_model_connectivity()
     install_sdxl_runtime_integrity()
+    install_sdxl_repository_repair()
 
     from batikcraft_studio.ai.runtime_model_installer import (
         RuntimeModelInstallCancelled,
