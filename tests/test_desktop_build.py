@@ -1,6 +1,21 @@
+import importlib.util
+import struct
 from pathlib import Path
+from types import ModuleType
+
+from PIL import Image
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def _load_build_module() -> ModuleType:
+    path = ROOT / "scripts" / "build_desktop.py"
+    spec = importlib.util.spec_from_file_location("batikcraft_build_desktop", path)
+    assert spec is not None
+    assert spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 def test_desktop_build_uses_native_onedir_packages() -> None:
@@ -12,6 +27,44 @@ def test_desktop_build_uses_native_onedir_packages() -> None:
     assert '"--osx-bundle-identifier"' in source
     assert 'f"{APP_NAME}.exe"' in source
     assert 'f"{APP_NAME}.app"' in source
+
+
+def test_windows_build_icon_is_square_and_bmp_backed(tmp_path: Path) -> None:
+    module = _load_build_module()
+    icon_path = module._prepare_build_icon(tmp_path, "win32")
+
+    with Image.open(icon_path) as icon:
+        sizes = icon.ico.sizes()
+    assert sizes
+    assert (256, 256) in sizes
+    assert all(width == height for width, height in sizes)
+
+    data = icon_path.read_bytes()
+    reserved, icon_type, count = struct.unpack_from("<HHH", data, 0)
+    assert (reserved, icon_type) == (0, 1)
+    assert count == len(module.WINDOWS_ICON_SIZES)
+    for index in range(count):
+        entry_offset = 6 + index * 16
+        width, height, _colors, _reserved, _planes, bits, size, offset = struct.unpack_from(
+            "<BBBBHHII", data, entry_offset
+        )
+        actual_width = 256 if width == 0 else width
+        actual_height = 256 if height == 0 else height
+        assert actual_width == actual_height
+        assert bits == 32
+        assert size > 0
+        # BITMAPINFOHEADER signature. This avoids PNG-compressed ICO frames that have
+        # caused UpdateResourceW failures in Windows PyInstaller builds.
+        assert data[offset : offset + 4] == b"(\x00\x00\x00"
+
+
+def test_macos_build_icon_is_square_png(tmp_path: Path) -> None:
+    module = _load_build_module()
+    icon_path = module._prepare_build_icon(tmp_path, "darwin")
+
+    with Image.open(icon_path) as icon:
+        assert icon.format == "PNG"
+        assert icon.size == (256, 256)
 
 
 def test_portable_build_excludes_large_local_ai_frameworks() -> None:
