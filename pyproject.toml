@@ -34,6 +34,14 @@ ai = [
   "google-genai>=1.0,<2",
   "keyring>=25,<27"
 ]
+desktop-build = [
+  "pyinstaller>=6.21,<7",
+  "safetensors>=0.4",
+  "numpy>=1.26,<3",
+  "openai>=1.0,<3",
+  "google-genai>=1.0,<2",
+  "keyring>=25,<27"
+]
 
 [project.scripts]
 batikcraft-studio = "batikcraft_studio.__main__:main"
