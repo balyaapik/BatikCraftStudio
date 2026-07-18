@@ -24,6 +24,12 @@ def main() -> int:
 
     activate_managed_ai_packages()
 
+    # Create cache/runtime/model-library directories before any Windows folder picker,
+    # Hugging Face worker, or installer dialog tries to use them.
+    from .managed_storage import ensure_managed_storage
+
+    ensure_managed_storage()
+
     # Managed packages can contain Hugging Face Hub 0.x and previously persisted
     # cache paths. Apply compatibility before any AI dialog imports downloader symbols.
     from .runtime_compatibility import install_runtime_compatibility
@@ -83,6 +89,7 @@ def main() -> int:
 
     from .app_icon import apply_app_icon
     from .config import APP_NAME
+    from .ui.cache_directory_guard import install_cache_directory_guard
     from .ui.canvas_selection_semantics import install_canvas_selection_semantics
     from .ui.dependency_integrity_patch import install_dependency_integrity_patch
     from .ui.inkscape_canvas_patch import install_inkscape_canvas_patch
@@ -100,6 +107,7 @@ def main() -> int:
     install_marketplace_model_progress()
     install_dependency_integrity_patch()
     install_model_connectivity_settings_patch()
+    install_cache_directory_guard()
     install_runtime_installer_completion_guard()
     install_realtime_canvas_patch()
     install_inkscape_canvas_patch()
