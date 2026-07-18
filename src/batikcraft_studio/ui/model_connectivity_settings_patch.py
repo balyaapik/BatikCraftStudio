@@ -7,6 +7,7 @@ from tkinter import ttk
 from typing import Any
 
 from batikcraft_studio import batikbrew_context_tool_app
+from batikcraft_studio.ai import sdxl_text_component_repair
 from batikcraft_studio.ai.model_connectivity import (
     apply_model_connectivity,
     model_online,
@@ -29,6 +30,7 @@ def install_model_connectivity_settings_patch() -> None:
         return
     _patch_runtime_dialog()
     _patch_application_menu()
+    _patch_missing_component_message()
     _INSTALLED = True
 
 
@@ -107,6 +109,29 @@ def _patch_application_menu() -> None:
     application_class._build_menu = build_menu  # type: ignore[assignment]
     application_class.open_ai_runtime_settings = open_runtime_settings  # type: ignore[assignment]
     application_class._batikcraft_online_menu_patch = True  # type: ignore[attr-defined]
+
+
+def _patch_missing_component_message() -> None:
+    def actionable_message(settings: Any, missing: list[str]) -> str:
+        labels = ", ".join(missing) if missing else "tokenizer_2, text_encoder_2"
+        if bool(getattr(settings, "local_files_only", False)):
+            hint = (
+                f"Mode Offline aktif. Buka Settings lalu centang '{_ONLINE_LABEL}', "
+                "kemudian jalankan Periksa & Reparasi Semua AI + BatikBrew SDXL."
+            )
+        else:
+            hint = (
+                "Mode Online aktif dan BatikCraft sudah mencoba reparasi otomatis. "
+                "Periksa koneksi internet/Hugging Face, lalu buka Dependencies dan "
+                "jalankan reparasi BatikBrew SDXL."
+            )
+        return (
+            f"Base model SDXL tidak lengkap: komponen {labels} tidak tersedia. "
+            "Folder model harus memiliki tokenizer_2 dan text_encoder_2. "
+            + hint
+        )
+
+    sdxl_text_component_repair._missing_component_message = actionable_message
 
 
 def _toggle_online_access(application: Any) -> None:
