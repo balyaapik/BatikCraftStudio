@@ -13,10 +13,34 @@ def _configure_logging() -> None:
     )
 
 
+def _run_private_worker_if_requested() -> int | None:
+    """Dispatch hidden installer modes before importing Tkinter or the application shell.
+
+    Frozen Windows builds launch the same ``BatikCraftStudio.exe`` for dependency and
+    model downloads.  Without this early dispatch the child process opens another GUI,
+    exits with code zero, and the parent dialog incorrectly reports 100% even though no
+    package or model file was downloaded.
+    """
+
+    from .dependency_bootstrap import maybe_run_dependency_installer
+
+    dependency_result = maybe_run_dependency_installer()
+    if dependency_result is not None:
+        return dependency_result
+
+    from .runtime_model_process import maybe_run_runtime_model_installer
+
+    return maybe_run_runtime_model_installer()
+
+
 def main() -> int:
-    """Launch the desktop application and return a process exit code."""
+    """Launch a private worker or the desktop application and return its exit code."""
 
     _configure_logging()
+
+    worker_result = _run_private_worker_if_requested()
+    if worker_result is not None:
+        return worker_result
 
     # Optional AI packages installed from the Dependencies GUI live outside the
     # one-file executable and must be activated before AI providers are imported.
