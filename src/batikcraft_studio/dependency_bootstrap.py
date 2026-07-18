@@ -9,11 +9,13 @@ directory to ``sys.path`` before any AI provider is imported.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import importlib
 import os
 import sys
 from collections.abc import Iterable, Sequence
 from pathlib import Path
+from typing import TextIO
 
 INSTALL_FLAG = "--batikcraft-install-ai-dependencies"
 _DLL_DIRECTORY_HANDLES: list[object] = []
@@ -74,6 +76,7 @@ def managed_ai_install_command(
     target: str | Path | None = None,
     executable: str | Path | None = None,
     frozen: bool | None = None,
+    log_file: str | Path | None = None,
 ) -> list[str]:
     """Build the child-process command used by the dependency manager GUI."""
 
@@ -85,14 +88,11 @@ def managed_ai_install_command(
     launcher = str(executable or sys.executable)
     is_frozen = bool(getattr(sys, "frozen", False)) if frozen is None else frozen
     if is_frozen:
-        return [
-            launcher,
-            INSTALL_FLAG,
-            "--target",
-            str(install_target),
-            "--",
-            *packages,
-        ]
+        command = [launcher, INSTALL_FLAG, "--target", str(install_target)]
+        if log_file is not None:
+            command.extend(["--log-file", str(Path(log_file).expanduser().resolve())])
+        command.extend(["--", *packages])
+        return command
     return [
         launcher,
         "-m",
@@ -118,6 +118,7 @@ def maybe_run_dependency_installer(argv: Sequence[str] | None = None) -> int | N
     parser = argparse.ArgumentParser(prog="BatikCraftStudio AI dependency installer")
     parser.add_argument(INSTALL_FLAG, action="store_true")
     parser.add_argument("--target", required=True)
+    parser.add_argument("--log-file")
     parser.add_argument("requirements", nargs=argparse.REMAINDER)
     namespace = parser.parse_args(arguments)
     requirements = list(namespace.requirements)
@@ -128,7 +129,19 @@ def maybe_run_dependency_installer(argv: Sequence[str] | None = None) -> int | N
 
     target = Path(namespace.target).expanduser().resolve()
     target.mkdir(parents=True, exist_ok=True)
+    if namespace.log_file:
+        log_path = Path(namespace.log_file).expanduser().resolve()
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        with log_path.open("w", encoding="utf-8", errors="replace", buffering=1) as stream:
+            return _run_with_redirected_output(requirements, target=target, stream=stream)
     return run_bundled_pip_install(requirements, target=target)
+
+
+def _run_with_redirected_output(
+    requirements: Sequence[str], *, target: Path, stream: TextIO
+) -> int:
+    with contextlib.redirect_stdout(stream), contextlib.redirect_stderr(stream):
+        return run_bundled_pip_install(requirements, target=target)
 
 
 def run_bundled_pip_install(requirements: Sequence[str], *, target: Path) -> int:
