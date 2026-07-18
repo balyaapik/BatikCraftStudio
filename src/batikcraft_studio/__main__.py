@@ -93,10 +93,14 @@ def main() -> int:
         install_model_connectivity_settings_patch,
     )
     from .ui.realtime_canvas_patch import install_realtime_canvas_patch
+    from .ui.runtime_installer_completion_guard import (
+        install_runtime_installer_completion_guard,
+    )
 
     install_marketplace_model_progress()
     install_dependency_integrity_patch()
     install_model_connectivity_settings_patch()
+    install_runtime_installer_completion_guard()
     install_realtime_canvas_patch()
     install_inkscape_canvas_patch()
     install_inkscape_pointer_hotpath()
