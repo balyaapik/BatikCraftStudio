@@ -12,6 +12,8 @@ on:
       - ".github/workflows/build-desktop.yml"
       - "packaging/**"
       - "scripts/build_desktop.py"
+      - "scripts/build_installer.py"
+      - "scripts/windows_installer_policy.py"
       - "src/**"
       - "pyproject.toml"
   push:
@@ -112,7 +114,7 @@ jobs:
         run: python -m pip install --upgrade pip && python -m pip install -e ".[desktop-build]"
 
       - name: Build native desktop installer
-        run: python scripts/build_desktop.py
+        run: python scripts/build_installer.py
 
       - name: Smoke test bundled AI dependency installer
         if: runner.os == 'Windows'
