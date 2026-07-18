@@ -169,7 +169,7 @@ def test_desktop_build_bundles_bootstrap_and_model_downloader() -> None:
     assert '"--collect-all",\n            "pip"' in build_script
     assert '"--collect-all",\n            "huggingface_hub"' in build_script
     assert '"pip>=24,<26"' in pyproject
-    assert '"huggingface-hub>=0.27"' in pyproject
+    assert '"huggingface-hub>=0.34,<1"' in pyproject
     assert '"--exclude-module",\n            "torch"' in build_script
 
 
