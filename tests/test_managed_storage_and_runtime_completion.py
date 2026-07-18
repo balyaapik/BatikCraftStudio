@@ -82,7 +82,11 @@ def test_main_dispatches_dependency_worker_before_desktop_imports(monkeypatch: A
     def runtime_must_not_run() -> int | None:
         raise AssertionError("runtime worker must not run after dependency worker matched")
 
-    monkeypatch.setattr(runtime_model_process, "maybe_run_runtime_model_installer", runtime_must_not_run)
+    monkeypatch.setattr(
+        runtime_model_process,
+        "maybe_run_runtime_model_installer",
+        runtime_must_not_run,
+    )
 
     assert entrypoint.main() == 17
 
