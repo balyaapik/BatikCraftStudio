@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import threading
+from pathlib import Path
 from tkinter import filedialog, messagebox
 
 from batikcraft_studio.ai import (
@@ -14,6 +15,11 @@ from batikcraft_studio.ai import (
 )
 from batikcraft_studio.application import ProjectSessionError
 from batikcraft_studio.i18n import tr
+from batikcraft_studio.model_transfer import (
+    ModelTransferCancelled,
+    copy_model_pack_with_progress,
+    default_model_download_cache,
+)
 
 from .offline_ai_dialogs import DatasetStudioWindow
 from .offline_ai_dialogs_global import GlobalOfflineModelManagerWindow
@@ -121,7 +127,7 @@ class ProgressDatasetStudioWindow(DatasetStudioWindow):
 
 
 class ProgressOfflineModelManagerWindow(GlobalOfflineModelManagerWindow):
-    """Install and verify `.batikmodel` packages with visible progress."""
+    """Install and verify `.batikmodel` packages with real byte progress."""
 
     def _install(self) -> None:
         selected = filedialog.askopenfilename(
@@ -138,45 +144,65 @@ class ProgressOfflineModelManagerWindow(GlobalOfflineModelManagerWindow):
             self,
             title="Instal Model LoRA Batik",
             message="Membaca paket model…",
-            cancellable=False,
+            cancellable=True,
+            auto_close_ms=None,
         )
 
         def worker() -> None:
             reporter = progress.reporter
+            source = Path(selected)
+            cached = default_model_download_cache() / f"local-{source.name}"
+
+            def report_bytes(completed: int, total: int, filename: str) -> None:
+                scaled = (completed / total * 85.0) if total > 0 else None
+                reporter.update(
+                    "Menyalin paket LoRA ke folder dependencies…",
+                    scaled,
+                    100 if scaled is not None else None,
+                    detail=(
+                        f"{filename} · {_format_bytes(completed)} / {_format_bytes(total)}"
+                        if total > 0
+                        else filename
+                    ),
+                )
+
             try:
-                reporter.update(
-                    "Tahap 1/5 — Membaca manifest `.batikmodel`",
-                    1,
-                    5,
-                    detail=selected,
+                cached = copy_model_pack_with_progress(
+                    source,
+                    cached,
+                    progress=report_bytes,
+                    cancel_event=reporter.cancel_event,
                 )
+                if reporter.cancelled:
+                    raise ModelTransferCancelled("Instalasi model LoRA dibatalkan.")
                 reporter.update(
-                    "Tahap 2/5 — Memvalidasi struktur paket",
-                    2,
-                    5,
+                    "Memvalidasi manifest dan checksum LoRA…",
+                    90,
+                    100,
+                    detail=source.name,
                 )
+                installed = self.session.install_model_pack(cached, replace=True)
                 reporter.update(
-                    "Tahap 3/5 — Memverifikasi ukuran dan SHA-256",
-                    3,
-                    5,
+                    "Memperbarui library model lokal…",
+                    100,
+                    100,
+                    detail=str(installed.root),
                 )
-                installed = self.session.install_model_pack(selected, replace=True)
-                reporter.update(
-                    "Tahap 4/5 — Menyalin LoRA ke penyimpanan aplikasi",
-                    4,
-                    5,
+            except ModelTransferCancelled as exc:
+                cached.unlink(missing_ok=True)
+                self.after(
+                    0,
+                    lambda error=exc: progress.mark_cancelled(str(error)),
                 )
-                reporter.update(
-                    "Tahap 5/5 — Memperbarui daftar model",
-                    5,
-                    5,
-                )
-            except ProjectSessionError as exc:
+                return
+            except (ProjectSessionError, OSError) as exc:
+                cached.unlink(missing_ok=True)
                 self.after(
                     0,
                     lambda error=exc: self._finish_model_install_error(progress, error),
                 )
                 return
+            cached.unlink(missing_ok=True)
             self.after(
                 0,
                 lambda: self._finish_model_install(progress, installed),
@@ -201,6 +227,16 @@ class ProgressOfflineModelManagerWindow(GlobalOfflineModelManagerWindow):
     ) -> None:
         progress.fail(str(error))
         messagebox.showerror(self.title(), str(error), parent=self)
+
+
+def _format_bytes(value: int) -> str:
+    amount = float(max(0, int(value)))
+    for unit in ("B", "KB", "MB", "GB", "TB"):
+        if amount < 1024.0 or unit == "TB":
+            precision = 0 if unit == "B" else 2
+            return f"{amount:.{precision}f} {unit}"
+        amount /= 1024.0
+    return f"{int(value)} B"
 
 
 __all__ = [
