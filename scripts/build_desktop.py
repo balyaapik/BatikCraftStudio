@@ -149,13 +149,14 @@ def _prepare_build_icon(directory: Path, platform_name: str | None = None) -> Pa
 
 
 def _pyinstaller_command(icon_path: Path | None) -> list[str]:
+    package_mode = "--onefile" if sys.platform == "win32" else "--onedir"
     command = [
         sys.executable,
         "-m",
         "PyInstaller",
         "--noconfirm",
         "--clean",
-        "--onedir",
+        package_mode,
         "--name",
         APP_NAME,
         "--paths",
@@ -213,13 +214,13 @@ def _largest_icon_png(destination: Path) -> None:
 
 
 def _package_windows() -> Path:
-    application = DIST_DIR / APP_NAME
-    executable = application / f"{APP_NAME}.exe"
+    executable = DIST_DIR / f"{APP_NAME}.exe"
     if not executable.is_file():
         raise FileNotFoundError(f"Windows executable was not created: {executable}")
-    archive_base = RELEASE_DIR / f"{APP_NAME}-Windows-{_architecture()}"
-    archive = Path(shutil.make_archive(str(archive_base), "zip", DIST_DIR, APP_NAME))
-    return archive
+
+    release_executable = RELEASE_DIR / f"{APP_NAME}-Windows-{_architecture()}.exe"
+    shutil.copy2(executable, release_executable)
+    return release_executable
 
 
 def _package_macos() -> Path:
