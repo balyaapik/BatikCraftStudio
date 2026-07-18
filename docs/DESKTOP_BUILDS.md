@@ -6,7 +6,7 @@ BatikCraft Studio is packaged with PyInstaller on each target operating system. 
 
 | Platform | Artifact | Output |
 | --- | --- | --- |
-| Windows x64 | `BatikCraftStudio-Windows-x64` | ZIP containing `BatikCraftStudio.exe` and support files |
+| Windows x64 | `BatikCraftStudio-Windows-x64` | One self-contained `BatikCraftStudio-Windows-x64.exe` file |
 | Linux x64 | `BatikCraftStudio-Linux-x64` | TAR.GZ containing the executable, icon, desktop launcher, installer, and uninstaller |
 | macOS Intel | `BatikCraftStudio-macOS-x64` | ZIP containing `BatikCraftStudio.app` |
 | macOS Apple Silicon | `BatikCraftStudio-macOS-arm64` | ZIP containing `BatikCraftStudio.app` |
@@ -33,7 +33,11 @@ The package is written to `release/`.
 
 ### Windows
 
-Run `BatikCraftStudio.exe`, not `python -m batikcraft_studio`. The application logo is embedded in the executable, so Windows taskbar, Alt+Tab, title bar, and shortcuts use the BatikCraft Studio identity. Windows builds are currently unsigned and can trigger SmartScreen.
+The Windows build uses PyInstaller `--onefile --windowed`. The embedded Python interpreter, required Python packages, DLLs, Tk resources, application resources, and cloud-client dependencies are contained in one executable. End users do not need to install Python or keep an `_internal` directory beside the application.
+
+Run `BatikCraftStudio-Windows-x64.exe`, not `python -m batikcraft_studio`. The application logo is embedded in the executable, so Windows taskbar, Alt+Tab, title bar, and shortcuts use the BatikCraft Studio identity. Windows builds are currently unsigned and can trigger SmartScreen.
+
+A one-file PyInstaller application extracts its bundled runtime into a temporary `_MEI...` directory while running. This can make the first startup slower than an onedir package, especially while Windows Defender scans the executable. The temporary runtime is normally removed when the application exits.
 
 The build script does not send the repository ICO directly to `UpdateResourceW`. It first reads the largest logo frame, centers it on a 256×256 transparent canvas, and writes a fresh BMP-backed multi-resolution ICO. This prevents `WinError 87` failures caused by non-square or PNG-compressed ICO frames.
 
