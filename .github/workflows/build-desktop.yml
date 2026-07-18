@@ -71,6 +71,72 @@ jobs:
       - name: Build native desktop installer
         run: python scripts/build_desktop.py
 
+      - name: Smoke test bundled AI dependency installer
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $wheelDirectory = Join-Path $env:RUNNER_TEMP "batikcraft-pip-smoke-wheel"
+          $wheel = Join-Path $wheelDirectory "batikcraft_pip_smoke-0.0.1-py3-none-any.whl"
+          New-Item -ItemType Directory -Force -Path $wheelDirectory | Out-Null
+
+          @'
+          import sys
+          import zipfile
+          from pathlib import Path
+
+          wheel = Path(sys.argv[1])
+          dist_info = "batikcraft_pip_smoke-0.0.1.dist-info"
+          files = {
+              "batikcraft_pip_smoke/__init__.py": "__version__ = '0.0.1'\n",
+              "batikcraft_pip_smoke/cli.py": "def main():\n    return 0\n",
+              f"{dist_info}/METADATA": (
+                  "Metadata-Version: 2.1\n"
+                  "Name: batikcraft-pip-smoke\n"
+                  "Version: 0.0.1\n"
+              ),
+              f"{dist_info}/WHEEL": (
+                  "Wheel-Version: 1.0\n"
+                  "Generator: BatikCraft Studio CI\n"
+                  "Root-Is-Purelib: true\n"
+                  "Tag: py3-none-any\n"
+              ),
+              f"{dist_info}/entry_points.txt": (
+                  "[console_scripts]\n"
+                  "batikcraft-pip-smoke = batikcraft_pip_smoke.cli:main\n"
+              ),
+          }
+          record_name = f"{dist_info}/RECORD"
+          files[record_name] = "".join(f"{name},,\n" for name in [*files, record_name])
+          with zipfile.ZipFile(wheel, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+              for name, content in files.items():
+                  archive.writestr(name, content)
+          print(wheel)
+          '@ | python - $wheel
+
+          $target = Join-Path $env:RUNNER_TEMP "batikcraft-ai-runtime-smoke"
+          $log = Join-Path $env:RUNNER_TEMP "batikcraft-ai-runtime-smoke.log"
+          $arguments = @(
+            "--batikcraft-install-ai-dependencies",
+            "--target", $target,
+            "--log-file", $log,
+            "--", $wheel
+          )
+          $process = Start-Process `
+            -FilePath ".\dist\BatikCraftStudio.exe" `
+            -ArgumentList $arguments `
+            -Wait `
+            -PassThru
+          if (Test-Path $log) {
+            Get-Content $log
+          }
+          if ($process.ExitCode -ne 0) {
+            throw "Bundled AI dependency installer failed with exit code $($process.ExitCode)."
+          }
+          $installedPackage = Join-Path $target "batikcraft_pip_smoke\__init__.py"
+          if (-not (Test-Path $installedPackage)) {
+            throw "Bundled pip returned success but did not install the smoke-test wheel."
+          }
+
       - name: Verify installer artifact
         shell: bash
         run: |

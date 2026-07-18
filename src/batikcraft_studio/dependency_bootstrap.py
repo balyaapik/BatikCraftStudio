@@ -144,9 +144,35 @@ def _run_with_redirected_output(
         return run_bundled_pip_install(requirements, target=target)
 
 
+def _register_distlib_frozen_resource_finder() -> None:
+    """Teach pip's vendored distlib how to read resources from a frozen loader.
+
+    Distlib only recognizes standard source and zip loaders. PyInstaller exposes
+    ``pip._vendor.distlib`` through its own frozen importer, so distlib otherwise
+    raises ``Unable to locate finder for 'pip._vendor.distlib'`` while preparing
+    Windows console-script launcher executables. Its normal filesystem finder works
+    for PyInstaller because collected data files are materialized below ``_MEIPASS``.
+    """
+
+    try:
+        import pip._vendor.distlib as distlib_package
+        from pip._vendor.distlib import resources as distlib_resources
+    except ImportError:
+        return
+
+    loader = getattr(distlib_package, "__loader__", None)
+    if loader is None:
+        return
+    distlib_resources.register_finder(loader, distlib_resources.ResourceFinder)
+    finder_cache = getattr(distlib_resources, "_finder_cache", None)
+    if isinstance(finder_cache, dict):
+        finder_cache.pop(distlib_package.__name__, None)
+
+
 def run_bundled_pip_install(requirements: Sequence[str], *, target: Path) -> int:
     """Install optional packages using pip bundled inside the desktop executable."""
 
+    _register_distlib_frozen_resource_finder()
     try:
         from pip._internal.cli.main import main as pip_main
     except ImportError:
