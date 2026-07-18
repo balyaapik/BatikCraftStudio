@@ -6,10 +6,12 @@ import inspect
 import json
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 
 from batikcraft_studio.ai.runtime_model_installer import RuntimeModelInstallError
+from batikcraft_studio.ai import sdxl_runtime_integrity
 from batikcraft_studio.ai.sdxl_runtime_integrity import (
     inspect_batikbrew_runtime,
     validate_batikbrew_runtime_strict,
@@ -53,9 +55,23 @@ def _complete_runtime(base: Path) -> None:
         (folder / "model.safetensors").write_bytes(b"test")
 
 
-def test_complete_sdxl_runtime_passes_component_level_validation(tmp_path: Path) -> None:
+def _pretend_weight_sizes_are_complete(monkeypatch: Any) -> None:
+    minimums = sdxl_runtime_integrity._MINIMUM_COMPONENT_WEIGHT_BYTES
+
+    def fake_size(path: Path) -> int:
+        minimum = minimums.get(path.parent.name)
+        return minimum + 1 if minimum is not None else path.stat().st_size
+
+    monkeypatch.setattr(sdxl_runtime_integrity, "_safe_file_size", fake_size)
+
+
+def test_complete_sdxl_runtime_passes_component_level_validation(
+    tmp_path: Path,
+    monkeypatch: Any,
+) -> None:
     base = tmp_path / "sdxl"
     _complete_runtime(base)
+    _pretend_weight_sizes_are_complete(monkeypatch)
 
     assert inspect_batikbrew_runtime(base) == ()
     validate_batikbrew_runtime_strict(SimpleNamespace(base_model=base))
@@ -87,6 +103,21 @@ def test_missing_text_encoder_configuration_requires_repair(tmp_path: Path) -> N
     issues = inspect_batikbrew_runtime(base)
 
     assert "text_encoder_2/config.json tidak tersedia" in issues
+
+
+def test_pointer_and_tiny_weight_files_require_repair(tmp_path: Path) -> None:
+    base = tmp_path / "sdxl"
+    _complete_runtime(base)
+    pointer = base / "unet" / "model.safetensors"
+    pointer.write_text(
+        "version https://git-lfs.github.com/spec/v1\noid sha256:abc\nsize 123\n",
+        encoding="utf-8",
+    )
+
+    issues = inspect_batikbrew_runtime(base)
+
+    assert any("pointer/stub" in issue and "unet" in issue for issue in issues)
+    assert any("ukuran bobot unet terlalu kecil" in issue for issue in issues)
 
 
 def test_dependency_window_reports_repair_instead_of_all_installed() -> None:
