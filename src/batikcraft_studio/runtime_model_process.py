@@ -58,10 +58,8 @@ def run_runtime_model_installer(
 ) -> int:
     """Run one managed model installer and serialize progress as JSON lines.
 
-    The downloader runs in a child process, so every compatibility and integrity
-    policy required by the desktop process must be installed again here.  Without
-    that, an interrupted SDXL folder could pass the legacy folder-only check and
-    emit a false ``complete`` event immediately.
+    The downloader runs in a child process, so every compatibility, storage, and
+    integrity policy required by the desktop process must be installed again here.
     """
 
     from batikcraft_studio.ai.model_connectivity import apply_saved_model_connectivity
@@ -70,9 +68,11 @@ def run_runtime_model_installer(
         validate_batikbrew_runtime_strict,
     )
     from batikcraft_studio.dependency_bootstrap import activate_managed_ai_packages
+    from batikcraft_studio.managed_storage import ensure_managed_storage
     from batikcraft_studio.runtime_compatibility import install_runtime_compatibility
 
     activate_managed_ai_packages()
+    ensure_managed_storage()
     install_runtime_compatibility()
     apply_saved_model_connectivity()
     install_sdxl_runtime_integrity()
@@ -114,7 +114,7 @@ def run_runtime_model_installer(
             _write_event(stream, "error", message=f"Instalasi gagal: {exc}")
             return 1
 
-        _write_event(stream, "complete", family=normalized)
+        _write_event(stream, "complete", family=normalized, validated=True)
         return 0
 
 
