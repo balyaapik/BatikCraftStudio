@@ -18,15 +18,50 @@ def _load_build_module() -> ModuleType:
     return module
 
 
-def test_desktop_build_uses_native_onedir_packages() -> None:
-    source = (ROOT / "scripts" / "build_desktop.py").read_text(encoding="utf-8")
+def test_windows_build_uses_onefile_and_other_platforms_use_onedir() -> None:
+    module = _load_build_module()
+    original_platform = module.sys.platform
+    try:
+        module.sys.platform = "win32"
+        windows_command = module._pyinstaller_command(None)
+        assert "--onefile" in windows_command
+        assert "--onedir" not in windows_command
+        assert "--windowed" in windows_command
 
-    assert '"--onedir"' in source
-    assert '"--windowed"' in source
-    assert '"--icon"' in source
-    assert '"--osx-bundle-identifier"' in source
-    assert 'f"{APP_NAME}.exe"' in source
-    assert 'f"{APP_NAME}.app"' in source
+        module.sys.platform = "darwin"
+        macos_command = module._pyinstaller_command(None)
+        assert "--onedir" in macos_command
+        assert "--onefile" not in macos_command
+        assert "--windowed" in macos_command
+        assert "--osx-bundle-identifier" in macos_command
+
+        module.sys.platform = "linux"
+        linux_command = module._pyinstaller_command(None)
+        assert "--onedir" in linux_command
+        assert "--onefile" not in linux_command
+        assert "--windowed" not in linux_command
+    finally:
+        module.sys.platform = original_platform
+
+
+def test_windows_packager_publishes_exactly_one_executable(tmp_path: Path) -> None:
+    module = _load_build_module()
+    dist_dir = tmp_path / "dist"
+    release_dir = tmp_path / "release"
+    dist_dir.mkdir()
+    release_dir.mkdir()
+    source = dist_dir / f"{module.APP_NAME}.exe"
+    source.write_bytes(b"single-file-windows-bundle")
+
+    module.DIST_DIR = dist_dir
+    module.RELEASE_DIR = release_dir
+    module._architecture = lambda: "x64"
+
+    artifact = module._package_windows()
+
+    assert artifact == release_dir / "BatikCraftStudio-Windows-x64.exe"
+    assert artifact.read_bytes() == source.read_bytes()
+    assert list(release_dir.iterdir()) == [artifact]
 
 
 def test_windows_build_icon_is_square_and_bmp_backed(tmp_path: Path) -> None:
