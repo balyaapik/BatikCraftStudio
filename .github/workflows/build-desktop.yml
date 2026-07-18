@@ -15,6 +15,10 @@ on:
       - "src/**"
       - "pyproject.toml"
   push:
+    branches:
+      - main
+    paths:
+      - ".github/release-request.json"
     tags:
       - "v*"
 
@@ -53,15 +57,24 @@ jobs:
           cache: pip
 
       - name: Verify release tag matches application version
-        if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.release_tag != '')
+        if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.release_tag != '') || (github.event_name == 'push' && github.ref == 'refs/heads/main')
         shell: bash
         env:
           MANUAL_RELEASE_TAG: ${{ inputs.release_tag }}
         run: |
           if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
             release_tag="${GITHUB_REF_NAME}"
-          else
+          elif [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
             release_tag="${MANUAL_RELEASE_TAG}"
+          else
+            release_tag="$(python - <<'PY'
+          import json
+          from pathlib import Path
+
+          request = json.loads(Path('.github/release-request.json').read_text(encoding='utf-8'))
+          print(str(request['release_tag']).strip())
+          PY
+          )"
           fi
 
           python - "${release_tag}" <<'PY'
@@ -192,13 +205,16 @@ jobs:
 
   publish-release:
     name: Publish GitHub release
-    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.release_tag != '')
+    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.release_tag != '') || (github.event_name == 'push' && github.ref == 'refs/heads/main')
     needs: build
     runs-on: ubuntu-22.04
     permissions:
       contents: write
 
     steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
       - name: Download all native installers
         uses: actions/download-artifact@v4
         with:
@@ -214,8 +230,17 @@ jobs:
         run: |
           if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
             release_tag="${GITHUB_REF_NAME}"
-          else
+          elif [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
             release_tag="${MANUAL_RELEASE_TAG}"
+          else
+            release_tag="$(python - <<'PY'
+          import json
+          from pathlib import Path
+
+          request = json.loads(Path('.github/release-request.json').read_text(encoding='utf-8'))
+          print(str(request['release_tag']).strip())
+          PY
+          )"
           fi
 
           if [[ ! "${release_tag}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
@@ -225,13 +250,22 @@ jobs:
 
           echo "tag=${release_tag}" >> "${GITHUB_OUTPUT}"
 
-      - name: Create GitHub release
+      - name: Create or update GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ steps.release.outputs.tag }}
         run: |
-          gh release create "${RELEASE_TAG}" release-assets/* \
-            --repo "${GITHUB_REPOSITORY}" \
-            --target "${GITHUB_SHA}" \
-            --title "BatikCraft Studio ${RELEASE_TAG}" \
-            --generate-notes
+          if gh release view "${RELEASE_TAG}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
+            gh release upload "${RELEASE_TAG}" release-assets/* \
+              --repo "${GITHUB_REPOSITORY}" \
+              --clobber
+            gh release edit "${RELEASE_TAG}" \
+              --repo "${GITHUB_REPOSITORY}" \
+              --title "BatikCraft Studio ${RELEASE_TAG}"
+          else
+            gh release create "${RELEASE_TAG}" release-assets/* \
+              --repo "${GITHUB_REPOSITORY}" \
+              --target "${GITHUB_SHA}" \
+              --title "BatikCraft Studio ${RELEASE_TAG}" \
+              --generate-notes
+          fi
