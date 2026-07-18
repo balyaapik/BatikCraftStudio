@@ -55,6 +55,9 @@ class ProgressReporter:
     def complete(self, message: str = "Selesai") -> None:
         self._events.put(("complete", message))
 
+    def cancelled_update(self, message: str = "Proses dibatalkan") -> None:
+        self._events.put(("cancelled", message))
+
     def fail(self, message: str) -> None:
         self._events.put(("error", message))
 
@@ -136,6 +139,9 @@ class ProgressDialog(tk.Toplevel):
     def finish(self, message: str = "Selesai") -> None:
         self._events.put(("complete", message))
 
+    def mark_cancelled(self, message: str = "Proses dibatalkan") -> None:
+        self._events.put(("cancelled", message))
+
     def fail(self, message: str) -> None:
         self._events.put(("error", message))
 
@@ -165,7 +171,7 @@ class ProgressDialog(tk.Toplevel):
             return
         self._cancel_event.set()
         self.message_value.set("Membatalkan proses…")
-        self.detail_value.set("Menunggu tahap aktif berhenti dengan aman.")
+        self.detail_value.set("Menghentikan stream aktif dan menyimpan data yang aman.")
         self.cancel_button.configure(state="disabled")
 
     def close(self) -> None:
@@ -215,15 +221,20 @@ class ProgressDialog(tk.Toplevel):
             self.detail_value.set("")
             if self._auto_close_ms is not None:
                 self.after(self._auto_close_ms, self.close)
+            return
+        if kind == "cancelled":
+            self.percent_value.set("Dibatalkan")
+            self.message_value.set("Proses dibatalkan")
+            self.detail_value.set(str(payload))
         else:
             self.progress.configure(mode="determinate", maximum=100, value=0)
             self.percent_value.set("")
             self.message_value.set("Proses gagal")
             self.detail_value.set(str(payload))
-            self.cancel_button.configure(text="Tutup", state="normal", command=self.close)
-            if not self.cancel_button.winfo_manager():
-                self.cancel_button.pack(side="right")
-            self.cancel_button.focus_set()
+        self.cancel_button.configure(text="Tutup", state="normal", command=self.close)
+        if not self.cancel_button.winfo_manager():
+            self.cancel_button.pack(side="right")
+        self.cancel_button.focus_set()
 
 
 __all__ = ["ProgressDialog", "ProgressReporter", "ProgressUpdate"]

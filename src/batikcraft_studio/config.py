@@ -9,7 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 APP_NAME = "BatikCraft Studio"
-APP_VERSION = "0.1.0"
+APP_VERSION = "0.1.1"
 DEFAULT_WINDOW_SIZE = "1280x800"
 MINIMUM_WINDOW_SIZE = (1024, 680)
 

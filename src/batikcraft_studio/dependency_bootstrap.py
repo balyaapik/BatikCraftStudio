@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import contextlib
 import importlib
+import json
 import os
 import shutil
 import sys
@@ -20,6 +21,8 @@ from typing import TextIO
 
 INSTALL_FLAG = "--batikcraft-install-ai-dependencies"
 DEPENDENCIES_DIR_ENV = "BATIKCRAFT_DEPENDENCIES_DIR"
+AI_CACHE_DIR_ENV = "BATIKCRAFT_AI_CACHE_DIR"
+MODEL_LIBRARY_DIR_ENV = "BATIKCRAFT_MODEL_LIBRARY"
 _DLL_DIRECTORY_HANDLES: list[object] = []
 
 
@@ -33,6 +36,27 @@ def _per_user_application_data_root() -> Path:
         return Path.home() / "Library" / "Application Support" / "BatikCraftStudio"
     data_home = os.environ.get("XDG_DATA_HOME")
     root = Path(data_home) if data_home else Path.home() / ".local" / "share"
+    return root / "BatikCraftStudio"
+
+
+def _per_user_cache_root() -> Path:
+    if os.name == "nt":
+        return _per_user_application_data_root()
+    if sys.platform == "darwin":
+        return Path.home() / "Library" / "Caches" / "BatikCraftStudio"
+    cache_home = os.environ.get("XDG_CACHE_HOME")
+    root = Path(cache_home) if cache_home else Path.home() / ".cache"
+    return root / "BatikCraftStudio"
+
+
+def _per_user_config_root() -> Path:
+    appdata = os.environ.get("APPDATA")
+    if appdata:
+        return Path(appdata) / "BatikCraftStudio"
+    if sys.platform == "darwin":
+        return Path.home() / "Library" / "Application Support" / "BatikCraftStudio"
+    config_home = os.environ.get("XDG_CONFIG_HOME")
+    root = Path(config_home) if config_home else Path.home() / ".config"
     return root / "BatikCraftStudio"
 
 
@@ -68,6 +92,24 @@ def default_managed_pip_cache_dir() -> Path:
     return default_managed_dependency_root() / "cache" / "pip"
 
 
+def default_managed_huggingface_cache_dir() -> Path:
+    """Return the Hugging Face cache inside the managed dependency tree."""
+
+    return default_managed_dependency_root() / "cache" / "huggingface"
+
+
+def default_managed_runtime_model_dir() -> Path:
+    """Return the Stable Diffusion runtime directory."""
+
+    return default_managed_dependency_root() / "models" / "runtime"
+
+
+def default_managed_model_library_dir() -> Path:
+    """Return the local LoRA library directory."""
+
+    return default_managed_dependency_root() / "models" / "lora"
+
+
 def default_managed_dependency_log() -> Path:
     return default_managed_dependency_root() / "logs" / "dependency-install.log"
 
@@ -76,27 +118,157 @@ def _legacy_managed_ai_package_dir() -> Path:
     return _per_user_application_data_root() / "ai-runtime" / "site-packages"
 
 
-def _migrate_legacy_ai_packages(target: Path) -> None:
-    """Move the previous per-user runtime into the installation dependency folder."""
+def _merge_directory(source: Path, target: Path) -> None:
+    """Move a legacy directory without replacing already migrated files."""
 
-    legacy = _legacy_managed_ai_package_dir()
-    if target.exists() or not legacy.is_dir() or legacy.resolve() == target.resolve():
+    if not source.is_dir() or source.resolve() == target.resolve():
         return
     target.parent.mkdir(parents=True, exist_ok=True)
-    try:
-        shutil.move(str(legacy), str(target))
-    except OSError:
-        # Migration is best-effort. A repair install will populate the new folder.
+    if not target.exists():
+        try:
+            shutil.move(str(source), str(target))
+        except OSError:
+            return
         return
+
+    try:
+        children = tuple(source.iterdir())
+    except OSError:
+        return
+    for child in children:
+        destination = target / child.name
+        if destination.exists():
+            continue
+        try:
+            shutil.move(str(child), str(destination))
+        except OSError:
+            continue
+    try:
+        source.rmdir()
+    except OSError:
+        pass
+
+
+def _migrate_legacy_lora_models(target: Path) -> None:
+    legacy = _per_user_application_data_root() / "models"
+    if not legacy.is_dir() or legacy.resolve() == target.resolve():
+        return
+    target.mkdir(parents=True, exist_ok=True)
+    try:
+        candidates = tuple(legacy.iterdir())
+    except OSError:
+        return
+    for candidate in candidates:
+        if candidate.name.casefold() in {"runtime", "huggingface"}:
+            continue
+        if not candidate.is_dir() or not (candidate / "manifest.json").is_file():
+            continue
+        destination = target / candidate.name
+        if destination.exists():
+            continue
+        try:
+            shutil.move(str(candidate), str(destination))
+        except OSError:
+            continue
+
+
+def _remap_saved_path(value: object, mappings: Sequence[tuple[Path, Path]]) -> object:
+    text = str(value or "").strip()
+    if not text:
+        return value
+    path = Path(text).expanduser()
+    for old_root, new_root in mappings:
+        try:
+            relative = path.resolve(strict=False).relative_to(old_root.resolve(strict=False))
+        except (OSError, ValueError):
+            continue
+        return str((new_root / relative).resolve(strict=False))
+    return value
+
+
+def _rewrite_json_paths(path: Path, keys: Sequence[str], mappings: Sequence[tuple[Path, Path]]) -> None:
+    if not path.is_file():
+        return
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return
+    if not isinstance(payload, dict):
+        return
+    changed = False
+    for key in keys:
+        if key not in payload:
+            continue
+        replacement = _remap_saved_path(payload[key], mappings)
+        if replacement != payload[key]:
+            payload[key] = replacement
+            changed = True
+    if not changed:
+        return
+    temporary = path.with_name(f".{path.name}.migration.tmp")
+    try:
+        temporary.write_text(
+            json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        temporary.replace(path)
+    except OSError:
+        temporary.unlink(missing_ok=True)
+
+
+def migrate_legacy_dependencies() -> Path:
+    """Move old packages, model runtimes, caches, and LoRA packs into dependencies."""
+
+    dependency_root = default_managed_dependency_root()
+    package_target = default_managed_ai_package_dir()
+    runtime_target = default_managed_runtime_model_dir()
+    cache_target = default_managed_huggingface_cache_dir()
+    lora_target = default_managed_model_library_dir()
+
+    _merge_directory(_legacy_managed_ai_package_dir(), package_target)
+    _merge_directory(_per_user_cache_root() / "models" / "runtime", runtime_target)
+    _merge_directory(_per_user_cache_root() / "models" / "huggingface", cache_target)
+    _migrate_legacy_lora_models(lora_target)
+
+    mappings = (
+        (_per_user_cache_root() / "models" / "runtime", runtime_target),
+        (_per_user_cache_root() / "models" / "huggingface", cache_target),
+        (_per_user_application_data_root() / "models" / "runtime", runtime_target),
+        (_per_user_application_data_root() / "models" / "huggingface", cache_target),
+        (_per_user_application_data_root() / "models", lora_target),
+    )
+    config_root = _per_user_config_root()
+    _rewrite_json_paths(
+        config_root / "ai_runtime.json",
+        ("cache_dir", "default_model"),
+        mappings,
+    )
+    _rewrite_json_paths(
+        config_root / "batikbrew_model.json",
+        ("base_model_path", "lora_path"),
+        mappings,
+    )
+    return dependency_root
+
+
+def _configure_managed_dependency_environment() -> None:
+    cache = default_managed_huggingface_cache_dir()
+    os.environ.setdefault(AI_CACHE_DIR_ENV, str(cache))
+    os.environ.setdefault(MODEL_LIBRARY_DIR_ENV, str(default_managed_model_library_dir()))
+    os.environ.setdefault("HF_HOME", str(cache))
+    os.environ.setdefault("HF_HUB_CACHE", str(cache / "hub"))
+    os.environ.setdefault("TRANSFORMERS_CACHE", str(cache / "transformers"))
+    os.environ.setdefault("DIFFUSERS_CACHE", str(cache / "diffusers"))
 
 
 def activate_managed_ai_packages(path: str | Path | None = None) -> Path:
-    """Make app-managed packages importable in this process."""
+    """Make app-managed packages importable and migrate previous storage layouts."""
 
+    if path is None:
+        migrate_legacy_dependencies()
+        _configure_managed_dependency_environment()
     target = Path(path) if path is not None else default_managed_ai_package_dir()
     target = target.expanduser().resolve()
-    if path is None:
-        _migrate_legacy_ai_packages(target)
     target_text = str(target)
     if target_text not in sys.path:
         sys.path.insert(0, target_text)
@@ -286,14 +458,20 @@ def run_bundled_pip_install(
 
 
 __all__ = [
+    "AI_CACHE_DIR_ENV",
     "DEPENDENCIES_DIR_ENV",
     "INSTALL_FLAG",
+    "MODEL_LIBRARY_DIR_ENV",
     "activate_managed_ai_packages",
     "default_managed_ai_package_dir",
     "default_managed_dependency_log",
     "default_managed_dependency_root",
+    "default_managed_huggingface_cache_dir",
+    "default_managed_model_library_dir",
     "default_managed_pip_cache_dir",
+    "default_managed_runtime_model_dir",
     "managed_ai_install_command",
     "maybe_run_dependency_installer",
+    "migrate_legacy_dependencies",
     "run_bundled_pip_install",
 ]
