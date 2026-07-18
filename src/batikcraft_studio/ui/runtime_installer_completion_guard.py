@@ -1,8 +1,9 @@
 """Prevent the runtime installer dialog from displaying false success.
 
 The actual download runs in a child process. The GUI creates every managed storage
-folder before launch, validates the exact SDXL folder, and requires a real worker
-event before turning the progress bar into 100%.
+folder before launch, validates the exact SDXL folder, and accepts success only from a
+worker event that explicitly carries ``validated=true``. A zero process exit code is
+never sufficient to turn the progress bar into 100%.
 """
 
 from __future__ import annotations
@@ -20,7 +21,7 @@ _EVENT_KINDS = {"progress", "complete", "cancelled", "error"}
 
 
 def install_runtime_installer_completion_guard() -> None:
-    """Validate storage, the exact folder, and worker events before success."""
+    """Validate storage, the exact folder, and worker proof before success."""
 
     global _INSTALLED
     if _INSTALLED:
@@ -37,6 +38,7 @@ def install_runtime_installer_completion_guard() -> None:
 
     def start_install(dialog: Any) -> None:
         dialog._batikcraft_worker_event_seen = False
+        dialog._batikcraft_validated_complete_seen = False
         try:
             ensure_managed_storage()
             dialog.install_root.mkdir(parents=True, exist_ok=True)
@@ -55,8 +57,12 @@ def install_runtime_installer_completion_guard() -> None:
             payload = json.loads(line)
         except (TypeError, json.JSONDecodeError):
             payload = None
-        if isinstance(payload, dict) and str(payload.get("kind", "")) in _EVENT_KINDS:
-            dialog._batikcraft_worker_event_seen = True
+        if isinstance(payload, dict):
+            kind = str(payload.get("kind", ""))
+            if kind in _EVENT_KINDS:
+                dialog._batikcraft_worker_event_seen = True
+            if kind == "complete":
+                dialog._batikcraft_validated_complete_seen = payload.get("validated") is True
         return original_enqueue_event_line(dialog, line)
 
     def handle_event(dialog: Any, event: object) -> None:
@@ -82,16 +88,17 @@ def install_runtime_installer_completion_guard() -> None:
                 )
                 return
 
-            if not bool(getattr(dialog, "_batikcraft_worker_event_seen", False)):
+            if not bool(getattr(dialog, "_batikcraft_validated_complete_seen", False)):
                 dialog.result = None
                 dialog._finish(
-                    "Proses installer berhenti tanpa laporan valid. Status 100% dibatalkan.",
+                    "Worker tidak mengirim bukti validasi. Status 100% dibatalkan.",
                     success=False,
                 )
                 dialog.detail.configure(
                     text=(
-                        "Folder terlihat lengkap, tetapi tidak ada event progres dari proses "
-                        "pengunduh. Tutup aplikasi lalu jalankan pemeriksaan kembali."
+                        "Exit code proses tidak dianggap sebagai bukti instalasi. BatikCraft "
+                        "hanya menerima event complete dengan validated=true setelah seluruh "
+                        "file SDXL diperiksa. Jalankan reparasi kembali dari build terbaru."
                     )
                 )
                 return
