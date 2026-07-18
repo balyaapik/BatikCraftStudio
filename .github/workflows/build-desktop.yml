@@ -12,7 +12,6 @@ on:
   push:
     branches:
       - "agent/cross-platform-desktop-builds"
-      - "agent/fix-pyinstaller-windows-icon"
     tags:
       - "v*"
 
