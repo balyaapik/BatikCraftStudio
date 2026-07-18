@@ -45,13 +45,51 @@ def project_visual_fingerprint(project: Project, assets: Mapping[str, bytes]) ->
     digest = hashlib.sha256()
     digest.update(repr(project.canvas).encode("utf-8", errors="replace"))
     for layer in project.layers:
-        digest.update(repr(layer).encode("utf-8", errors="replace"))
+        digest.update(_layer_digest(layer))
     for ref in sorted(assets):
         content = assets[ref]
         digest.update(ref.encode("utf-8", errors="replace"))
         digest.update(len(content).to_bytes(8, "big", signed=False))
-        digest.update(hashlib.sha1(content, usedforsecurity=False).digest())
+        digest.update(_asset_sha1(content))
     return digest.hexdigest()[:24]
+
+
+_ASSET_SHA1_CACHE: dict[int, tuple[bytes, bytes]] = {}
+_LAYER_DIGEST_CACHE: dict[int, tuple[object, bytes]] = {}
+_FINGERPRINT_CACHE_MAX = 1024
+
+
+def _asset_sha1(content: bytes) -> bytes:
+    """SHA-1 of immutable asset bytes, memoized by object identity."""
+    key = id(content)
+    hit = _ASSET_SHA1_CACHE.get(key)
+    if hit is not None and hit[0] is content:
+        return hit[1]
+    value = hashlib.sha1(content, usedforsecurity=False).digest()
+    if len(_ASSET_SHA1_CACHE) >= _FINGERPRINT_CACHE_MAX:
+        _ASSET_SHA1_CACHE.pop(next(iter(_ASSET_SHA1_CACHE)))
+    _ASSET_SHA1_CACHE[key] = (content, value)
+    return value
+
+
+def _layer_digest(layer: object) -> bytes:
+    """SHA-1 of ``repr(layer)``, memoized by layer object identity.
+
+    Layers are immutable value objects (any edit replaces the layer instance),
+    so building the full repr string for unchanged layers on every viewport
+    kick is redundant.  Strong references keep ids stable while cached.
+    """
+    key = id(layer)
+    hit = _LAYER_DIGEST_CACHE.get(key)
+    if hit is not None and hit[0] is layer:
+        return hit[1]
+    value = hashlib.sha1(
+        repr(layer).encode("utf-8", errors="replace"), usedforsecurity=False
+    ).digest()
+    if len(_LAYER_DIGEST_CACHE) >= _FINGERPRINT_CACHE_MAX:
+        _LAYER_DIGEST_CACHE.pop(next(iter(_LAYER_DIGEST_CACHE)))
+    _LAYER_DIGEST_CACHE[key] = (layer, value)
+    return value
 
 
 def screen_canvas_size(

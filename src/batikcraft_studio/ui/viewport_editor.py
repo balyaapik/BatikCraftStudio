@@ -98,7 +98,7 @@ class ViewportEditorWorkspaceView(CanvasStructureEditorWorkspaceView):
         self._viewport_ready = False
         # Tile rendering state
         self._cached_renderer = CachedViewportRenderer()
-        self._tile_photos: dict[tuple[int, int], ImageTk.PhotoImage] = {}
+        self._tile_photos: dict[tuple[int, int], tuple[Image.Image, ImageTk.PhotoImage]] = {}
         self._tile_canvas_ids: dict[tuple[int, int], int] = {}
         # Zoom debounce / generation tracking
         self._render_generation = 0
@@ -395,8 +395,6 @@ class ViewportEditorWorkspaceView(CanvasStructureEditorWorkspaceView):
     ) -> None:
         """Start background tile rendering; post results back to Tk main thread."""
         assets = dict(self.session.assets)
-        project_revision = getattr(project, "_revision", 0)
-        # Use a simple integer revision proxy: hash of project state
         project_revision = self._compute_project_revision(project, assets)
         visibility_revision = self._compute_visibility_revision(project)
         canvas_w = project.canvas.width
@@ -468,11 +466,21 @@ class ViewportEditorWorkspaceView(CanvasStructureEditorWorkspaceView):
         for tx, ty, img in tiles:
             canvas_x = preview_left + tx * tile_px
             canvas_y = preview_top + ty * tile_px
+            source = img
+            applied = self._tile_photos.get((tx, ty))
+            if (
+                applied is not None
+                and applied[0] is source
+                and (tx, ty) in self._tile_canvas_ids
+            ):
+                # Unchanged cached tile already on screen: skip PhotoImage copy.
+                self.canvas.coords(self._tile_canvas_ids[(tx, ty)], canvas_x, canvas_y)
+                continue
             # Scale tile to exact screen size if bucket mismatch
             if img.width != tile_px or img.height != tile_px:
                 img = img.resize((tile_px, tile_px), Image.Resampling.BILINEAR)
             photo = ImageTk.PhotoImage(img)
-            self._tile_photos[(tx, ty)] = photo  # keep reference
+            self._tile_photos[(tx, ty)] = (source, photo)  # keep references
             if (tx, ty) in self._tile_canvas_ids:
                 self.canvas.itemconfigure(self._tile_canvas_ids[(tx, ty)], image=photo)
                 self.canvas.coords(self._tile_canvas_ids[(tx, ty)], canvas_x, canvas_y)
@@ -516,8 +524,6 @@ class ViewportEditorWorkspaceView(CanvasStructureEditorWorkspaceView):
             y = (ty - min_ty) * tile_px
             canvas.paste(img, (x, y))
         self._last_preview_pil = canvas
-        # Also create the Tk PhotoImage for legacy preview slot
-        self._preview_photo = ImageTk.PhotoImage(canvas)
 
     def _clear_tile_overlays(self) -> None:
         for cid in self._tile_canvas_ids.values():

@@ -106,10 +106,29 @@ def _image_bytes(img: Image.Image) -> int:
     return img.width * img.height * len(img.getbands())
 
 
+_ASSET_DIGEST_CACHE: dict[int, tuple[bytes, str]] = {}
+_ASSET_DIGEST_CACHE_MAX = 512
+
+
 def _asset_digest(content: bytes | None) -> str:
+    """Return a truncated SHA-1 of *content*, memoized by object identity.
+
+    Asset bytes are immutable, so hashing the same object repeatedly (once per
+    object per tile per frame) is wasted work.  The cache holds a strong
+    reference to each hashed object, which guarantees an ``id()`` can never be
+    reused while its entry is alive.
+    """
     if content is None:
         return ""
-    return hashlib.sha1(content, usedforsecurity=False).hexdigest()[:16]
+    key = id(content)
+    hit = _ASSET_DIGEST_CACHE.get(key)
+    if hit is not None and hit[0] is content:
+        return hit[1]
+    digest = hashlib.sha1(content, usedforsecurity=False).hexdigest()[:16]
+    if len(_ASSET_DIGEST_CACHE) >= _ASSET_DIGEST_CACHE_MAX:
+        _ASSET_DIGEST_CACHE.pop(next(iter(_ASSET_DIGEST_CACHE)))
+    _ASSET_DIGEST_CACHE[key] = (content, digest)
+    return digest
 
 
 def _gradient_hash(props: dict[str, Any] | None) -> str:
