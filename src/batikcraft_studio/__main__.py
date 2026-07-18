@@ -17,7 +17,7 @@ def _run_private_worker_if_requested() -> int | None:
     """Dispatch hidden installer modes before importing Tkinter or the application shell.
 
     Frozen Windows builds launch the same ``BatikCraftStudio.exe`` for dependency and
-    model downloads.  Without this early dispatch the child process opens another GUI,
+    model downloads. Without this early dispatch the child process opens another GUI,
     exits with code zero, and the parent dialog incorrectly reports 100% even though no
     package or model file was downloaded.
     """
@@ -66,11 +66,17 @@ def main() -> int:
 
     apply_saved_model_connectivity()
 
-    # A runtime is ready only when model_index, both tokenizer vocabularies, both text
-    # encoders, UNet, VAE, and scheduler configuration are actually complete.
+    # A runtime is ready only when model_index, tokenizers, encoders, UNet, VAE, and
+    # scheduler exist and the critical weight files have realistic byte sizes.
     from .ai.sdxl_runtime_integrity import install_sdxl_runtime_integrity
 
     install_sdxl_runtime_integrity()
+
+    # Online repair must reconcile every local SDXL file against repository metadata.
+    # Names or exit codes alone are never accepted as proof of a complete download.
+    from .ai.sdxl_repository_repair import install_sdxl_repository_repair
+
+    install_sdxl_repository_repair()
 
     # Keep current Diffusers releases quiet and correct: use component-level VAE
     # controls, load UNet-only LoRAs without probing absent text encoders, and fit
