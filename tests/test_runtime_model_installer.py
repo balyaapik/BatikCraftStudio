@@ -139,6 +139,7 @@ def test_tqdm_tracker_stops_active_download_when_cancelled() -> None:
     progress_type = tracker.tqdm_class("unet/model.safetensors")
     bar = progress_type(total=100)
     bar.update(25)
+    tracker._emit(force=True)
 
     assert events[-1].downloaded_bytes == 25
     assert events[-1].total_bytes == 100
