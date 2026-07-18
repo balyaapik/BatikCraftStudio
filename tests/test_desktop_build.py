@@ -122,6 +122,18 @@ def test_workflow_builds_all_supported_desktop_targets() -> None:
     assert "workflow_dispatch:" in workflow
 
 
+def test_workflow_can_publish_a_manual_github_release() -> None:
+    workflow = (ROOT / ".github" / "workflows" / "build-desktop.yml").read_text(
+        encoding="utf-8"
+    )
+
+    assert "release_tag:" in workflow
+    assert "Publish GitHub release" in workflow
+    assert "inputs.release_tag != ''" in workflow
+    assert 'gh release create "${RELEASE_TAG}"' in workflow
+    assert '--target "${GITHUB_SHA}"' in workflow
+
+
 def test_linux_package_registers_a_desktop_icon() -> None:
     source = (ROOT / "scripts" / "build_desktop.py").read_text(encoding="utf-8")
 
