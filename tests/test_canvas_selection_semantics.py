@@ -11,6 +11,7 @@ from batikcraft_studio.domain import (
     Transform,
 )
 from batikcraft_studio.ui.canvas_selection_semantics import (
+    _object_is_effectively_locked,
     _visible_canvas_object_ids,
     install_canvas_selection_semantics,
 )
@@ -82,6 +83,26 @@ def test_ctrl_a_object_source_includes_visible_locked_objects() -> None:
         locked.object_id,
         layer_locked.object_id,
     )
+
+
+def test_effective_lock_detection_covers_object_and_layer_lock() -> None:
+    session, movable, locked, _hidden, layer_locked = _session_with_lock_states()
+    project = session.require_project()
+
+    assert _object_is_effectively_locked(project, movable.object_id) is False
+    assert _object_is_effectively_locked(project, locked.object_id) is True
+    assert _object_is_effectively_locked(project, layer_locked.object_id) is True
+
+
+def test_shift_selection_toggle_keeps_multiple_objects_selected() -> None:
+    session, movable, locked, _hidden, _layer_locked = _session_with_lock_states()
+
+    session.select_object_for_editing(movable.object_id)
+    session.select_object_for_editing(locked.object_id, toggle=True)
+    assert session.selected_object_ids == (movable.object_id, locked.object_id)
+
+    session.select_object_for_editing(locked.object_id, toggle=True)
+    assert session.selected_object_ids == (movable.object_id,)
 
 
 def test_collective_move_skips_locked_members_and_commits_once() -> None:
