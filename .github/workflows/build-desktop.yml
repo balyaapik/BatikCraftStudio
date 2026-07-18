@@ -10,8 +10,6 @@ on:
       - "src/**"
       - "pyproject.toml"
   push:
-    branches:
-      - "agent/cross-platform-desktop-builds"
     tags:
       - "v*"
 
@@ -38,9 +36,6 @@ jobs:
           - os: macos-15
             label: macOS Apple Silicon
             artifact: BatikCraftStudio-macOS-arm64
-
-    env:
-      PYINSTALLER_CONFIG_DIR: ${{ runner.temp }}/pyinstaller
 
     steps:
       - name: Check out repository
