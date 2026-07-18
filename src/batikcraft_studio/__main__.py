@@ -18,6 +18,12 @@ def main() -> int:
 
     _configure_logging()
 
+    # Optional AI packages installed from the Dependencies GUI live outside the
+    # one-file executable and must be activated before AI providers are imported.
+    from .dependency_bootstrap import activate_managed_ai_packages
+
+    activate_managed_ai_packages()
+
     # This must happen before tkinter or any application shell is imported.
     # Otherwise ``python -m batikcraft_studio`` is grouped under python.exe and
     # Windows may keep the Python icon in the taskbar.
