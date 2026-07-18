@@ -58,6 +58,20 @@ def test_stale_paths_from_another_windows_user_are_remapped(
     )
 
 
+def test_windowed_build_gets_writable_output_streams(monkeypatch) -> None:
+    monkeypatch.setattr(sys, "stdout", None)
+    monkeypatch.setattr(sys, "stderr", None)
+
+    stdout, stderr = runtime_compatibility.ensure_windowed_text_streams()
+
+    assert stdout is not None
+    assert stderr is not None
+    assert stdout.write("hidden stdout") == len("hidden stdout")
+    assert stderr.write("hidden stderr") == len("hidden stderr")
+    assert stdout.isatty() is False
+    assert stderr.isatty() is False
+
+
 def test_legacy_huggingface_download_accepts_batikcraft_progress_class(
     monkeypatch,
 ) -> None:
@@ -69,7 +83,7 @@ def test_legacy_huggingface_download_accepts_batikcraft_progress_class(
 
     def old_hf_hub_download(*args: object, **kwargs: object) -> str:
         observed["tqdm"] = fake_file_download.tqdm
-        bar = fake_file_download.tqdm(total=10, name="legacy-group")
+        bar = fake_file_download.tqdm(total=10, name="legacy-group", file=None)
         observed["bar"] = bar
         return "downloaded"
 
@@ -77,10 +91,15 @@ def test_legacy_huggingface_download_accepts_batikcraft_progress_class(
     fake_package.file_download = fake_file_download
     monkeypatch.setitem(sys.modules, "huggingface_hub", fake_package)
     monkeypatch.setitem(sys.modules, "huggingface_hub.file_download", fake_file_download)
+    monkeypatch.setattr(sys, "stdout", None)
+    monkeypatch.setattr(sys, "stderr", None)
 
     class ProgressBar:
         def __init__(self, *args: object, **kwargs: object) -> None:
             assert "name" not in kwargs
+            stream = kwargs.get("file")
+            assert stream is not None
+            assert stream.write("progress") == len("progress")
             self.total = kwargs.get("total")
 
     assert runtime_compatibility._patch_legacy_hf_hub_download() is True
@@ -89,6 +108,7 @@ def test_legacy_huggingface_download_accepts_batikcraft_progress_class(
     assert result == "downloaded"
     assert isinstance(observed["bar"], ProgressBar)
     assert fake_file_download.tqdm is original_tqdm
+    assert sys.stderr is not None
 
 
 def test_app_and_package_versions_are_aligned() -> None:
