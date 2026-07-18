@@ -10,8 +10,8 @@ truth for the current BatikCraft process.
 from __future__ import annotations
 
 import os
+from collections.abc import MutableMapping
 from dataclasses import replace
-from typing import MutableMapping
 
 from batikcraft_studio.ai.runtime_settings import (
     AIRuntimeSettings,
