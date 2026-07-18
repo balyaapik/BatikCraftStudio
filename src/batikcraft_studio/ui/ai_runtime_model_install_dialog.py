@@ -2,24 +2,31 @@
 
 from __future__ import annotations
 
+import json
+import os
 import queue
+import signal
+import subprocess
 import threading
+import time
 import tkinter as tk
+import uuid
 from pathlib import Path
 from tkinter import ttk
 
 from batikcraft_studio.ai.runtime_model_installer import (
     BatikBrewRuntimePaths,
-    RuntimeModelInstallCancelled,
-    RuntimeModelInstallError,
     RuntimeModelInstallProgress,
     RuntimeModelPaths,
+    batikbrew_runtime_model_paths,
     default_runtime_model_root,
-    install_batikbrew_runtime,
-    install_default_runtime_models,
+    runtime_model_paths,
 )
+from batikcraft_studio.dependency_bootstrap import default_managed_dependency_root
+from batikcraft_studio.runtime_model_process import runtime_model_install_command
 
 _DOWNLOAD_STAGES = {"base", "controlnet", "sdxl"}
+_TERMINAL_EVENT_KINDS = {"complete", "cancelled", "error"}
 
 
 class RuntimeModelInstallDialog(tk.Toplevel):
@@ -44,10 +51,15 @@ class RuntimeModelInstallDialog(tk.Toplevel):
             else default_runtime_model_root()
         )
         self._events: queue.Queue[object] = queue.Queue()
-        self._cancel_event = threading.Event()
-        self._worker: threading.Thread | None = None
+        self._process: subprocess.Popen[object] | None = None
+        self._monitor: threading.Thread | None = None
+        self._cancel_requested = False
         self._finished = False
         self._size_note = ""
+        event_directory = default_managed_dependency_root() / "logs"
+        self._event_file = event_directory / (
+            f"runtime-download-{self.family}-{uuid.uuid4().hex}.jsonl"
+        )
 
         self.title("Instal Runtime AI BatikCraft")
         self.geometry("680x370")
@@ -71,9 +83,7 @@ class RuntimeModelInstallDialog(tk.Toplevel):
                 "SDXL dan LoRA BatikBrew digunakan untuk menghasilkan motif baru dari "
                 "analisis objek inspirasi, bukan untuk menempelkan tekstur pada objek."
             )
-            self._size_note = (
-                "Unduhan SDXL sekitar 7 GB. File parsial dapat dilanjutkan."
-            )
+            self._size_note = "Unduhan SDXL sekitar 7 GB. File parsial dapat dilanjutkan."
         else:
             heading = "Instal Stable Diffusion 1.5 + ControlNet"
             description = (
@@ -142,37 +152,132 @@ class RuntimeModelInstallDialog(tk.Toplevel):
         self.action_button.pack(side="right")
 
     def _start_install(self) -> None:
-        if self._worker is not None:
+        if self._process is not None or self._finished:
             return
+        self._event_file.parent.mkdir(parents=True, exist_ok=True)
+        self._event_file.unlink(missing_ok=True)
+        command = runtime_model_install_command(
+            self.family,
+            root=self.install_root,
+            event_file=self._event_file,
+        )
+        creation_flags = 0
+        start_new_session = False
+        if os.name == "nt":
+            creation_flags = subprocess.CREATE_NO_WINDOW
+            creation_flags |= subprocess.CREATE_NEW_PROCESS_GROUP
+        else:
+            start_new_session = True
+        try:
+            self._process = subprocess.Popen(
+                command,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                creationflags=creation_flags,
+                start_new_session=start_new_session,
+            )
+        except OSError as exc:
+            self._finish(f"Proses unduhan tidak dapat dimulai: {exc}", success=False)
+            return
+
         self.progress.start(12)
-        self._worker = threading.Thread(
-            target=self._run_install,
-            name=f"batikcraft-runtime-installer-{self.family}",
+        self._monitor = threading.Thread(
+            target=self._monitor_process,
+            args=(self._process,),
+            name=f"batikcraft-runtime-monitor-{self.family}",
             daemon=True,
         )
-        self._worker.start()
+        self._monitor.start()
         self.after(100, self._poll_events)
 
-    def _run_install(self) -> None:
-        installer = (
-            install_batikbrew_runtime
-            if self.family == "sdxl"
-            else install_default_runtime_models
-        )
+    def _monitor_process(self, process: subprocess.Popen[object]) -> None:
+        offset = 0
+        pending = ""
+        saw_terminal_event = False
+        while process.poll() is None:
+            offset, pending, terminal = self._read_new_events(offset, pending)
+            saw_terminal_event = saw_terminal_event or terminal
+            time.sleep(0.10)
+        offset, pending, terminal = self._read_new_events(offset, pending)
+        saw_terminal_event = saw_terminal_event or terminal
+        if pending.strip():
+            saw_terminal_event = self._enqueue_event_line(pending.strip()) or saw_terminal_event
+        code = process.wait()
+        cancelled = self._cancel_requested
+        if not cancelled and not saw_terminal_event:
+            if code == 0:
+                self._events.put(("complete", self.family))
+            else:
+                self._events.put(
+                    ("error", f"Proses unduhan model berhenti dengan kode {code}.")
+                )
+        self._process = None
         try:
-            paths = installer(
-                self.install_root,
-                progress=self._events.put,
-                cancel_event=self._cancel_event,
-            )
-        except RuntimeModelInstallCancelled as exc:
-            self._events.put(("cancelled", str(exc)))
-        except RuntimeModelInstallError as exc:
-            self._events.put(("error", str(exc)))
-        except Exception as exc:  # noqa: BLE001 - keep worker failures visible
-            self._events.put(("error", f"Instalasi gagal: {exc}"))
-        else:
-            self._events.put(("complete", paths))
+            self._event_file.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+    def _read_new_events(
+        self,
+        offset: int,
+        pending: str,
+    ) -> tuple[int, str, bool]:
+        if not self._event_file.is_file():
+            return offset, pending, False
+        try:
+            with self._event_file.open(
+                "r",
+                encoding="utf-8",
+                errors="replace",
+            ) as stream:
+                stream.seek(offset)
+                chunk = stream.read()
+                offset = stream.tell()
+        except OSError:
+            return offset, pending, False
+        if not chunk:
+            return offset, pending, False
+        pending += chunk
+        lines = pending.splitlines(keepends=True)
+        pending = ""
+        terminal = False
+        for line in lines:
+            if line.endswith(("\n", "\r")):
+                terminal = self._enqueue_event_line(line.rstrip("\r\n")) or terminal
+            else:
+                pending = line
+        return offset, pending, terminal
+
+    def _enqueue_event_line(self, line: str) -> bool:
+        if not line.strip():
+            return False
+        try:
+            payload = json.loads(line)
+        except json.JSONDecodeError:
+            return False
+        if not isinstance(payload, dict):
+            return False
+        kind = str(payload.get("kind", ""))
+        if kind == "progress":
+            try:
+                event = RuntimeModelInstallProgress(
+                    stage=str(payload.get("stage", "")),
+                    message=str(payload.get("message", "")),
+                    completed=int(payload.get("completed", 0)),
+                    total=int(payload.get("total", 4)),
+                    downloaded_bytes=int(payload.get("downloaded_bytes", 0)),
+                    total_bytes=int(payload.get("total_bytes", 0)),
+                    current_file=str(payload.get("current_file", "")),
+                )
+            except (TypeError, ValueError):
+                return False
+            self._events.put(event)
+            return False
+        if kind == "complete":
+            self._events.put(("complete", str(payload.get("family", self.family))))
+        elif kind in {"cancelled", "error"}:
+            self._events.put((kind, str(payload.get("message", ""))))
+        return kind in _TERMINAL_EVENT_KINDS
 
     def _poll_events(self) -> None:
         if not self.winfo_exists():
@@ -190,19 +295,17 @@ class RuntimeModelInstallDialog(tk.Toplevel):
         if isinstance(event, RuntimeModelInstallProgress):
             self._show_progress(event)
             return
-
         if not isinstance(event, tuple) or len(event) != 2:
             return
         kind, payload = event
-        if kind == "complete" and isinstance(
-            payload,
-            (RuntimeModelPaths, BatikBrewRuntimePaths),
-        ):
-            self.result = payload
-            label = (
-                "Runtime BatikBrew SDXL"
+        if kind == "complete":
+            self.result = (
+                batikbrew_runtime_model_paths(self.install_root)
                 if self.family == "sdxl"
-                else "Runtime AI"
+                else runtime_model_paths(self.install_root)
+            )
+            label = (
+                "Runtime BatikBrew SDXL" if self.family == "sdxl" else "Runtime AI"
             )
             self._finish(
                 f"{label} berhasil dipasang. Tekan Selesai untuk kembali.",
@@ -270,17 +373,21 @@ class RuntimeModelInstallDialog(tk.Toplevel):
             self.progress.configure(mode="determinate", maximum=1, value=1)
             self.percent.configure(text="100%")
         elif cancelled:
+            self.progress.configure(mode="determinate", maximum=1, value=0)
             self.percent.configure(text="Dibatalkan")
         else:
             self.percent.configure(text="")
         self.status.configure(text=message)
-        self.detail.configure(
-            text=(
-                "Model tersimpan di folder dependencies dan ditemukan otomatis."
-                if success
-                else "File parsial tetap disimpan dan dapat dilanjutkan nanti."
+        if success:
+            detail = "Model tersimpan di folder dependencies dan ditemukan otomatis."
+        elif cancelled:
+            detail = (
+                "Proses unduhan dihentikan. File parsial tetap disimpan; jendela dapat "
+                "ditutup sekarang."
             )
-        )
+        else:
+            detail = "File parsial tetap disimpan dan dapat dilanjutkan nanti."
+        self.detail.configure(text=detail)
         self.action_button.configure(
             text="Selesai" if success else "Tutup",
             command=self.destroy,
@@ -291,14 +398,55 @@ class RuntimeModelInstallDialog(tk.Toplevel):
         if self._finished:
             self.destroy()
             return
-        if self._cancel_event.is_set():
+        if self._cancel_requested:
+            self.destroy()
             return
-        self._cancel_event.set()
-        self.status.configure(text="Menghentikan unduhan aktif…")
-        self.detail.configure(
-            text="Koneksi unduhan dihentikan; file parsial tetap disimpan."
+        self._cancel_requested = True
+        process = self._process
+        if process is not None and process.poll() is None:
+            threading.Thread(
+                target=self._terminate_process_tree,
+                args=(process,),
+                daemon=True,
+                name=f"batikcraft-stop-runtime-{self.family}",
+            ).start()
+        self._finish(
+            "Unduhan dibatalkan dan proses transfer sedang dihentikan.",
+            success=False,
+            cancelled=True,
         )
-        self.action_button.configure(state="disabled")
+
+    @staticmethod
+    def _terminate_process_tree(process: subprocess.Popen[object]) -> None:
+        if process.poll() is not None:
+            return
+        try:
+            if os.name == "nt":
+                subprocess.run(
+                    ["taskkill", "/PID", str(process.pid), "/T", "/F"],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    creationflags=subprocess.CREATE_NO_WINDOW,
+                    check=False,
+                    timeout=5,
+                )
+            else:
+                os.killpg(os.getpgid(process.pid), signal.SIGTERM)
+        except (OSError, ProcessLookupError, subprocess.TimeoutExpired):
+            try:
+                process.terminate()
+            except OSError:
+                return
+        try:
+            process.wait(timeout=3)
+        except subprocess.TimeoutExpired:
+            try:
+                if os.name != "nt":
+                    os.killpg(os.getpgid(process.pid), signal.SIGKILL)
+                else:
+                    process.kill()
+            except (OSError, ProcessLookupError):
+                pass
 
 
 def _format_bytes(value: int) -> str:
