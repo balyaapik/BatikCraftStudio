@@ -72,12 +72,39 @@ def test_runtime_worker_rejects_incomplete_sdxl_before_complete_event(
     assert not any(event["kind"] == "complete" for event in events)
 
 
+def test_main_dispatches_dependency_worker_before_desktop_imports(monkeypatch: Any) -> None:
+    from batikcraft_studio import __main__ as entrypoint
+    from batikcraft_studio import dependency_bootstrap, runtime_model_process
+
+    monkeypatch.setattr(entrypoint, "_configure_logging", lambda: None)
+    monkeypatch.setattr(dependency_bootstrap, "maybe_run_dependency_installer", lambda: 17)
+
+    def runtime_must_not_run() -> int | None:
+        raise AssertionError("runtime worker must not run after dependency worker matched")
+
+    monkeypatch.setattr(runtime_model_process, "maybe_run_runtime_model_installer", runtime_must_not_run)
+
+    assert entrypoint.main() == 17
+
+
+def test_main_dispatches_runtime_worker_before_desktop_imports(monkeypatch: Any) -> None:
+    from batikcraft_studio import __main__ as entrypoint
+    from batikcraft_studio import dependency_bootstrap, runtime_model_process
+
+    monkeypatch.setattr(entrypoint, "_configure_logging", lambda: None)
+    monkeypatch.setattr(dependency_bootstrap, "maybe_run_dependency_installer", lambda: None)
+    monkeypatch.setattr(runtime_model_process, "maybe_run_runtime_model_installer", lambda: 23)
+
+    assert entrypoint.main() == 23
+
+
 def test_ui_guards_cover_missing_cache_and_unverified_complete_events() -> None:
     cache_source = inspect.getsource(cache_directory_guard)
     completion_source = inspect.getsource(runtime_installer_completion_guard)
 
     assert "nearest_existing_directory" in cache_source
     assert "ensure_managed_storage" in cache_source
-    assert "_batikcraft_worker_event_seen" in completion_source
+    assert "_batikcraft_validated_complete_seen" in completion_source
+    assert 'payload.get("validated") is True' in completion_source
     assert "Status 100% dibatalkan" in completion_source
     assert "inspect_batikbrew_runtime" in completion_source
