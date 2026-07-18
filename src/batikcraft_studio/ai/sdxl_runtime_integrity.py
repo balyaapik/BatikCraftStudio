@@ -1,11 +1,8 @@
 """Strict integrity checks for the managed BatikBrew SDXL runtime.
 
-The original installer considered a runtime complete when component folders
-existed and heavyweight folders contained any weight file.  Interrupted or
-older downloads could therefore be reported as installed even when
-``model_index.json`` declared ``tokenizer_2``/``text_encoder_2`` as null or the
-second tokenizer lacked its vocabulary files.  Diffusers then loaded a partial
-pipeline and failed later during prompt encoding.
+A component is not complete merely because a ``.bin`` or ``.safetensors`` name exists.
+Interrupted downloads, Git-LFS/Xet pointer files, and zero-byte placeholders must never
+be accepted as a usable SDXL runtime.
 """
 
 from __future__ import annotations
@@ -27,6 +24,17 @@ _REQUIRED_COMPONENTS = (
     "vae",
 )
 _WEIGHT_SUFFIXES = {".bin", ".safetensors"}
+_MIB = 1024 * 1024
+_GIB = 1024 * _MIB
+
+# Conservative lower bounds for the official SDXL Base fp16 Diffusers components.
+# These are deliberately below the real remote sizes, but far above pointer/stub files.
+_MINIMUM_COMPONENT_WEIGHT_BYTES = {
+    "text_encoder": 200 * _MIB,
+    "text_encoder_2": 1 * _GIB,
+    "unet": 4 * _GIB,
+    "vae": 140 * _MIB,
+}
 
 
 def inspect_batikbrew_runtime(base_model: str | Path) -> tuple[str, ...]:
@@ -66,8 +74,7 @@ def inspect_batikbrew_runtime(base_model: str | Path) -> tuple[str, ...]:
         else:
             if not (folder / "config.json").is_file():
                 issues.append(f"{component}/config.json tidak tersedia")
-            if not _contains_weight(folder):
-                issues.append(f"bobot model {component} tidak tersedia")
+            issues.extend(_inspect_component_weights(folder, component))
 
     return tuple(dict.fromkeys(issues))
 
@@ -126,14 +133,67 @@ def _inspect_tokenizer(folder: Path, component: str) -> list[str]:
     return issues
 
 
-def _contains_weight(folder: Path) -> bool:
+def _inspect_component_weights(folder: Path, component: str) -> list[str]:
+    weights = _weight_files(folder)
+    if not weights:
+        return [f"bobot model {component} tidak tersedia"]
+
+    issues: list[str] = []
+    pointer_names = [weight.name for weight in weights if _looks_like_pointer(weight)]
+    if pointer_names:
+        issues.append(
+            f"bobot {component} masih berupa pointer/stub: {', '.join(pointer_names[:3])}"
+        )
+
+    total_bytes = sum(_safe_file_size(weight) for weight in weights)
+    minimum = _MINIMUM_COMPONENT_WEIGHT_BYTES.get(component, 1)
+    if total_bytes < minimum:
+        issues.append(
+            f"ukuran bobot {component} terlalu kecil "
+            f"({_format_bytes(total_bytes)}; minimal {_format_bytes(minimum)})"
+        )
+    return issues
+
+
+def _weight_files(folder: Path) -> tuple[Path, ...]:
     try:
-        return any(
-            item.is_file() and item.suffix.casefold() in _WEIGHT_SUFFIXES
+        return tuple(
+            item
             for item in folder.rglob("*")
+            if item.is_file() and item.suffix.casefold() in _WEIGHT_SUFFIXES
         )
     except OSError:
+        return ()
+
+
+def _looks_like_pointer(path: Path) -> bool:
+    size = _safe_file_size(path)
+    if size <= 0:
+        return True
+    if size > 4096:
         return False
+    try:
+        header = path.read_bytes()[:256].lower()
+    except OSError:
+        return True
+    return b"git-lfs" in header or b"oid sha256:" in header or b"xet" in header
+
+
+def _safe_file_size(path: Path) -> int:
+    try:
+        return max(0, int(path.stat().st_size))
+    except OSError:
+        return 0
+
+
+def _format_bytes(value: int) -> str:
+    amount = float(max(0, value))
+    for unit in ("B", "KB", "MB", "GB", "TB"):
+        if amount < 1024.0 or unit == "TB":
+            precision = 0 if unit == "B" else 2
+            return f"{amount:.{precision}f} {unit}"
+        amount /= 1024.0
+    return f"{value} B"
 
 
 __all__ = [
