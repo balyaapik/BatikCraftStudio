@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+from batikcraft_studio.ai import runtime_model_installer
 from batikcraft_studio.ai.runtime_model_installer import (
     BASE_MODEL_REPO_ID,
     CONTROLNET_REPO_ID,
@@ -54,7 +55,10 @@ def test_installer_downloads_and_discovers_managed_runtime(tmp_path: Path) -> No
     )
 
     assert paths == runtime_model_paths(tmp_path)
-    assert [repo_id for repo_id, _ in calls] == [BASE_MODEL_REPO_ID, CONTROLNET_REPO_ID]
+    assert [repo_id for repo_id, _ in calls] == [
+        BASE_MODEL_REPO_ID,
+        CONTROLNET_REPO_ID,
+    ]
     assert find_installed_runtime_models(tmp_path) == paths
     assert progress[-1].stage == "complete"
     assert progress[-1].completed == progress[-1].total
@@ -103,3 +107,44 @@ def test_cancellation_preserves_completed_base_download(tmp_path: Path) -> None:
     assert downloaded == [BASE_MODEL_REPO_ID]
     assert (paths.base_model / "model_index.json").is_file()
     assert not paths.controlnet.exists()
+
+
+def test_download_progress_exposes_real_byte_percentage() -> None:
+    event = RuntimeModelInstallProgress(
+        stage="sdxl",
+        message="Mengunduh SDXL",
+        completed=1,
+        total=3,
+        downloaded_bytes=3_500_000_000,
+        total_bytes=7_000_000_000,
+        current_file="unet/model.safetensors",
+    )
+
+    assert event.download_percent == 50.0
+    assert event.current_file == "unet/model.safetensors"
+
+
+def test_tqdm_tracker_stops_active_download_when_cancelled() -> None:
+    events: list[RuntimeModelInstallProgress] = []
+    cancel_event = threading.Event()
+    tracker = runtime_model_installer._SnapshotProgressTracker(
+        progress=events.append,
+        cancel_event=cancel_event,
+        stage="sdxl",
+        message="Mengunduh SDXL",
+        completed=1,
+        stage_total=3,
+        total_bytes=100,
+    )
+    progress_type = tracker.tqdm_class("unet/model.safetensors")
+    bar = progress_type(total=100)
+    bar.update(25)
+    tracker._emit(force=True)
+
+    assert events[-1].downloaded_bytes == 25
+    assert events[-1].total_bytes == 100
+    assert events[-1].download_percent == 25.0
+
+    cancel_event.set()
+    with pytest.raises(RuntimeModelInstallCancelled):
+        bar.update(1)

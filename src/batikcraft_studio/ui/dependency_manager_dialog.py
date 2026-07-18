@@ -5,6 +5,7 @@ from __future__ import annotations
 import importlib.util
 import os
 import queue
+import signal
 import subprocess
 import sys
 import threading
@@ -14,7 +15,6 @@ from collections.abc import Callable
 from pathlib import Path
 from tkinter import messagebox, ttk
 
-from batikcraft_studio.ai import default_ai_cache_dir
 from batikcraft_studio.ai.runtime_model_installer import (
     find_installed_batikbrew_runtime,
     find_installed_runtime_models,
@@ -22,6 +22,9 @@ from batikcraft_studio.ai.runtime_model_installer import (
 from batikcraft_studio.dependency_bootstrap import (
     activate_managed_ai_packages,
     default_managed_ai_package_dir,
+    default_managed_dependency_log,
+    default_managed_dependency_root,
+    default_managed_pip_cache_dir,
     managed_ai_install_command,
 )
 
@@ -59,10 +62,11 @@ class DependencyManagerWindow(tk.Toplevel):
         self._messages: queue.Queue[str] = queue.Queue()
         self._install_succeeded = False
         self._continue_with_sdxl = False
+        self._cancel_requested = False
 
         self.title("Dependencies")
-        self.geometry("900x680")
-        self.minsize(780, 580)
+        self.geometry("920x720")
+        self.minsize(800, 620)
         self.transient(parent.winfo_toplevel())
         self.protocol("WM_DELETE_WINDOW", self._close)
         self._build()
@@ -82,12 +86,12 @@ class DependencyManagerWindow(tk.Toplevel):
         ttk.Label(
             body,
             text=(
-                "Paket Python AI, pengunduh model, dan BatikBrew dapat dipasang langsung "
-                "dari aplikasi. Pengguna tidak perlu mencari Python, pip, atau dependency "
-                "melalui terminal."
+                "Paket Python AI, pengunduh model, dan BatikBrew dipasang langsung "
+                "dari aplikasi ke folder dependencies. Pengguna tidak perlu mencari "
+                "Python, pip, atau dependency melalui terminal."
             ),
             style="Muted.TLabel",
-            wraplength=840,
+            wraplength=860,
             justify="left",
         ).grid(row=1, column=0, sticky="ew", pady=(4, 10))
 
@@ -97,10 +101,10 @@ class DependencyManagerWindow(tk.Toplevel):
         ttk.Label(
             quick_setup,
             text=(
-                "Memasang atau memperbaiki seluruh paket AI ke folder runtime BatikCraft, "
-                "lalu otomatis membuka unduhan model BatikBrew SDXL."
+                "Memasang atau memperbaiki seluruh paket AI, lalu otomatis membuka "
+                "unduhan BatikBrew SDXL dengan progres byte dan persentase."
             ),
-            wraplength=660,
+            wraplength=680,
             justify="left",
         ).grid(row=0, column=0, sticky="w")
         self.install_all_button = ttk.Button(
@@ -109,6 +113,23 @@ class DependencyManagerWindow(tk.Toplevel):
             command=self.install_complete_batikbrew,
         )
         self.install_all_button.grid(row=0, column=1, sticky="e", padx=(12, 0))
+        self.install_progress = ttk.Progressbar(
+            quick_setup,
+            mode="indeterminate",
+        )
+        self.install_progress.grid(
+            row=1,
+            column=0,
+            columnspan=2,
+            sticky="ew",
+            pady=(10, 0),
+        )
+        self.install_progress_text = tk.StringVar(master=self, value="Siap")
+        ttk.Label(
+            quick_setup,
+            textvariable=self.install_progress_text,
+            style="Muted.TLabel",
+        ).grid(row=2, column=0, columnspan=2, sticky="w", pady=(3, 0))
 
         content = ttk.PanedWindow(body, orient=tk.VERTICAL)
         content.grid(row=3, column=0, sticky="nsew")
@@ -124,7 +145,7 @@ class DependencyManagerWindow(tk.Toplevel):
         )
         self.tree.heading("requirement", text="Dependency")
         self.tree.heading("status", text="Status")
-        self.tree.column("requirement", width=500)
+        self.tree.column("requirement", width=520)
         self.tree.column("status", width=180)
         self.tree.grid(row=0, column=0, sticky="nsew")
         package_actions = ttk.Frame(packages)
@@ -144,7 +165,7 @@ class DependencyManagerWindow(tk.Toplevel):
             packages,
             textvariable=self.package_location,
             style="Muted.TLabel",
-            wraplength=820,
+            wraplength=840,
         ).grid(row=2, column=0, sticky="w", pady=(8, 0))
         content.add(packages, weight=1)
 
@@ -155,7 +176,7 @@ class DependencyManagerWindow(tk.Toplevel):
             runtime,
             textvariable=self.runtime_status,
             justify="left",
-            wraplength=820,
+            wraplength=840,
         ).grid(row=0, column=0, sticky="ew")
         runtime_actions = ttk.Frame(runtime)
         runtime_actions.grid(row=1, column=0, sticky="w", pady=(10, 0))
@@ -176,8 +197,8 @@ class DependencyManagerWindow(tk.Toplevel):
         ).pack(side="left", padx=(8, 0))
         ttk.Button(
             runtime_actions,
-            text="Buka Folder Unduhan AI",
-            command=lambda: reveal_path(default_ai_cache_dir()),
+            text="Buka Folder Dependencies",
+            command=lambda: reveal_path(default_managed_dependency_root()),
         ).pack(side="left", padx=(8, 0))
         content.add(runtime, weight=0)
 
@@ -210,8 +231,8 @@ class DependencyManagerWindow(tk.Toplevel):
                 tk.END,
                 values=(requirement, "Terpasang" if installed else "Belum terpasang"),
             )
-        package_dir = default_managed_ai_package_dir()
-        self.package_location.set(f"Folder runtime terkelola: {package_dir}")
+        dependency_root = default_managed_dependency_root()
+        self.package_location.set(f"Folder dependencies: {dependency_root}")
         sdxl = find_installed_batikbrew_runtime()
         sd15 = find_installed_runtime_models()
         self.runtime_status.set(
@@ -223,7 +244,7 @@ class DependencyManagerWindow(tk.Toplevel):
         )
 
     def install_complete_batikbrew(self) -> None:
-        """Install Python dependencies and continue into the SDXL model installer."""
+        """Install Python dependencies and continue into the SDXL installer."""
 
         if self._process is not None:
             self._installation_already_running()
@@ -231,7 +252,9 @@ class DependencyManagerWindow(tk.Toplevel):
         self._continue_with_sdxl = True
         missing = self._missing_requirements()
         if not missing:
-            self._append_log("Semua paket AI sudah tersedia. Membuka installer BatikBrew SDXL…")
+            self._append_log(
+                "Semua paket AI tersedia. Membuka installer BatikBrew SDXL…"
+            )
             self.after(150, self.install_sdxl)
             return
         self.install_python_dependencies(continue_with_sdxl=True)
@@ -242,35 +265,51 @@ class DependencyManagerWindow(tk.Toplevel):
             return
 
         self._continue_with_sdxl = continue_with_sdxl
+        self._cancel_requested = False
         requirements = [requirement for _module, requirement in PYTHON_AI_DEPENDENCIES]
+        dependency_root = default_managed_dependency_root()
         target = default_managed_ai_package_dir()
+        cache_dir = default_managed_pip_cache_dir()
+        log_path = default_managed_dependency_log()
+        dependency_root.mkdir(parents=True, exist_ok=True)
         target.parent.mkdir(parents=True, exist_ok=True)
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        log_path.parent.mkdir(parents=True, exist_ok=True)
         frozen = bool(getattr(sys, "frozen", False))
-        log_path = target.parent / "dependency-install.log"
         if log_path.exists():
             log_path.unlink()
         command = managed_ai_install_command(
             requirements,
             target=target,
+            cache_dir=cache_dir,
             frozen=frozen,
             log_file=log_path if frozen else None,
         )
-        self._append_log(f"Menyiapkan runtime AI terkelola di {target}")
-        self._append_log("Seluruh paket dipasang otomatis; jendela terminal tidak diperlukan.")
+        self._append_log(f"Menyiapkan dependencies di {dependency_root}")
+        self._append_log("Seluruh paket dipasang otomatis tanpa jendela terminal.")
         self._set_installing(True)
         self._install_succeeded = False
 
         def worker() -> None:
-            flags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
+            creation_flags = 0
+            start_new_session = False
+            if os.name == "nt":
+                creation_flags = subprocess.CREATE_NO_WINDOW
+                creation_flags |= subprocess.CREATE_NEW_PROCESS_GROUP
+            else:
+                start_new_session = True
             try:
                 if frozen:
                     process = subprocess.Popen(
                         command,
                         stdout=subprocess.DEVNULL,
                         stderr=subprocess.DEVNULL,
-                        creationflags=flags,
+                        creationflags=creation_flags,
+                        start_new_session=start_new_session,
                     )
                     self._process = process
+                    if self._cancel_requested:
+                        self._terminate_process_tree(process)
                     self._stream_log_file(process, log_path)
                 else:
                     process = subprocess.Popen(
@@ -279,29 +318,49 @@ class DependencyManagerWindow(tk.Toplevel):
                         stderr=subprocess.STDOUT,
                         text=True,
                         bufsize=1,
-                        creationflags=flags,
+                        creationflags=creation_flags,
+                        start_new_session=start_new_session,
                     )
                     self._process = process
+                    if self._cancel_requested:
+                        self._terminate_process_tree(process)
                     assert process.stdout is not None
                     for line in process.stdout:
                         self._messages.put(line.rstrip())
                 code = process.wait()
-                self._install_succeeded = code == 0
-                self._messages.put(
-                    "Paket AI berhasil dipasang ke runtime BatikCraft."
-                    if code == 0
-                    else f"Instalasi paket AI gagal (kode {code}). Tekan instal lagi untuk reparasi."
-                )
+                cancelled = self._cancel_requested
+                self._install_succeeded = code == 0 and not cancelled
+                if cancelled:
+                    self._messages.put(
+                        "Instalasi dependency dihentikan. Cache unduhan dipertahankan."
+                    )
+                elif code == 0:
+                    self._messages.put(
+                        "Paket AI berhasil dipasang ke folder dependencies."
+                    )
+                else:
+                    self._messages.put(
+                        f"Instalasi paket AI gagal (kode {code}). "
+                        "Tekan instal lagi untuk reparasi."
+                    )
             except OSError as exc:
                 self._messages.put(f"Instalasi tidak dapat dimulai: {exc}")
             finally:
                 self._process = None
                 self._messages.put("__DONE__")
 
-        threading.Thread(target=worker, daemon=True, name="batikcraft-dependencies").start()
+        threading.Thread(
+            target=worker,
+            daemon=True,
+            name="batikcraft-dependencies",
+        ).start()
         self.after(100, self._poll_messages)
 
-    def _stream_log_file(self, process: subprocess.Popen[object], log_path: Path) -> None:
+    def _stream_log_file(
+        self,
+        process: subprocess.Popen[object],
+        log_path: Path,
+    ) -> None:
         offset = 0
         pending = ""
         while process.poll() is None:
@@ -336,6 +395,8 @@ class DependencyManagerWindow(tk.Toplevel):
         return offset, pending
 
     def _poll_messages(self) -> None:
+        if not self.winfo_exists():
+            return
         done = False
         while True:
             try:
@@ -347,12 +408,21 @@ class DependencyManagerWindow(tk.Toplevel):
             else:
                 self._append_log(message)
         if done:
+            cancelled = self._cancel_requested
             self._set_installing(False)
+            self.install_progress_text.set(
+                "Dibatalkan" if cancelled else "Selesai"
+            )
             if self._install_succeeded:
                 activate_managed_ai_packages()
             self.refresh()
-            continue_with_sdxl = self._continue_with_sdxl and self._install_succeeded
+            continue_with_sdxl = (
+                self._continue_with_sdxl
+                and self._install_succeeded
+                and not cancelled
+            )
             self._continue_with_sdxl = False
+            self._cancel_requested = False
             if continue_with_sdxl:
                 self._append_log("Dependency siap. Membuka unduhan BatikBrew SDXL…")
                 self.after(250, self.install_sdxl)
@@ -378,6 +448,13 @@ class DependencyManagerWindow(tk.Toplevel):
         self.install_all_button.configure(state=state)
         self.install_packages_button.configure(state=state)
         self.cancel_button.configure(state="normal" if installing else "disabled")
+        if installing:
+            self.install_progress.configure(mode="indeterminate")
+            self.install_progress.start(12)
+            self.install_progress_text.set("Mengunduh dan memasang paket AI…")
+        else:
+            self.install_progress.stop()
+            self.install_progress.configure(mode="determinate", maximum=1, value=0)
 
     def _append_log(self, message: str) -> None:
         self.log.configure(state="normal")
@@ -387,15 +464,57 @@ class DependencyManagerWindow(tk.Toplevel):
 
     def cancel_installation(self) -> None:
         process = self._process
-        if process is not None and process.poll() is None:
-            process.terminate()
-            self._append_log("Permintaan penghentian dikirim. File yang sudah ada dipertahankan.")
+        if process is None or process.poll() is not None:
+            return
+        if self._cancel_requested:
+            return
+        self._cancel_requested = True
+        self._continue_with_sdxl = False
+        self.cancel_button.configure(state="disabled")
+        self.install_progress_text.set("Menghentikan proses dependency…")
+        self._append_log(
+            "Menghentikan proses dependency dan seluruh proses turunannya…"
+        )
+        threading.Thread(
+            target=self._terminate_process_tree,
+            args=(process,),
+            daemon=True,
+            name="batikcraft-stop-dependencies",
+        ).start()
+
+    @staticmethod
+    def _terminate_process_tree(process: subprocess.Popen[object]) -> None:
+        if process.poll() is not None:
+            return
+        try:
+            if os.name == "nt":
+                subprocess.run(
+                    ["taskkill", "/PID", str(process.pid), "/T", "/F"],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    creationflags=subprocess.CREATE_NO_WINDOW,
+                    check=False,
+                )
+            else:
+                os.killpg(os.getpgid(process.pid), signal.SIGTERM)
+        except (OSError, ProcessLookupError):
+            try:
+                process.terminate()
+            except OSError:
+                return
+        try:
+            process.wait(timeout=3)
+        except subprocess.TimeoutExpired:
+            try:
+                process.kill()
+            except OSError:
+                pass
 
     def _close(self) -> None:
         if self._process is not None and self._process.poll() is None:
             if not messagebox.askyesno(
                 "Instalasi masih berjalan",
-                "Tutup jendela dan hentikan instalasi?",
+                "Tutup jendela dan hentikan instalasi sekarang?",
                 parent=self,
             ):
                 return

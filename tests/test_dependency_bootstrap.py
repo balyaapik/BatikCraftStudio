@@ -9,11 +9,25 @@ from batikcraft_studio.ui import dependency_manager_dialog
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_managed_ai_package_dir_uses_local_appdata(monkeypatch, tmp_path: Path) -> None:
-    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+def test_managed_dependencies_support_explicit_install_location(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    dependency_root = tmp_path / "BatikCraft Studio" / "dependencies"
+    monkeypatch.setenv(
+        dependency_bootstrap.DEPENDENCIES_DIR_ENV,
+        str(dependency_root),
+    )
 
+    assert dependency_bootstrap.default_managed_dependency_root() == dependency_root
     assert dependency_bootstrap.default_managed_ai_package_dir() == (
-        tmp_path / "BatikCraftStudio" / "ai-runtime" / "site-packages"
+        dependency_root / "python" / "site-packages"
+    )
+    assert dependency_bootstrap.default_managed_pip_cache_dir() == (
+        dependency_root / "cache" / "pip"
+    )
+    assert dependency_bootstrap.default_managed_dependency_log() == (
+        dependency_root / "logs" / "dependency-install.log"
     )
 
 
@@ -21,11 +35,13 @@ def test_frozen_install_command_relaunches_same_executable_with_private_flag(
     tmp_path: Path,
 ) -> None:
     target = tmp_path / "packages"
+    cache_dir = tmp_path / "cache"
     log_file = tmp_path / "install.log"
 
     command = dependency_bootstrap.managed_ai_install_command(
         ["torch>=2.4", "diffusers>=0.39,<0.40"],
         target=target,
+        cache_dir=cache_dir,
         executable="BatikCraftStudio.exe",
         frozen=True,
         log_file=log_file,
@@ -34,42 +50,57 @@ def test_frozen_install_command_relaunches_same_executable_with_private_flag(
     assert command[0] == "BatikCraftStudio.exe"
     assert command[1] == dependency_bootstrap.INSTALL_FLAG
     assert command[command.index("--target") + 1] == str(target.resolve())
+    assert command[command.index("--cache-dir") + 1] == str(cache_dir.resolve())
     assert command[command.index("--log-file") + 1] == str(log_file.resolve())
     assert "-m" not in command
     assert "pip" not in command
     assert command[-2:] == ["torch>=2.4", "diffusers>=0.39,<0.40"]
 
 
-def test_source_install_command_uses_python_pip_with_app_local_target(tmp_path: Path) -> None:
+def test_source_install_command_uses_python_pip_with_app_local_target(
+    tmp_path: Path,
+) -> None:
     target = tmp_path / "packages"
+    cache_dir = tmp_path / "cache"
 
     command = dependency_bootstrap.managed_ai_install_command(
         ["peft>=0.17"],
         target=target,
+        cache_dir=cache_dir,
         executable="python",
         frozen=False,
     )
 
     assert command[:4] == ["python", "-m", "pip", "install"]
     assert command[command.index("--target") + 1] == str(target.resolve())
+    assert command[command.index("--cache-dir") + 1] == str(cache_dir.resolve())
+    assert command[command.index("--progress-bar") + 1] == "raw"
     assert command[-1] == "peft>=0.17"
 
 
 def test_hidden_installer_dispatches_to_bundled_pip(monkeypatch, tmp_path: Path) -> None:
-    calls: list[tuple[list[str], Path]] = []
+    calls: list[tuple[list[str], Path, Path]] = []
 
-    def fake_install(requirements: list[str], *, target: Path) -> int:
-        calls.append((requirements, target))
+    def fake_install(
+        requirements: list[str],
+        *,
+        target: Path,
+        cache_dir: Path,
+    ) -> int:
+        calls.append((requirements, target, cache_dir))
         return 7
 
     monkeypatch.setattr(dependency_bootstrap, "run_bundled_pip_install", fake_install)
     target = tmp_path / "runtime"
+    cache_dir = tmp_path / "cache"
 
     code = dependency_bootstrap.maybe_run_dependency_installer(
         [
             dependency_bootstrap.INSTALL_FLAG,
             "--target",
             str(target),
+            "--cache-dir",
+            str(cache_dir),
             "--",
             "torch>=2.4",
             "diffusers>=0.39,<0.40",
@@ -77,7 +108,13 @@ def test_hidden_installer_dispatches_to_bundled_pip(monkeypatch, tmp_path: Path)
     )
 
     assert code == 7
-    assert calls == [(["torch>=2.4", "diffusers>=0.39,<0.40"], target.resolve())]
+    assert calls == [
+        (
+            ["torch>=2.4", "diffusers>=0.39,<0.40"],
+            target.resolve(),
+            cache_dir.resolve(),
+        )
+    ]
 
 
 def test_distlib_registers_the_current_loader_as_a_resource_finder(monkeypatch) -> None:
@@ -91,7 +128,10 @@ def test_distlib_registers_the_current_loader_as_a_resource_finder(monkeypatch) 
 
     dependency_bootstrap._register_distlib_frozen_resource_finder()
 
-    assert distlib_resources._finder_registry[loader_type] is distlib_resources.ResourceFinder
+    assert (
+        distlib_resources._finder_registry[loader_type]
+        is distlib_resources.ResourceFinder
+    )
 
 
 def test_bundled_pip_registers_distlib_before_importing_pip_main() -> None:
@@ -110,12 +150,15 @@ def test_desktop_entry_handles_installer_before_importing_application() -> None:
     )
 
 
-def test_dependency_gui_has_one_click_setup_without_terminal_instruction() -> None:
+def test_dependency_gui_has_one_click_setup_and_real_process_cancellation() -> None:
     source = inspect.getsource(dependency_manager_dialog.DependencyManagerWindow)
 
     assert "Instal Semua AI + BatikBrew SDXL" in source
     assert "managed_ai_install_command" in source
-    assert "terminal tidak diperlukan" in source
+    assert "tanpa jendela terminal" in source
+    assert "Buka Folder Dependencies" in source
+    assert "CREATE_NEW_PROCESS_GROUP" in source
+    assert '"taskkill"' in source
     assert 'pip install -e ".[ai]"' not in source
 
 
