@@ -114,10 +114,12 @@ jobs:
           '@ | python - $wheel
 
           $target = Join-Path $env:RUNNER_TEMP "batikcraft-ai-runtime-smoke"
+          $cache = Join-Path $env:RUNNER_TEMP "batikcraft-ai-cache-smoke"
           $log = Join-Path $env:RUNNER_TEMP "batikcraft-ai-runtime-smoke.log"
           $arguments = @(
             "--batikcraft-install-ai-dependencies",
             "--target", $target,
+            "--cache-dir", $cache,
             "--log-file", $log,
             "--", $wheel
           )
