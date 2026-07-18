@@ -42,6 +42,7 @@ def main() -> int:
 
     from .app_icon import apply_app_icon
     from .config import APP_NAME
+    from .ui.canvas_selection_semantics import install_canvas_selection_semantics
     from .ui.inkscape_canvas_patch import install_inkscape_canvas_patch
     from .ui.inkscape_pointer_hotpath import install_inkscape_pointer_hotpath
     from .ui.inkscape_renderer_compat import install_inkscape_renderer_compat
@@ -53,6 +54,7 @@ def main() -> int:
     install_inkscape_canvas_patch()
     install_inkscape_pointer_hotpath()
     install_inkscape_renderer_compat()
+    install_canvas_selection_semantics()
 
     from .integrated_market_app import ContextToolApplication
 
