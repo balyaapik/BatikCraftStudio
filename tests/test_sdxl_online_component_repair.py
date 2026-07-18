@@ -72,10 +72,17 @@ def test_canonical_sdxl_repair_can_download_despite_legacy_hidden_flag(
     def original_factory(settings: Any) -> tuple[Any, Any, str]:
         return settings, object(), "cpu"
 
+    original_message = sdxl_text_component_repair._missing_component_message
     monkeypatch.setattr(
         sdxl_text_component_repair,
         "_load_transformers_component",
         original_loader,
+    )
+    # Record and restore this global too: the installer replaces it directly.
+    monkeypatch.setattr(
+        sdxl_text_component_repair,
+        "_missing_component_message",
+        original_message,
     )
     monkeypatch.setattr(
         batikbrew_generation,
@@ -110,7 +117,7 @@ def test_canonical_sdxl_repair_can_download_despite_legacy_hidden_flag(
     )
     assert "local-files-only" not in message
     assert "internet" in message.casefold()
-    assert "pemulih" in message.casefold()
+    assert "mencoba memulih" in message.casefold()
 
 
 def test_startup_installs_online_repair_before_lora_restore() -> None:
