@@ -44,7 +44,7 @@ The package is written to `release/`.
 
 ### Windows
 
-The Windows build uses PyInstaller `--onefile --windowed`. The embedded Python interpreter, required Python packages, DLLs, Tk resources, application resources, and cloud-client dependencies are contained in one executable. End users do not need to install Python or keep an `_internal` directory beside the application.
+The Windows build uses PyInstaller `--onefile --windowed`. The embedded Python interpreter, required desktop packages, DLLs, Tk resources, application resources, model downloader, and AI dependency bootstrap are contained in one executable. End users do not need to install Python or keep an `_internal` directory beside the application.
 
 Run `BatikCraftStudio-Windows-x64.exe`, not `python -m batikcraft_studio`. The application logo is embedded in the executable, so Windows taskbar, Alt+Tab, title bar, and shortcuts use the BatikCraft Studio identity. Windows builds are currently unsigned and can trigger SmartScreen.
 
@@ -77,15 +77,35 @@ The installer places the application in the user's local data directory, creates
 
 Linux binaries are built on Ubuntu 22.04 to improve compatibility with newer glibc-based distributions. They are x64 builds and are not intended for ARM Linux machines.
 
+## GUI-managed AI runtime
+
+The desktop executable contains `pip` as an internal bootstrap component and contains the Hugging Face model downloader. Heavy, device-sensitive packages such as Torch, Diffusers, Transformers, Accelerate, and PEFT are not inflated into the base EXE. Instead, users open **Dependencies** and press **Instal Semua AI + BatikBrew SDXL**.
+
+The application then:
+
+1. launches its own hidden dependency-installer mode;
+2. downloads compatible Python wheels into the per-user BatikCraft AI runtime;
+3. activates that folder before AI providers are imported;
+4. continues directly to the resumable BatikBrew SDXL model download;
+5. keeps installation logs and partial model downloads for repair or resume.
+
+On Windows, packages are stored under:
+
+```text
+%LOCALAPPDATA%\BatikCraftStudio\ai-runtime\site-packages
+```
+
+Model weights remain under the existing BatikCraft Studio model directory. No system Python installation, terminal command, administrator permission, or manual dependency search is required.
+
 ## Included feature profile
 
-The native packages include the editor, marketplace integration, NFT and model workflows, cloud generation clients, Gemini/OpenAI support, keyring integration, and all BatikCraft Studio resources.
+The native packages include the editor, marketplace integration, NFT and model workflows, cloud generation clients, Gemini/OpenAI support, keyring integration, the model downloader, the AI bootstrap installer, and all BatikCraft Studio resources.
 
-Torch, Diffusers, Transformers, CUDA, and full local SDXL/LoRA training are intentionally excluded from the portable builds. Those components are large and require platform- and GPU-specific packaging. Development installations can continue to use:
+Torch, Diffusers, Transformers, CUDA, and full local SDXL/LoRA training are installed on demand through the in-app dependency manager because those components are large and platform/GPU-sensitive. Development installations can continue to use:
 
 ```bash
 python -m pip install -e ".[ai]"
 python -m batikcraft_studio
 ```
 
-A dedicated Windows CUDA distribution can be created separately after the portable builds are stable.
+A dedicated pre-bundled Windows CUDA distribution can be created separately after the managed runtime is stable.

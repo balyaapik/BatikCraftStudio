@@ -36,6 +36,8 @@ ai = [
 ]
 desktop-build = [
   "pyinstaller>=6.21,<7",
+  "pip>=24,<26",
+  "huggingface-hub>=0.27",
   "safetensors>=0.4",
   "numpy>=1.26,<3",
   "openai>=1.0,<3",
