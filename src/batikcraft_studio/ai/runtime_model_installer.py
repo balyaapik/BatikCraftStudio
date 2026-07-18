@@ -1,18 +1,16 @@
-"""Download and validate managed Stable Diffusion runtimes.
-
-The legacy object workflow uses SD 1.5 plus Canny ControlNet. BatikBrew generation,
-ported from the BatikCraft notebooks, uses the SDXL base model without ControlNet.
-Both runtimes are resumable and stored outside the Python package.
-"""
+"""Download, report, cancel, and validate managed Stable Diffusion runtimes."""
 
 from __future__ import annotations
 
+import fnmatch
+import io
 import threading
+import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
-from .runtime_settings import default_ai_cache_dir
+from batikcraft_studio.dependency_bootstrap import default_managed_dependency_root
 
 BASE_MODEL_REPO_ID = "stable-diffusion-v1-5/stable-diffusion-v1-5"
 CONTROLNET_REPO_ID = "lllyasviel/control_v11p_sd15_canny"
@@ -21,6 +19,7 @@ _BASE_MODEL_FOLDER = "stable-diffusion-v1-5"
 _CONTROLNET_FOLDER = "control_v11p_sd15_canny"
 _SDXL_BASE_MODEL_FOLDER = "stable-diffusion-xl-base-1.0"
 _MODEL_WEIGHT_SUFFIXES = {".bin", ".safetensors"}
+_IGNORE_PATTERNS = ("*.ckpt", "*.onnx", "*.msgpack", "*.h5")
 
 _BASE_ALLOW_PATTERNS = (
     "model_index.json",
@@ -54,7 +53,7 @@ class RuntimeModelInstallError(RuntimeError):
 
 
 class RuntimeModelInstallCancelled(RuntimeModelInstallError):
-    """Raised when the user cancels between download stages."""
+    """Raised when the user cancels a model installation."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -74,27 +73,145 @@ class BatikBrewRuntimePaths:
 
 @dataclass(frozen=True, slots=True)
 class RuntimeModelInstallProgress:
-    """Coarse progress update safe to pass from a worker thread to Tk."""
+    """Progress update safe to pass from a worker thread to Tk."""
 
     stage: str
     message: str
     completed: int
     total: int = 4
+    downloaded_bytes: int = 0
+    total_bytes: int = 0
+    current_file: str = ""
+
+    @property
+    def download_percent(self) -> float | None:
+        if self.total_bytes <= 0:
+            return None
+        return max(0.0, min(100.0, self.downloaded_bytes / self.total_bytes * 100.0))
 
 
 ProgressCallback = Callable[[RuntimeModelInstallProgress], object]
 SnapshotDownload = Callable[..., str]
 
 
-def default_runtime_model_root() -> Path:
-    """Return a stable per-user folder for fully materialized model assets."""
+class _SnapshotProgressTracker:
+    """Aggregate concurrent Hugging Face tqdm updates into one byte counter."""
 
-    return default_ai_cache_dir().parent / "runtime"
+    def __init__(
+        self,
+        *,
+        progress: ProgressCallback | None,
+        cancel_event: threading.Event | None,
+        stage: str,
+        message: str,
+        completed: int,
+        stage_total: int,
+        total_bytes: int,
+    ) -> None:
+        self.progress = progress
+        self.cancel_event = cancel_event
+        self.stage = stage
+        self.message = message
+        self.completed = completed
+        self.stage_total = stage_total
+        self.total_bytes = max(0, int(total_bytes))
+        self.downloaded_bytes = 0
+        self.current_file = ""
+        self._lock = threading.Lock()
+        self._last_emit = 0.0
+
+    def raise_if_cancelled(self) -> None:
+        _raise_if_cancelled(self.cancel_event)
+
+    def register(self, *, total: int, initial: int, current_file: str) -> None:
+        with self._lock:
+            if self.total_bytes <= 0 and total > 0:
+                self.total_bytes += total
+            if initial > 0:
+                self.downloaded_bytes += initial
+            if current_file:
+                self.current_file = current_file
+        self._emit(force=True)
+
+    def advance(self, amount: int, current_file: str) -> None:
+        if amount <= 0:
+            return
+        with self._lock:
+            self.downloaded_bytes += int(amount)
+            if current_file:
+                self.current_file = current_file
+        self._emit(force=False)
+
+    def complete(self) -> None:
+        with self._lock:
+            if self.total_bytes > 0:
+                self.downloaded_bytes = self.total_bytes
+        self._emit(force=True)
+
+    def _emit(self, *, force: bool) -> None:
+        now = time.monotonic()
+        with self._lock:
+            if not force and now - self._last_emit < 0.10:
+                return
+            self._last_emit = now
+            downloaded = self.downloaded_bytes
+            total_bytes = self.total_bytes
+            current_file = self.current_file
+        _report(
+            self.progress,
+            self.stage,
+            self.message,
+            self.completed,
+            self.stage_total,
+            downloaded_bytes=downloaded,
+            total_bytes=total_bytes,
+            current_file=current_file,
+        )
+
+    def tqdm_class(self) -> type:
+        """Return a silent tqdm subclass that reports bytes and checks cancellation."""
+
+        from tqdm.auto import tqdm as base_tqdm
+
+        tracker = self
+
+        class BatikCraftDownloadTqdm(base_tqdm):  # type: ignore[misc, valid-type]
+            def __init__(self, *args: object, **kwargs: object) -> None:
+                kwargs["disable"] = False
+                kwargs["file"] = io.StringIO()
+                kwargs.setdefault("leave", False)
+                super().__init__(*args, **kwargs)
+                current_file = str(getattr(self, "desc", "") or "")
+                tracker.raise_if_cancelled()
+                tracker.register(
+                    total=int(getattr(self, "total", 0) or 0),
+                    initial=int(getattr(self, "n", 0) or 0),
+                    current_file=current_file,
+                )
+
+            def update(self, n: int | float = 1) -> bool | None:
+                tracker.raise_if_cancelled()
+                previous = int(getattr(self, "n", 0) or 0)
+                result = super().update(n)
+                current = int(getattr(self, "n", previous) or previous)
+                tracker.advance(
+                    max(0, current - previous),
+                    str(getattr(self, "desc", "") or ""),
+                )
+                tracker.raise_if_cancelled()
+                return result
+
+        BatikCraftDownloadTqdm.__name__ = "BatikCraftDownloadTqdm"
+        return BatikCraftDownloadTqdm
+
+
+def default_runtime_model_root() -> Path:
+    """Return the Stable Diffusion folder inside managed dependencies."""
+
+    return default_managed_dependency_root() / "models" / "runtime"
 
 
 def runtime_model_paths(root: str | Path | None = None) -> RuntimeModelPaths:
-    """Resolve the canonical SD 1.5 and ControlNet installation folders."""
-
     install_root = Path(root) if root is not None else default_runtime_model_root()
     install_root = install_root.expanduser()
     return RuntimeModelPaths(
@@ -106,8 +223,6 @@ def runtime_model_paths(root: str | Path | None = None) -> RuntimeModelPaths:
 def batikbrew_runtime_model_paths(
     root: str | Path | None = None,
 ) -> BatikBrewRuntimePaths:
-    """Resolve the canonical SDXL installation folder used by BatikBrew."""
-
     install_root = Path(root) if root is not None else default_runtime_model_root()
     return BatikBrewRuntimePaths(
         base_model=install_root.expanduser() / _SDXL_BASE_MODEL_FOLDER,
@@ -137,8 +252,6 @@ def find_installed_batikbrew_runtime(
 
 
 def validate_runtime_models(paths: RuntimeModelPaths) -> None:
-    """Validate the minimum SD 1.5/ControlNet directory structure."""
-
     errors: list[str] = []
     base = paths.base_model
     controlnet = paths.controlnet
@@ -161,8 +274,6 @@ def validate_runtime_models(paths: RuntimeModelPaths) -> None:
 
 
 def validate_batikbrew_runtime(paths: BatikBrewRuntimePaths) -> None:
-    """Validate the SDXL structure required by StableDiffusionXLPipeline."""
-
     base = paths.base_model
     errors: list[str] = []
     if not (base / "model_index.json").is_file():
@@ -204,37 +315,42 @@ def install_default_runtime_models(
         _report(progress, "complete", "Runtime AI sudah terpasang dan siap digunakan.", 4, 4)
         return paths
     downloader = snapshot_download_func or _load_snapshot_download()
+    calculate_size = snapshot_download_func is None
     _raise_if_cancelled(cancel_event)
     if not _base_model_is_complete(paths.base_model):
-        _report(
-            progress,
-            "base",
-            "Mengunduh Stable Diffusion 1.5. Unduhan dapat dilanjutkan jika terputus…",
-            1,
-            4,
-        )
+        message = "Mengunduh Stable Diffusion 1.5. File parsial dapat dilanjutkan…"
+        _report(progress, "base", message, 1, 4)
         _download_snapshot(
             downloader,
             repo_id=BASE_MODEL_REPO_ID,
             destination=paths.base_model,
             allow_patterns=_BASE_ALLOW_PATTERNS,
+            progress=progress,
+            cancel_event=cancel_event,
+            stage="base",
+            message=message,
+            completed=1,
+            stage_total=4,
+            calculate_size=calculate_size,
         )
     else:
         _report(progress, "base", "Stable Diffusion 1.5 sudah tersedia.", 2, 4)
     _raise_if_cancelled(cancel_event)
     if not _controlnet_is_complete(paths.controlnet):
-        _report(
-            progress,
-            "controlnet",
-            "Mengunduh ControlNet Canny untuk Stable Diffusion 1.5…",
-            2,
-            4,
-        )
+        message = "Mengunduh ControlNet Canny untuk Stable Diffusion 1.5…"
+        _report(progress, "controlnet", message, 2, 4)
         _download_snapshot(
             downloader,
             repo_id=CONTROLNET_REPO_ID,
             destination=paths.controlnet,
             allow_patterns=_CONTROLNET_ALLOW_PATTERNS,
+            progress=progress,
+            cancel_event=cancel_event,
+            stage="controlnet",
+            message=message,
+            completed=2,
+            stage_total=4,
+            calculate_size=calculate_size,
         )
     else:
         _report(progress, "controlnet", "ControlNet Canny sudah tersedia.", 3, 4)
@@ -261,20 +377,23 @@ def install_batikbrew_runtime(
         _report(progress, "complete", "Runtime BatikBrew SDXL sudah siap.", 3, 3)
         return paths
     downloader = snapshot_download_func or _load_snapshot_download()
+    calculate_size = snapshot_download_func is None
     _raise_if_cancelled(cancel_event)
     if not _sdxl_model_is_complete(paths.base_model):
-        _report(
-            progress,
-            "sdxl",
-            "Mengunduh Stable Diffusion XL. Ukuran unduhan sekitar 7 GB dan dapat dilanjutkan…",
-            1,
-            3,
-        )
+        message = "Mengunduh Stable Diffusion XL. Ukuran sekitar 7 GB dan dapat dilanjutkan…"
+        _report(progress, "sdxl", message, 1, 3)
         _download_snapshot(
             downloader,
             repo_id=SDXL_BASE_MODEL_REPO_ID,
             destination=paths.base_model,
             allow_patterns=_SDXL_ALLOW_PATTERNS,
+            progress=progress,
+            cancel_event=cancel_event,
+            stage="sdxl",
+            message=message,
+            completed=1,
+            stage_total=3,
+            calculate_size=calculate_size,
         )
     else:
         _report(progress, "sdxl", "Stable Diffusion XL sudah tersedia.", 2, 3)
@@ -290,10 +409,44 @@ def _load_snapshot_download() -> SnapshotDownload:
         from huggingface_hub import snapshot_download
     except ImportError as exc:
         raise RuntimeModelInstallError(
-            'Komponen pengunduh model belum terpasang. Instal aplikasi dengan extra AI: '
-            'python -m pip install -e ".[ai]"'
+            "Komponen pengunduh model belum tersedia. Buka Dependencies lalu tekan "
+            "Instal Semua AI + BatikBrew SDXL."
         ) from exc
     return snapshot_download
+
+
+def _repository_download_size(repo_id: str, allow_patterns: tuple[str, ...]) -> int:
+    """Read the expected byte total from Hugging Face file metadata."""
+
+    try:
+        from huggingface_hub import HfApi
+
+        info = HfApi().model_info(repo_id, files_metadata=True)
+    except Exception:  # noqa: BLE001 - progress may gracefully fall back to spinner
+        return 0
+
+    total = 0
+    for sibling in info.siblings or ():
+        name = str(getattr(sibling, "rfilename", "") or "")
+        if not name or not _path_matches(name, allow_patterns):
+            continue
+        if _path_matches(name, _IGNORE_PATTERNS):
+            continue
+        size = getattr(sibling, "size", None)
+        if size is None:
+            lfs = getattr(sibling, "lfs", None)
+            size = getattr(lfs, "size", None) if lfs is not None else None
+            if size is None and isinstance(lfs, dict):
+                size = lfs.get("size")
+        try:
+            total += max(0, int(size or 0))
+        except (TypeError, ValueError):
+            continue
+    return total
+
+
+def _path_matches(path: str, patterns: tuple[str, ...]) -> bool:
+    return any(fnmatch.fnmatchcase(path, pattern) for pattern in patterns)
 
 
 def _download_snapshot(
@@ -302,17 +455,46 @@ def _download_snapshot(
     repo_id: str,
     destination: Path,
     allow_patterns: tuple[str, ...],
+    progress: ProgressCallback | None,
+    cancel_event: threading.Event | None,
+    stage: str,
+    message: str,
+    completed: int,
+    stage_total: int,
+    calculate_size: bool,
 ) -> None:
     destination.mkdir(parents=True, exist_ok=True)
+    _raise_if_cancelled(cancel_event)
+    total_bytes = _repository_download_size(repo_id, allow_patterns) if calculate_size else 0
+    _raise_if_cancelled(cancel_event)
+    tracker = _SnapshotProgressTracker(
+        progress=progress,
+        cancel_event=cancel_event,
+        stage=stage,
+        message=message,
+        completed=completed,
+        stage_total=stage_total,
+        total_bytes=total_bytes,
+    )
+    tracker._emit(force=True)
     try:
         downloader(
             repo_id=repo_id,
             local_dir=str(destination),
             allow_patterns=list(allow_patterns),
-            ignore_patterns=["*.ckpt", "*.onnx", "*.msgpack", "*.h5"],
-            max_workers=4,
+            ignore_patterns=list(_IGNORE_PATTERNS),
+            max_workers=2,
+            tqdm_class=tracker.tqdm_class(),
         )
+        tracker.raise_if_cancelled()
+        tracker.complete()
+    except RuntimeModelInstallCancelled:
+        raise
     except Exception as exc:  # noqa: BLE001 - normalize third-party network errors
+        if cancel_event is not None and cancel_event.is_set():
+            raise RuntimeModelInstallCancelled(
+                "Unduhan dibatalkan. File parsial disimpan agar dapat dilanjutkan."
+            ) from exc
         raise RuntimeModelInstallError(
             f"Gagal mengunduh {repo_id}. Periksa internet dan ruang penyimpanan, "
             f"kemudian tekan instal lagi untuk melanjutkan. Detail: {exc}"
@@ -372,6 +554,10 @@ def _report(
     message: str,
     completed: int,
     total: int,
+    *,
+    downloaded_bytes: int = 0,
+    total_bytes: int = 0,
+    current_file: str = "",
 ) -> None:
     if callback is not None:
         callback(
@@ -380,6 +566,9 @@ def _report(
                 message=message,
                 completed=completed,
                 total=total,
+                downloaded_bytes=downloaded_bytes,
+                total_bytes=total_bytes,
+                current_file=current_file,
             )
         )
 
