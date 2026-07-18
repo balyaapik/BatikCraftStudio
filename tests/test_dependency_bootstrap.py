@@ -80,6 +80,28 @@ def test_hidden_installer_dispatches_to_bundled_pip(monkeypatch, tmp_path: Path)
     assert calls == [(["torch>=2.4", "diffusers>=0.39,<0.40"], target.resolve())]
 
 
+def test_distlib_registers_the_current_loader_as_a_resource_finder(monkeypatch) -> None:
+    import pip._vendor.distlib as distlib_package
+    from pip._vendor.distlib import resources as distlib_resources
+
+    loader = distlib_package.__loader__
+    assert loader is not None
+    loader_type = type(loader)
+    monkeypatch.delitem(distlib_resources._finder_registry, loader_type, raising=False)
+
+    dependency_bootstrap._register_distlib_frozen_resource_finder()
+
+    assert distlib_resources._finder_registry[loader_type] is distlib_resources.ResourceFinder
+
+
+def test_bundled_pip_registers_distlib_before_importing_pip_main() -> None:
+    source = inspect.getsource(dependency_bootstrap.run_bundled_pip_install)
+
+    assert source.index("_register_distlib_frozen_resource_finder()") < source.index(
+        "from pip._internal.cli.main import main as pip_main"
+    )
+
+
 def test_desktop_entry_handles_installer_before_importing_application() -> None:
     source = (ROOT / "packaging" / "desktop_entry.py").read_text(encoding="utf-8")
 
