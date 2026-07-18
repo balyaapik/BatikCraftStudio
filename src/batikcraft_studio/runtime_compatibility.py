@@ -56,9 +56,9 @@ def ensure_windowed_text_streams() -> tuple[object, object]:
     """Guarantee writable stdout/stderr objects for console-less desktop builds."""
 
     if getattr(sys, "stdout", None) is None:
-        setattr(sys, "stdout", _NULL_STDOUT)
+        sys.stdout = _NULL_STDOUT  # type: ignore[assignment]
     if getattr(sys, "stderr", None) is None:
-        setattr(sys, "stderr", _NULL_STDERR)
+        sys.stderr = _NULL_STDERR  # type: ignore[assignment]
     return sys.stdout, sys.stderr
 
 
