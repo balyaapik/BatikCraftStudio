@@ -3,14 +3,17 @@
 from __future__ import annotations
 
 import argparse
+import io
 import platform
 import shutil
+import struct
 import subprocess
 import sys
 import tarfile
+import tempfile
 from pathlib import Path
 
-from PIL import Image
+from PIL import Image, UnidentifiedImageError
 
 ROOT = Path(__file__).resolve().parents[1]
 ENTRY_POINT = ROOT / "packaging" / "desktop_entry.py"
@@ -20,6 +23,18 @@ BUILD_DIR = ROOT / "build"
 RELEASE_DIR = ROOT / "release"
 APP_NAME = "BatikCraftStudio"
 BUNDLE_ID = "com.batikcraft.studio"
+PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
+WINDOWS_ICON_SIZES = (
+    (16, 16),
+    (20, 20),
+    (24, 24),
+    (32, 32),
+    (40, 40),
+    (48, 48),
+    (64, 64),
+    (128, 128),
+    (256, 256),
+)
 
 
 def _run(command: list[str]) -> None:
@@ -36,7 +51,104 @@ def _architecture() -> str:
     return machine.replace(" ", "-") or "unknown"
 
 
-def _pyinstaller_command() -> list[str]:
+def _read_ico_frames(path: Path) -> list[Image.Image]:
+    """Recover individually valid frames even when the ICO container is malformed."""
+    data = path.read_bytes()
+    if len(data) < 6:
+        return []
+    try:
+        reserved, icon_type, frame_count = struct.unpack_from("<HHH", data, 0)
+    except struct.error:
+        return []
+    if reserved != 0 or icon_type != 1 or frame_count < 1:
+        return []
+
+    frames: list[Image.Image] = []
+    for index in range(frame_count):
+        entry_offset = 6 + index * 16
+        if entry_offset + 16 > len(data):
+            break
+        entry = data[entry_offset : entry_offset + 16]
+        try:
+            payload_size, payload_offset = struct.unpack_from("<II", entry, 8)
+        except struct.error:
+            continue
+        payload_end = payload_offset + payload_size
+        if payload_size < 1 or payload_offset < 0 or payload_end > len(data):
+            continue
+        payload = data[payload_offset:payload_end]
+
+        try:
+            if payload.startswith(PNG_SIGNATURE):
+                source = io.BytesIO(payload)
+            else:
+                # Wrap a DIB frame in a minimal one-frame ICO so Pillow can decode it.
+                single_entry = bytearray(entry)
+                struct.pack_into("<I", single_entry, 12, 22)
+                source = io.BytesIO(b"\x00\x00\x01\x00\x01\x00" + single_entry + payload)
+            with Image.open(source) as frame:
+                frame.load()
+                frames.append(frame.convert("RGBA"))
+        except (OSError, ValueError, struct.error):
+            continue
+    return frames
+
+
+def _largest_icon_image() -> Image.Image:
+    """Read the largest recoverable image from the application ICO."""
+    frames = _read_ico_frames(ICON_ICO)
+    if frames:
+        return max(frames, key=lambda image: image.width * image.height)
+
+    try:
+        with Image.open(ICON_ICO) as icon:
+            icon.load()
+            return icon.convert("RGBA")
+    except (OSError, UnidentifiedImageError) as exc:
+        raise RuntimeError(f"No usable image frame found in {ICON_ICO}") from exc
+
+
+def _square_icon_image(size: int = 256) -> Image.Image:
+    """Center the source icon on a square transparent canvas without distortion."""
+    image = _largest_icon_image()
+    side = max(image.width, image.height)
+    square = Image.new("RGBA", (side, side), (0, 0, 0, 0))
+    square.alpha_composite(
+        image,
+        dest=((side - image.width) // 2, (side - image.height) // 2),
+    )
+    if square.size != (size, size):
+        square = square.resize((size, size), Image.Resampling.LANCZOS)
+    return square
+
+
+def _prepare_build_icon(directory: Path, platform_name: str | None = None) -> Path:
+    """Create a platform-safe icon instead of passing the source ICO through unchanged.
+
+    Some icon editors produce non-square or PNG-compressed ICO frames that Windows accepts
+    for Tk title bars but that fail when PyInstaller calls UpdateResourceW. Windows builds use
+    a freshly generated, square, BMP-backed multi-resolution ICO. macOS receives a square PNG
+    that PyInstaller converts to ICNS.
+    """
+    platform_name = platform_name or sys.platform
+    directory.mkdir(parents=True, exist_ok=True)
+    image = _square_icon_image()
+    if platform_name == "win32":
+        destination = directory / "logo-app-windows.ico"
+        image.save(
+            destination,
+            format="ICO",
+            sizes=list(WINDOWS_ICON_SIZES),
+            bitmap_format="bmp",
+        )
+        return destination
+
+    destination = directory / "logo-app.png"
+    image.save(destination, format="PNG", optimize=True)
+    return destination
+
+
+def _pyinstaller_command(icon_path: Path | None) -> list[str]:
     command = [
         sys.executable,
         "-m",
@@ -54,35 +166,39 @@ def _pyinstaller_command() -> list[str]:
         str(BUILD_DIR),
         "--specpath",
         str(BUILD_DIR),
-        "--icon",
-        str(ICON_ICO),
-        "--collect-data",
-        "batikcraft_studio",
-        "--collect-submodules",
-        "batikcraft_studio",
-        "--collect-all",
-        "tkinterdnd2",
-        "--collect-all",
-        "keyring",
-        "--collect-all",
-        "openai",
-        "--collect-all",
-        "google.genai",
-        "--hidden-import",
-        "PIL._tkinter_finder",
-        "--exclude-module",
-        "torch",
-        "--exclude-module",
-        "torchvision",
-        "--exclude-module",
-        "diffusers",
-        "--exclude-module",
-        "transformers",
-        "--exclude-module",
-        "accelerate",
-        "--exclude-module",
-        "peft",
     ]
+    if icon_path is not None:
+        command.extend(["--icon", str(icon_path)])
+    command.extend(
+        [
+            "--collect-data",
+            "batikcraft_studio",
+            "--collect-submodules",
+            "batikcraft_studio",
+            "--collect-all",
+            "tkinterdnd2",
+            "--collect-all",
+            "keyring",
+            "--collect-all",
+            "openai",
+            "--collect-all",
+            "google.genai",
+            "--hidden-import",
+            "PIL._tkinter_finder",
+            "--exclude-module",
+            "torch",
+            "--exclude-module",
+            "torchvision",
+            "--exclude-module",
+            "diffusers",
+            "--exclude-module",
+            "transformers",
+            "--exclude-module",
+            "accelerate",
+            "--exclude-module",
+            "peft",
+        ]
+    )
     if sys.platform in {"win32", "darwin"}:
         command.append("--windowed")
     if sys.platform == "darwin":
@@ -93,21 +209,7 @@ def _pyinstaller_command() -> list[str]:
 
 def _largest_icon_png(destination: Path) -> None:
     destination.parent.mkdir(parents=True, exist_ok=True)
-    with Image.open(ICON_ICO) as icon:
-        frame_count = getattr(icon, "n_frames", 1)
-        best_index = 0
-        best_area = 0
-        for index in range(frame_count):
-            icon.seek(index)
-            area = int(icon.width) * int(icon.height)
-            if area > best_area:
-                best_index = index
-                best_area = area
-        icon.seek(best_index)
-        image = icon.convert("RGBA")
-        if image.size != (256, 256):
-            image = image.resize((256, 256), Image.Resampling.LANCZOS)
-        image.save(destination, format="PNG")
+    _square_icon_image().save(destination, format="PNG", optimize=True)
 
 
 def _package_windows() -> Path:
@@ -237,6 +339,8 @@ def build() -> Path:
         raise FileNotFoundError(ENTRY_POINT)
     if not ICON_ICO.is_file():
         raise FileNotFoundError(ICON_ICO)
+    if sys.platform not in {"win32", "darwin"} and not sys.platform.startswith("linux"):
+        raise RuntimeError(f"Unsupported build platform: {sys.platform}")
 
     shutil.rmtree(DIST_DIR, ignore_errors=True)
     shutil.rmtree(BUILD_DIR, ignore_errors=True)
@@ -245,14 +349,17 @@ def build() -> Path:
         if previous.is_file():
             previous.unlink()
 
-    _run(_pyinstaller_command())
+    with tempfile.TemporaryDirectory(prefix="batikcraft-build-icon-") as icon_directory:
+        icon_path = None
+        if sys.platform in {"win32", "darwin"}:
+            icon_path = _prepare_build_icon(Path(icon_directory))
+        _run(_pyinstaller_command(icon_path))
+
     if sys.platform == "win32":
         return _package_windows()
     if sys.platform == "darwin":
         return _package_macos()
-    if sys.platform.startswith("linux"):
-        return _package_linux()
-    raise RuntimeError(f"Unsupported build platform: {sys.platform}")
+    return _package_linux()
 
 
 def main() -> int:

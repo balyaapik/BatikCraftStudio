@@ -35,6 +35,17 @@ The package is written to `release/`.
 
 Run `BatikCraftStudio.exe`, not `python -m batikcraft_studio`. The application logo is embedded in the executable, so Windows taskbar, Alt+Tab, title bar, and shortcuts use the BatikCraft Studio identity. Windows builds are currently unsigned and can trigger SmartScreen.
 
+The build script does not send the repository ICO directly to `UpdateResourceW`. It first reads the largest logo frame, centers it on a 256×256 transparent canvas, and writes a fresh BMP-backed multi-resolution ICO. This prevents `WinError 87` failures caused by non-square or PNG-compressed ICO frames.
+
+After updating an older checkout, remove stale output before retrying when invoking PyInstaller manually:
+
+```powershell
+Remove-Item -Recurse -Force build, dist, release -ErrorAction SilentlyContinue
+python scripts/build_desktop.py
+```
+
+The normal build script already performs this cleanup automatically.
+
 ### macOS
 
 The generated `.app` receives an ad-hoc signature so its internal bundle remains consistent. Public distribution without security warnings requires an Apple Developer ID certificate and notarization. Intel and Apple Silicon packages are built separately.
