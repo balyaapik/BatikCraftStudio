@@ -43,8 +43,10 @@ def main() -> int:
     from .app_icon import apply_app_icon
     from .config import APP_NAME
     from .ui.marketplace_model_progress import install_marketplace_model_progress
+    from .ui.realtime_canvas_patch import install_realtime_canvas_patch
 
     install_marketplace_model_progress()
+    install_realtime_canvas_patch()
 
     from .integrated_market_app import ContextToolApplication
 
