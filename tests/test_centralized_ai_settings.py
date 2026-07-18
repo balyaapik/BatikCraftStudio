@@ -10,7 +10,7 @@ from batikcraft_studio.batikbrew_context_tool_app import ContextToolApplication
 from batikcraft_studio.ui import (
     batik_ai_provider_dialog,
     batikbrew_request_dialog,
-    context_tool_editor_hotfix_v15,
+    context_tool_editor_hotfixes,
 )
 from batikcraft_studio.ui.views import ContextToolEditorWorkspaceView
 
@@ -39,13 +39,13 @@ def test_local_batikbrew_model_profile_round_trip(tmp_path) -> None:
 
 def test_active_editor_uses_centralized_settings_hotfix() -> None:
     assert ContextToolEditorWorkspaceView.__module__.endswith(
-        "context_tool_editor_hotfix_v15"
+        "context_tool_editor_hotfixes"
     )
 
 
 def test_generation_requires_model_selection_after_output_mode() -> None:
     method = (
-        context_tool_editor_hotfix_v15.ContextToolEditorWorkspaceView
+        context_tool_editor_hotfixes.ContextToolEditorWorkspaceView
         .batify_selected_with_pretrained_ai
     )
     flow = inspect.getsource(method)
@@ -76,7 +76,7 @@ def test_request_dialog_contains_only_creative_controls() -> None:
 
 def test_cloud_generation_defaults_to_one_api_request() -> None:
     request_source = inspect.getsource(batikbrew_request_dialog)
-    editor_source = inspect.getsource(context_tool_editor_hotfix_v15)
+    editor_source = inspect.getsource(context_tool_editor_hotfixes)
 
     assert "default_variation_count: int = 1" in request_source
     assert "default_variation_count=1 if cloud_request else 4" in editor_source

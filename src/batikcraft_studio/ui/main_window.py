@@ -54,11 +54,34 @@ class MainWindow(ttk.Frame):
         self.workspace_host.columnconfigure(0, weight=1)
         self.workspace_host.rowconfigure(0, weight=1)
 
-        ttk.Label(self, textvariable=self.status_text, style="Status.TLabel").grid(
-            row=2,
-            column=0,
-            sticky="ew",
+        status = ttk.Frame(self, style="Status.TFrame", padding=(4, 1))
+        status.grid(row=2, column=0, sticky="ew")
+        status.columnconfigure(0, weight=1)
+        ttk.Label(
+            status,
+            textvariable=self.status_text,
+            style="Status.TLabel",
+            anchor="w",
+        ).grid(row=0, column=0, sticky="ew")
+        self.busy_progress = ttk.Progressbar(
+            status,
+            mode="indeterminate",
+            length=190,
         )
+        self.busy_progress.grid(row=0, column=1, padx=(8, 4))
+        self.busy_progress.grid_remove()
+        self.busy_percent = tk.StringVar(master=self, value="")
+        self.busy_percent_label = ttk.Label(
+            status,
+            textvariable=self.busy_percent,
+            style="Status.TLabel",
+            width=7,
+            anchor="e",
+        )
+        self.busy_percent_label.grid(row=0, column=2, sticky="e")
+        self.busy_percent_label.grid_remove()
+        self._busy_progress_running = False
+
 
     def _build_command_toolbar(self) -> None:
         toolbar = ttk.Frame(self, style="Toolbar.TFrame", padding=(4, 3))
@@ -270,12 +293,24 @@ class MainWindow(ttk.Frame):
         self.focus_asset_library()
 
     def set_busy(self, busy: bool, message: str | None = None) -> None:
+        """Display an animated bar while older synchronous workflows are active."""
+
         self.parent.configure(cursor="watch" if busy else "")
         if message:
             self.set_status(message)
         elif not busy:
             self.set_status(tr("status.ready"))
+        if busy:
+            self.busy_progress.configure(mode="indeterminate")
+            self.busy_progress.grid()
+            self.busy_percent_label.grid_remove()
+            if not self._busy_progress_running:
+                self.busy_progress.start(12)
+                self._busy_progress_running = True
+        else:
+            self.clear_busy_progress()
         self.parent.update_idletasks()
+
 
     def _update_window_title(self) -> None:
         snapshot = self.session.snapshot()
@@ -288,3 +323,121 @@ class MainWindow(ttk.Frame):
     @property
     def background_color(self) -> str:
         return COLORS["canvas"]
+
+    # ------------------------------------------------------------------
+    # Perintah menu/shortcut (dulu tersebar di 7 varian *MainWindow)
+    # ------------------------------------------------------------------
+
+    def editor_copy(self) -> None:
+        self._editor().copy_active_object()
+
+    def editor_paste(self) -> None:
+        self._editor().paste_object()
+
+    def batify_selected_object(self) -> None:
+        self._editor().batify_selected_object()
+
+    def batify_selected_group(self) -> None:
+        self._editor().batify_selected_group()
+
+    def rerender_selected_component(self) -> None:
+        self._editor().rerender_selected_component()
+
+    def show_selected_source(self) -> None:
+        self._editor().show_selected_source()
+
+    def show_selected_latest_render(self) -> None:
+        self._editor().show_selected_latest_render()
+
+    def reset_selected_batification(self) -> None:
+        self._editor().reset_selected_batification()
+
+    def open_dataset_studio(self) -> None:
+        self._editor().open_dataset_studio()
+
+    def open_offline_model_manager(self) -> None:
+        self._editor().open_offline_model_manager()
+
+    def begin_ai_rectangle_selection(self) -> None:
+        self._editor().begin_ai_rectangle_selection()
+
+    def group_selected_objects(self) -> None:
+        self._editor().group_selected_objects()
+
+    def ungroup_selected_objects(self) -> None:
+        self._editor().ungroup_selected_objects()
+
+    def open_batik_process_studio(self) -> None:
+        self._editor().open_batik_process_studio()
+
+    def editor_cut(self) -> None:
+        self._editor().cut_selected_objects()
+
+    def zoom_in(self) -> None:
+        self._editor().zoom_in()
+
+    def zoom_out(self) -> None:
+        self._editor().zoom_out()
+
+    def zoom_fit(self) -> None:
+        self._editor().zoom_fit()
+
+    def zoom_actual_size(self) -> None:
+        self._editor().zoom_actual_size()
+
+    def set_grid_visible(self, visible: bool) -> None:
+        self._editor().set_grid_visible(visible)
+
+    def set_ruler_visible(self, visible: bool) -> None:
+        self._editor().set_ruler_visible(visible)
+
+    @property
+    def grid_visible(self) -> bool:
+        return bool(self._editor().grid_visible)
+
+    @property
+    def ruler_visible(self) -> bool:
+        return bool(self._editor().ruler_visible)
+
+    def set_busy_fraction(
+        self,
+        completed: float,
+        total: float,
+        message: str | None = None,
+    ) -> None:
+        """Show determinate progress for callers that know their total work."""
+
+        if message:
+            self.set_status(message)
+        if self._busy_progress_running:
+            self.busy_progress.stop()
+            self._busy_progress_running = False
+        total_value = max(1.0, float(total))
+        percent = round(max(0.0, min(float(completed), total_value)) / total_value * 100)
+        self.busy_progress.configure(mode="determinate", maximum=100, value=percent)
+        self.busy_progress.grid()
+        self.busy_percent.set(f"{percent}%")
+        self.busy_percent_label.grid()
+        self.parent.configure(cursor="watch")
+        self.parent.update_idletasks()
+
+    def clear_busy_progress(self) -> None:
+        """Hide the progress bar and restore the normal cursor."""
+
+        if self._busy_progress_running:
+            self.busy_progress.stop()
+            self._busy_progress_running = False
+        self.busy_progress.grid_remove()
+        self.busy_percent_label.grid_remove()
+        self.busy_percent.set("")
+        self.parent.configure(cursor="")
+
+
+# Alias kompatibilitas: dulu subclass berantai, kini satu kelas.
+ClipboardMainWindow = MainWindow
+StructuredBatificationMainWindow = MainWindow
+OfflineAIMainWindow = MainWindow
+MultiObjectMainWindow = MainWindow
+BatikProcessMainWindow = MainWindow
+ViewportMainWindow = MainWindow
+ProgressViewportMainWindow = MainWindow

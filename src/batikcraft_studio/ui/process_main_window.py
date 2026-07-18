@@ -1,15 +1,5 @@
-"""Main-window bridge for Batik process planning."""
+"""Shim kompatibilitas; semua perintah kini ada di ``main_window.MainWindow``."""
 
-from __future__ import annotations
-
-from .multi_object_main_window import MultiObjectMainWindow
-
-
-class BatikProcessMainWindow(MultiObjectMainWindow):
-    """Expose the process studio to the application shell."""
-
-    def open_batik_process_studio(self) -> None:
-        self._editor().open_batik_process_studio()
-
+from .main_window import BatikProcessMainWindow  # noqa: F401
 
 __all__ = ["BatikProcessMainWindow"]

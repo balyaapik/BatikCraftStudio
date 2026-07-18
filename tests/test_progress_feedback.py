@@ -78,7 +78,7 @@ def test_progress_dialog_close_policy_changes_after_finish() -> None:
 def test_progress_aware_entry_points_are_active() -> None:
     assert ContextToolApplication.__module__.endswith("progress_context_tool_app")
     assert ContextToolEditorWorkspaceView.__module__.endswith(
-        "context_tool_editor_hotfix_v13"
+        "context_tool_editor_hotfixes"
     )
     assert issubclass(ProgressViewportMainWindow, object)
 

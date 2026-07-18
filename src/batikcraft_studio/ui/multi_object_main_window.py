@@ -1,18 +1,5 @@
-"""Main-window bridge for multi-object group commands."""
+"""Shim kompatibilitas; semua perintah kini ada di ``main_window.MainWindow``."""
 
-from __future__ import annotations
-
-from .offline_ai_main_window import OfflineAIMainWindow
-
-
-class MultiObjectMainWindow(OfflineAIMainWindow):
-    """Expose grouping and ungrouping to the application menu."""
-
-    def group_selected_objects(self) -> None:
-        self._editor().group_selected_objects()
-
-    def ungroup_selected_objects(self) -> None:
-        self._editor().ungroup_selected_objects()
-
+from .main_window import MultiObjectMainWindow  # noqa: F401
 
 __all__ = ["MultiObjectMainWindow"]
