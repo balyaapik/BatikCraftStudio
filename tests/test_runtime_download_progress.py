@@ -33,13 +33,20 @@ def test_runtime_dialog_uses_byte_percentage_instead_of_spinner_when_known() -> 
     assert "_format_bytes" in source
 
 
-def test_runtime_dialog_requests_immediate_active_download_cancellation() -> None:
-    source = inspect.getsource(
+def test_runtime_dialog_force_stops_child_process_and_becomes_closable() -> None:
+    cancel_source = inspect.getsource(
         ai_runtime_model_install_dialog.RuntimeModelInstallDialog._cancel_or_close
     )
-    installer_source = inspect.getsource(runtime_model_installer._SnapshotProgressTracker)
+    terminate_source = inspect.getsource(
+        ai_runtime_model_install_dialog.RuntimeModelInstallDialog._terminate_process_tree
+    )
+    finish_source = inspect.getsource(
+        ai_runtime_model_install_dialog.RuntimeModelInstallDialog._finish
+    )
 
-    assert "Menghentikan unduhan aktif" in source
-    assert "self._cancel_event.set()" in source
-    assert "raise_if_cancelled" in installer_source
-    assert "tracker.raise_if_cancelled()" in installer_source
+    assert "_terminate_process_tree" in cancel_source
+    assert "cancelled=True" in cancel_source
+    assert '"taskkill"' in terminate_source
+    assert '"/T"' in terminate_source
+    assert '"/F"' in terminate_source
+    assert 'text="Tutup"' in finish_source or 'else "Tutup"' in finish_source
