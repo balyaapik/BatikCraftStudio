@@ -19,6 +19,8 @@ from batikcraft_studio.ai.runtime_model_installer import (
     install_default_runtime_models,
 )
 
+_DOWNLOAD_STAGES = {"base", "controlnet", "sdxl"}
+
 
 class RuntimeModelInstallDialog(tk.Toplevel):
     """Download either the legacy SD1.5 stack or BatikBrew SDXL runtime."""
@@ -45,10 +47,11 @@ class RuntimeModelInstallDialog(tk.Toplevel):
         self._cancel_event = threading.Event()
         self._worker: threading.Thread | None = None
         self._finished = False
+        self._size_note = ""
 
         self.title("Instal Runtime AI BatikCraft")
-        self.geometry("640x330")
-        self.minsize(580, 300)
+        self.geometry("680x370")
+        self.minsize(620, 340)
         self.resizable(True, False)
         self.transient(parent.winfo_toplevel())
         self.protocol("WM_DELETE_WINDOW", self._cancel_or_close)
@@ -68,14 +71,18 @@ class RuntimeModelInstallDialog(tk.Toplevel):
                 "SDXL dan LoRA BatikBrew digunakan untuk menghasilkan motif baru dari "
                 "analisis objek inspirasi, bukan untuk menempelkan tekstur pada objek."
             )
-            size_note = "Unduhan SDXL sekitar 7 GB. File parsial dapat dilanjutkan."
+            self._size_note = (
+                "Unduhan SDXL sekitar 7 GB. File parsial dapat dilanjutkan."
+            )
         else:
             heading = "Instal Stable Diffusion 1.5 + ControlNet"
             description = (
                 "Runtime legacy untuk workflow img2img/ControlNet. Internet hanya "
                 "diperlukan saat instalasi pertama."
             )
-            size_note = "Jika koneksi terputus, instalasi dapat dilanjutkan tanpa mengulang."
+            self._size_note = (
+                "Jika koneksi terputus, instalasi dapat dilanjutkan tanpa mengulang."
+            )
 
         ttk.Label(
             body,
@@ -85,12 +92,15 @@ class RuntimeModelInstallDialog(tk.Toplevel):
         ttk.Label(
             body,
             text=description,
-            wraplength=595,
+            wraplength=635,
             justify="left",
         ).grid(row=1, column=0, sticky="ew", pady=(8, 4))
 
         ttk.Label(body, text="Lokasi penyimpanan:").grid(
-            row=2, column=0, sticky="w", pady=(8, 0)
+            row=2,
+            column=0,
+            sticky="w",
+            pady=(8, 0),
         )
         path_entry = ttk.Entry(body)
         path_entry.insert(0, str(self.install_root))
@@ -99,20 +109,25 @@ class RuntimeModelInstallDialog(tk.Toplevel):
 
         self.progress = ttk.Progressbar(body, mode="indeterminate")
         self.progress.grid(row=4, column=0, sticky="ew")
-        self.percent = ttk.Label(body, text="", anchor="e", style="Muted.TLabel")
+        self.percent = ttk.Label(
+            body,
+            text="",
+            anchor="e",
+            style="Muted.TLabel",
+        )
         self.percent.grid(row=5, column=0, sticky="e", pady=(3, 0))
         self.status = ttk.Label(
             body,
             text="Menyiapkan instalasi…",
-            wraplength=595,
+            wraplength=635,
             justify="left",
         )
         self.status.grid(row=6, column=0, sticky="ew", pady=(8, 4))
         self.detail = ttk.Label(
             body,
-            text=size_note,
+            text=self._size_note,
             style="Muted.TLabel",
-            wraplength=595,
+            wraplength=635,
             justify="left",
         )
         self.detail.grid(row=7, column=0, sticky="ew")
@@ -154,7 +169,7 @@ class RuntimeModelInstallDialog(tk.Toplevel):
             self._events.put(("cancelled", str(exc)))
         except RuntimeModelInstallError as exc:
             self._events.put(("error", str(exc)))
-        except Exception as exc:  # noqa: BLE001 - keep worker failures visible in UI
+        except Exception as exc:  # noqa: BLE001 - keep worker failures visible
             self._events.put(("error", f"Instalasi gagal: {exc}"))
         else:
             self._events.put(("complete", paths))
@@ -173,63 +188,129 @@ class RuntimeModelInstallDialog(tk.Toplevel):
 
     def _handle_event(self, event: object) -> None:
         if isinstance(event, RuntimeModelInstallProgress):
-            stage_number = max(0, min(event.completed, event.total))
-            self.status.configure(text=f"Tahap {stage_number}/{event.total} — {event.message}")
-            if event.stage in {"base", "controlnet", "sdxl"}:
-                self.progress.configure(mode="indeterminate")
-                self.progress.start(12)
-                self.percent.configure(text="Mengunduh…")
-            else:
-                self.progress.stop()
-                self.progress.configure(
-                    mode="determinate",
-                    maximum=event.total,
-                    value=event.completed,
-                )
-                percent = round(event.completed / event.total * 100) if event.total else 0
-                self.percent.configure(text=f"{percent}%")
+            self._show_progress(event)
             return
 
         if not isinstance(event, tuple) or len(event) != 2:
             return
         kind, payload = event
         if kind == "complete" and isinstance(
-            payload, (RuntimeModelPaths, BatikBrewRuntimePaths)
+            payload,
+            (RuntimeModelPaths, BatikBrewRuntimePaths),
         ):
             self.result = payload
-            label = "Runtime BatikBrew SDXL" if self.family == "sdxl" else "Runtime AI"
+            label = (
+                "Runtime BatikBrew SDXL"
+                if self.family == "sdxl"
+                else "Runtime AI"
+            )
             self._finish(
                 f"{label} berhasil dipasang. Tekan Selesai untuk kembali.",
                 success=True,
             )
         elif kind == "cancelled":
-            self._finish(str(payload), success=False)
+            self._finish(str(payload), success=False, cancelled=True)
         elif kind == "error":
             self._finish(str(payload), success=False)
 
-    def _finish(self, message: str, *, success: bool) -> None:
+    def _show_progress(self, event: RuntimeModelInstallProgress) -> None:
+        stage_number = max(0, min(event.completed, event.total))
+        self.status.configure(
+            text=f"Tahap {stage_number}/{event.total} — {event.message}"
+        )
+
+        if event.stage in _DOWNLOAD_STAGES and event.total_bytes > 0:
+            percent = event.download_percent or 0.0
+            self.progress.stop()
+            self.progress.configure(
+                mode="determinate",
+                maximum=100,
+                value=percent,
+            )
+            self.percent.configure(
+                text=(
+                    f"{percent:.1f}% · "
+                    f"{_format_bytes(event.downloaded_bytes)} / "
+                    f"{_format_bytes(event.total_bytes)}"
+                )
+            )
+            detail = self._size_note
+            if event.current_file:
+                detail = f"File aktif: {event.current_file}"
+            self.detail.configure(text=detail)
+            return
+
+        if event.stage in _DOWNLOAD_STAGES:
+            self.progress.configure(mode="indeterminate")
+            self.progress.start(12)
+            self.percent.configure(text="Menghitung ukuran unduhan…")
+            self.detail.configure(text=self._size_note)
+            return
+
+        self.progress.stop()
+        self.progress.configure(
+            mode="determinate",
+            maximum=event.total,
+            value=event.completed,
+        )
+        percent = round(event.completed / event.total * 100) if event.total else 0
+        self.percent.configure(text=f"{percent}%")
+        self.detail.configure(text=self._size_note)
+
+    def _finish(
+        self,
+        message: str,
+        *,
+        success: bool,
+        cancelled: bool = False,
+    ) -> None:
         self._finished = True
         self.progress.stop()
-        self.progress.configure(mode="determinate", maximum=1, value=1 if success else 0)
-        self.percent.configure(text="100%" if success else "")
+        if success:
+            self.progress.configure(mode="determinate", maximum=1, value=1)
+            self.percent.configure(text="100%")
+        elif cancelled:
+            self.percent.configure(text="Dibatalkan")
+        else:
+            self.percent.configure(text="")
         self.status.configure(text=message)
         self.detail.configure(
             text=(
-                "Model tersimpan di folder aplikasi dan akan ditemukan otomatis."
+                "Model tersimpan di folder dependencies dan ditemukan otomatis."
                 if success
-                else "File parsial tetap disimpan dan instalasi dapat dilanjutkan nanti."
+                else "File parsial tetap disimpan dan dapat dilanjutkan nanti."
             )
         )
-        self.action_button.configure(text="Selesai" if success else "Tutup", command=self.destroy)
+        self.action_button.configure(
+            text="Selesai" if success else "Tutup",
+            command=self.destroy,
+            state="normal",
+        )
 
     def _cancel_or_close(self) -> None:
         if self._finished:
             self.destroy()
             return
+        if self._cancel_event.is_set():
+            return
         self._cancel_event.set()
-        self.status.configure(text="Membatalkan setelah unduhan aktif selesai dengan aman…")
-        self.percent.configure(text="")
+        self.status.configure(text="Menghentikan unduhan aktif…")
+        self.detail.configure(
+            text="Koneksi unduhan dihentikan; file parsial tetap disimpan."
+        )
         self.action_button.configure(state="disabled")
+
+
+def _format_bytes(value: int) -> str:
+    size = max(0, int(value))
+    units = ("B", "KB", "MB", "GB", "TB")
+    amount = float(size)
+    for unit in units:
+        if amount < 1024.0 or unit == units[-1]:
+            precision = 0 if unit == "B" else 2
+            return f"{amount:.{precision}f} {unit}"
+        amount /= 1024.0
+    return f"{size} B"
 
 
 __all__ = ["RuntimeModelInstallDialog"]
