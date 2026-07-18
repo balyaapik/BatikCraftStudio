@@ -30,6 +30,18 @@ def main() -> int:
 
     install_runtime_compatibility()
 
+    # The user-visible Settings preference is authoritative for this process. Online
+    # mode clears inherited Hugging Face offline variables; Offline mode sets them.
+    from .ai.model_connectivity import apply_saved_model_connectivity
+
+    apply_saved_model_connectivity()
+
+    # A runtime is ready only when model_index, both tokenizer vocabularies, both text
+    # encoders, UNet, VAE, and scheduler configuration are actually complete.
+    from .ai.sdxl_runtime_integrity import install_sdxl_runtime_integrity
+
+    install_sdxl_runtime_integrity()
+
     # Keep current Diffusers releases quiet and correct: use component-level VAE
     # controls, load UNet-only LoRAs without probing absent text encoders, and fit
     # BatikBrew prompts into both SDXL CLIP tokenizers before inference.
@@ -45,9 +57,8 @@ def main() -> int:
 
     install_sdxl_text_component_repair()
 
-    # Older builds stored a local-only flag that was never shown in Settings.
-    # Migrate that hidden value and allow mandatory SDXL text components to repair
-    # themselves from the official cache/repository when internet is available.
+    # When Settings is Online, mandatory SDXL text components may be restored from
+    # the official cache/repository. Offline mode remains fully cache-only.
     from .ai.sdxl_online_component_repair import (
         install_sdxl_online_component_repair,
     )
@@ -73,13 +84,19 @@ def main() -> int:
     from .app_icon import apply_app_icon
     from .config import APP_NAME
     from .ui.canvas_selection_semantics import install_canvas_selection_semantics
+    from .ui.dependency_integrity_patch import install_dependency_integrity_patch
     from .ui.inkscape_canvas_patch import install_inkscape_canvas_patch
     from .ui.inkscape_pointer_hotpath import install_inkscape_pointer_hotpath
     from .ui.inkscape_renderer_compat import install_inkscape_renderer_compat
     from .ui.marketplace_model_progress import install_marketplace_model_progress
+    from .ui.model_connectivity_settings_patch import (
+        install_model_connectivity_settings_patch,
+    )
     from .ui.realtime_canvas_patch import install_realtime_canvas_patch
 
     install_marketplace_model_progress()
+    install_dependency_integrity_patch()
+    install_model_connectivity_settings_patch()
     install_realtime_canvas_patch()
     install_inkscape_canvas_patch()
     install_inkscape_pointer_hotpath()
