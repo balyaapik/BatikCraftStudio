@@ -42,6 +42,10 @@ def main() -> int:
 
     from .app_icon import apply_app_icon
     from .config import APP_NAME
+    from .ui.marketplace_model_progress import install_marketplace_model_progress
+
+    install_marketplace_model_progress()
+
     from .integrated_market_app import ContextToolApplication
 
     try:
