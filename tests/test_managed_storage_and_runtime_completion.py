@@ -7,6 +7,7 @@ from types import SimpleNamespace
 from typing import Any
 
 from batikcraft_studio import managed_storage
+from batikcraft_studio.ai.runtime_model_installer import RuntimeModelInstallProgress
 from batikcraft_studio.runtime_model_process import run_runtime_model_installer
 from batikcraft_studio.ui import cache_directory_guard, runtime_installer_completion_guard
 
@@ -49,14 +50,11 @@ def test_runtime_worker_rejects_incomplete_sdxl_before_complete_event(
 
     def incomplete_installer(_root: Path, *, progress: Any) -> object:
         progress(
-            SimpleNamespace(
+            RuntimeModelInstallProgress(
                 stage="checking",
                 message="checking",
                 completed=0,
                 total=3,
-                downloaded_bytes=0,
-                total_bytes=0,
-                current_file="",
             )
         )
         return SimpleNamespace(base_model=incomplete)
