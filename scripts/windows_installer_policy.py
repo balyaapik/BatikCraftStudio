@@ -61,8 +61,7 @@ def build_inno_setup_script(
         'GroupDescription: "Shortcut tambahan:"; Flags: unchecked',
         "",
         "[Dirs]",
-        'Name: "{app}\\dependencies"; Permissions: users-modify; '
-        "Flags: uninsneveruninstall",
+        'Name: "{app}\\dependencies"; Permissions: users-modify',
         "",
         "[Files]",
         'Source: "{#SourceExe}"; DestDir: "{app}"; DestName: "BatikCraftStudio.exe"; '
@@ -79,6 +78,9 @@ def build_inno_setup_script(
         'Filename: "{app}\\BatikCraftStudio.exe"; '
         f'Description: "Jalankan {display_name}"; '
         "Flags: nowait postinstall skipifsilent",
+        "",
+        "[UninstallDelete]",
+        'Type: filesandordirs; Name: "{app}\\dependencies"',
         "",
     ]
     return "\n".join(lines)
