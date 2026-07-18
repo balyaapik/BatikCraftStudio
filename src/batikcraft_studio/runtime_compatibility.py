@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import inspect
+import sys
 from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
@@ -15,9 +16,56 @@ from batikcraft_studio.dependency_bootstrap import (
 )
 
 
+class _NullTextStream:
+    """Writable text stream used when PyInstaller windowed builds expose no console.
+
+    PyInstaller sets ``sys.stdout`` and ``sys.stderr`` to ``None`` for Windows GUI
+    executables. Some versions of tqdm and Hugging Face Hub still write to those
+    streams even when a custom progress callback is supplied. This lightweight sink
+    preserves their file-like contract without opening a terminal or retaining output
+    in memory.
+    """
+
+    encoding = "utf-8"
+    errors = "replace"
+    newlines = None
+    closed = False
+
+    def write(self, value: object) -> int:
+        text = value if isinstance(value, str) else str(value)
+        return len(text)
+
+    def flush(self) -> None:
+        return None
+
+    def isatty(self) -> bool:
+        return False
+
+    def writable(self) -> bool:
+        return True
+
+    def fileno(self) -> int:
+        raise OSError("BatikCraft windowed output stream has no file descriptor")
+
+
+_NULL_STDOUT = _NullTextStream()
+_NULL_STDERR = _NullTextStream()
+
+
+def ensure_windowed_text_streams() -> tuple[object, object]:
+    """Guarantee writable stdout/stderr objects for console-less desktop builds."""
+
+    if getattr(sys, "stdout", None) is None:
+        sys.stdout = _NULL_STDOUT  # type: ignore[assignment]
+    if getattr(sys, "stderr", None) is None:
+        sys.stderr = _NULL_STDERR  # type: ignore[assignment]
+    return sys.stdout, sys.stderr
+
+
 def install_runtime_compatibility() -> None:
     """Apply downloader compatibility and repair paths before AI dialogs are imported."""
 
+    ensure_windowed_text_streams()
     _patch_legacy_hf_hub_download()
     _patch_runtime_cache_function()
     _repair_stale_model_settings()
@@ -127,6 +175,7 @@ def _patch_legacy_hf_hub_download() -> bool:
     then restores it immediately after the file finishes or fails.
     """
 
+    ensure_windowed_text_streams()
     try:
         import huggingface_hub
         from huggingface_hub import file_download
@@ -150,6 +199,7 @@ def _patch_legacy_hf_hub_download() -> bool:
         tqdm_class: type | None = None,
         **kwargs: object,
     ) -> Any:
+        ensure_windowed_text_streams()
         if tqdm_class is None:
             return original(*args, **kwargs)
 
@@ -160,15 +210,15 @@ def _patch_legacy_hf_hub_download() -> bool:
                 # Hub 0.x passes an internal progress-group name that plain tqdm does
                 # not accept. BatikCraft already knows the active repository file.
                 bar_kwargs.pop("name", None)
+                if bar_kwargs.get("file") is None:
+                    bar_kwargs["file"] = sys.stderr or _NULL_STDERR
                 super().__init__(*bar_args, **bar_kwargs)
 
         try:
-            if previous_tqdm is not None:
-                file_download.tqdm = LegacyCompatibleTqdm
+            file_download.tqdm = LegacyCompatibleTqdm
             return original(*args, **kwargs)
         finally:
-            if previous_tqdm is not None:
-                file_download.tqdm = previous_tqdm
+            file_download.tqdm = previous_tqdm
 
     compatible_hf_hub_download.__name__ = getattr(
         original,
@@ -181,4 +231,4 @@ def _patch_legacy_hf_hub_download() -> bool:
     return True
 
 
-__all__ = ["install_runtime_compatibility"]
+__all__ = ["ensure_windowed_text_streams", "install_runtime_compatibility"]
