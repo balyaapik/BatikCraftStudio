@@ -277,8 +277,14 @@ def _is_unet_only_lora(state_dict: Mapping[str, Any]) -> bool:
         or ".text_encoder_2." in key
         for key in keys
     )
+    # Diffusers can return either pipeline-prefixed keys (``unet.*``) or
+    # model-direct PEFT keys (``base_model.model.*.lora_A``).  Once text-encoder
+    # namespaces are absent, any remaining LoRA tensor belongs to the UNet.
     has_unet = any(
-        key.startswith(_UNET_PREFIXES) or ".unet." in key
+        key.startswith(_UNET_PREFIXES)
+        or ".unet." in key
+        or "lora_" in key
+        or ".lora" in key
         for key in keys
     )
     return has_unet and not has_text_encoder
