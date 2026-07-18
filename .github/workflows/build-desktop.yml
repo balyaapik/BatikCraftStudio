@@ -55,7 +55,15 @@ jobs:
       - name: Install Inno Setup
         if: runner.os == 'Windows'
         shell: pwsh
-        run: choco install innosetup --no-progress -y
+        run: |
+          choco install innosetup --no-progress -y
+          $inno = "${env:ProgramFiles(x86)}\Inno Setup 6"
+          $languages = Join-Path $inno "Languages"
+          New-Item -ItemType Directory -Force -Path $languages | Out-Null
+          $indonesian = Join-Path $languages "Indonesian.isl"
+          if (-not (Test-Path $indonesian)) {
+            Copy-Item (Join-Path $inno "Default.isl") $indonesian
+          }
 
       - name: Install desktop build dependencies
         run: python -m pip install --upgrade pip && python -m pip install -e ".[desktop-build]"
