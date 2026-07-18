@@ -67,7 +67,7 @@ def _square_icon_image(size: int = 256) -> Image.Image:
     square = Image.new("RGBA", (side, side), (0, 0, 0, 0))
     square.alpha_composite(
         image,
-        destination=((side - image.width) // 2, (side - image.height) // 2),
+        dest=((side - image.width) // 2, (side - image.height) // 2),
     )
     if square.size != (size, size):
         square = square.resize((size, size), Image.Resampling.LANCZOS)
