@@ -10,7 +10,7 @@ import sys
 import threading
 import time
 import tkinter as tk
-from collections.abc import Callable, Iterable
+from collections.abc import Callable
 from pathlib import Path
 from tkinter import messagebox, ttk
 
