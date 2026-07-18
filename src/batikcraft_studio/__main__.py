@@ -44,6 +44,7 @@ def main() -> int:
     from .config import APP_NAME
     from .ui.inkscape_canvas_patch import install_inkscape_canvas_patch
     from .ui.inkscape_pointer_hotpath import install_inkscape_pointer_hotpath
+    from .ui.inkscape_renderer_compat import install_inkscape_renderer_compat
     from .ui.marketplace_model_progress import install_marketplace_model_progress
     from .ui.realtime_canvas_patch import install_realtime_canvas_patch
 
@@ -51,6 +52,7 @@ def main() -> int:
     install_realtime_canvas_patch()
     install_inkscape_canvas_patch()
     install_inkscape_pointer_hotpath()
+    install_inkscape_renderer_compat()
 
     from .integrated_market_app import ContextToolApplication
 
