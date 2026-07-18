@@ -30,6 +30,15 @@ def main() -> int:
 
     install_runtime_compatibility()
 
+    # Keep current Diffusers releases quiet and correct: use component-level VAE
+    # controls, load UNet-only LoRAs without probing absent text encoders, and fit
+    # BatikBrew prompts into both SDXL CLIP tokenizers before inference.
+    from .ai.diffusers_inference_compat import (
+        install_diffusers_inference_compatibility,
+    )
+
+    install_diffusers_inference_compatibility()
+
     # Keep the model manager, persisted local-model profile, and BatikBrew
     # generation path synchronized before the application session is constructed.
     from .ai.lora_activation_persistence import install_lora_activation_persistence
