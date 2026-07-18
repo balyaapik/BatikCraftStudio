@@ -1,8 +1,8 @@
 """Prevent the runtime installer dialog from displaying false success.
 
 The actual download runs in a child process. The GUI creates every managed storage
-folder before launch, requires a real worker event, and validates the exact SDXL
-folder before turning the progress bar into 100%.
+folder before launch, validates the exact SDXL folder, and requires a real worker
+event before turning the progress bar into 100%.
 """
 
 from __future__ import annotations
@@ -20,7 +20,7 @@ _EVENT_KINDS = {"progress", "complete", "cancelled", "error"}
 
 
 def install_runtime_installer_completion_guard() -> None:
-    """Validate storage, worker events, and the exact folder before success."""
+    """Validate storage, the exact folder, and worker events before success."""
 
     global _INSTALLED
     if _INSTALLED:
@@ -61,20 +61,6 @@ def install_runtime_installer_completion_guard() -> None:
 
     def handle_event(dialog: Any, event: object) -> None:
         if _is_sdxl_complete_event(dialog, event):
-            if not bool(getattr(dialog, "_batikcraft_worker_event_seen", False)):
-                dialog.result = None
-                dialog._finish(
-                    "Proses installer berhenti tanpa laporan valid. Status 100% dibatalkan.",
-                    success=False,
-                )
-                dialog.detail.configure(
-                    text=(
-                        "Tidak ada event progres dari proses pengunduh. Tutup aplikasi, "
-                        "pastikan mode Online aktif, lalu jalankan reparasi kembali."
-                    )
-                )
-                return
-
             paths = batikbrew_runtime_model_paths(dialog.install_root)
             issues = inspect_batikbrew_runtime(paths.base_model)
             if issues:
@@ -92,6 +78,20 @@ def install_runtime_installer_completion_guard() -> None:
                     text=(
                         details
                         + "\n\nPastikan mode Online aktif, lalu jalankan instalasi/reparasi lagi."
+                    )
+                )
+                return
+
+            if not bool(getattr(dialog, "_batikcraft_worker_event_seen", False)):
+                dialog.result = None
+                dialog._finish(
+                    "Proses installer berhenti tanpa laporan valid. Status 100% dibatalkan.",
+                    success=False,
+                )
+                dialog.detail.configure(
+                    text=(
+                        "Folder terlihat lengkap, tetapi tidak ada event progres dari proses "
+                        "pengunduh. Tutup aplikasi lalu jalankan pemeriksaan kembali."
                     )
                 )
                 return
