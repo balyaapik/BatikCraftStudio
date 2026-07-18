@@ -8,6 +8,7 @@ from typing import Any
 from batikcraft_studio import __main__
 from batikcraft_studio.ai.diffusers_inference_compat import (
     _install_clip_prompt_guard,
+    _is_unet_only_lora,
     _load_lora_adapter,
     _priority_batik_prompt,
     configure_pipeline_memory_features_compat,
@@ -129,6 +130,21 @@ def test_unet_only_safetensors_skips_missing_text_encoder_probes(
     assert pipeline.loaded_unet is not None
     assert pipeline.loaded_unet[1] == "batikbrew"
     assert pipeline.adapters == (["batikbrew"], [0.83])
+
+
+def test_direct_peft_unet_keys_are_recognized_without_unet_prefix() -> None:
+    assert _is_unet_only_lora(
+        {
+            "base_model.model.down_blocks.0.attentions.0.to_q.lora_A.weight": object(),
+            "base_model.model.down_blocks.0.attentions.0.to_q.lora_B.weight": object(),
+        }
+    ) is True
+    assert _is_unet_only_lora(
+        {
+            "unet.down_blocks.0.attentions.0.to_q.lora_A.weight": object(),
+            "text_encoder.text_model.encoder.layers.0.self_attn.q_proj.lora_A.weight": object(),
+        }
+    ) is False
 
 
 class _WordTokenizer:
