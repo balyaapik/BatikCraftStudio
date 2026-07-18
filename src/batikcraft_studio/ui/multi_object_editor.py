@@ -29,6 +29,29 @@ class _MarqueeDrag:
 @dataclass(slots=True)
 class _MultiMoveDrag:
     start_project: tuple[float, float]
+    # Posisi layar & zoom saat press. Delta dihitung dari layar mentah / zoom
+    # sehingga kebal terhadap pergeseran scroll/offset yang dipicu render
+    # eksklusi di awal gesture.
+    start_screen: tuple[int, int] | None = None
+    scale: float = 1.0
+
+    def project_delta(
+        self,
+        event_x: int,
+        event_y: int,
+        fallback_point: tuple[float, float] | None,
+    ) -> tuple[float, float] | None:
+        if self.start_screen is not None and self.scale > 0:
+            return (
+                (event_x - self.start_screen[0]) / self.scale,
+                (event_y - self.start_screen[1]) / self.scale,
+            )
+        if fallback_point is None:
+            return None
+        return (
+            fallback_point[0] - self.start_project[0],
+            fallback_point[1] - self.start_project[1],
+        )
 
 
 class MultiObjectEditorWorkspaceView(OfflineAIEditorWorkspaceView):
@@ -103,13 +126,19 @@ class MultiObjectEditorWorkspaceView(OfflineAIEditorWorkspaceView):
             selected_ids = self._multi_session.selected_object_ids
             self._refresh_multi_selection()
 
-        if len(selected_ids) > 1:
+        if len(selected_ids) >= 1:
+            # Objek tunggal ikut jalur multi-move (proxy O(1)) untuk geser badan
+            # objek; handle resize/rotate tetap ditangani jalur transform.
             try:
                 self._multi_session.begin_interactive_multi_move()
             except ProjectSessionError as exc:
                 self.set_status(str(exc))
                 return
-            self._multi_move_drag = _MultiMoveDrag(start_project=point)
+            self._multi_move_drag = _MultiMoveDrag(
+                start_project=point,
+                start_screen=(event.x, event.y),
+                scale=self._preview_scale if self._preview_scale > 0 else 1.0,
+            )
             self.canvas.configure(cursor="fleur")
             return
 
@@ -127,14 +156,11 @@ class MultiObjectEditorWorkspaceView(OfflineAIEditorWorkspaceView):
             return
         if self._multi_move_drag is not None:
             point = self._project_point(event.x, event.y)
-            if point is None:
+            delta = self._multi_move_drag.project_delta(event.x, event.y, point)
+            if delta is None:
                 return
-            start = self._multi_move_drag.start_project
             try:
-                self._multi_session.preview_interactive_multi_move(
-                    point[0] - start[0],
-                    point[1] - start[1],
-                )
+                self._multi_session.preview_interactive_multi_move(*delta)
             except ProjectSessionError:
                 return
             self._render()
@@ -176,6 +202,10 @@ class MultiObjectEditorWorkspaceView(OfflineAIEditorWorkspaceView):
             return
 
         super()._on_canvas_release(event)
+        if bool(event.state & _SHIFT_MASK) and len(self._multi_session.selected_object_ids) > 1:
+            # Shift+klik baru saja menambah/menghapus anggota seleksi; jangan
+            # runtuhkan multi-seleksi ke objek aktif tunggal.
+            return
         active = self.session.require_project().active_object_id
         if active is not None:
             self._multi_session.set_selected_objects([active])

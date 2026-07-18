@@ -84,10 +84,9 @@ def _patch_workspace_pointer_path() -> None:
             original_drag(self, event)
             return
         point = self._project_point(event.x, event.y)
-        if point is None:
+        delta = self._multi_move_drag.project_delta(event.x, event.y, point)
+        if delta is None:
             return
-        start = self._multi_move_drag.start_project
-        delta = (point[0] - start[0], point[1] - start[1])
         try:
             self._multi_session.preview_interactive_multi_move(*delta)
         except ProjectSessionError:

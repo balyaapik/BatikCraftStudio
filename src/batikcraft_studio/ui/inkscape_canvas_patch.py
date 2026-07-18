@@ -449,6 +449,15 @@ def _patch_multi_object_workspace() -> None:
         self._inkscape_proxy_last_screen = pointer_screen
         self._inkscape_proxy_delta = (0.0, 0.0)
 
+        # Render tile tanpa objek terpilih DULU: _render() dapat menggeser
+        # scroll/offset canvas, jadi proxy harus ditempatkan sesudahnya agar
+        # posisinya memakai pemetaan koordinat terbaru.
+        self._inkscape_proxy_active = True
+        renderer = self._cached_renderer
+        renderer.set_interaction_exclusions(selected_ids)  # type: ignore[attr-defined]
+        renderer.invalidate_project_bounds(bounds)  # type: ignore[attr-defined]
+        self._render()
+
         if _should_use_outline_proxy(ordered, bounds, self._preview_scale):
             _create_outline_proxy(self, bounds, len(ordered))
         else:
@@ -465,12 +474,6 @@ def _patch_multi_object_workspace() -> None:
                     anchor="nw",
                     tags="drag-proxy",
                 )
-
-        self._inkscape_proxy_active = True
-        renderer = self._cached_renderer
-        renderer.set_interaction_exclusions(selected_ids)  # type: ignore[attr-defined]
-        renderer.invalidate_project_bounds(bounds)  # type: ignore[attr-defined]
-        self._render()
         self.canvas.tag_raise("drag-proxy")
         self.canvas.tag_raise("selection")
 
@@ -482,10 +485,9 @@ def _patch_multi_object_workspace() -> None:
             original_drag(self, event)
             return
         point = self._project_point(event.x, event.y)
-        if point is None:
+        delta = self._multi_move_drag.project_delta(event.x, event.y, point)
+        if delta is None:
             return
-        start = self._multi_move_drag.start_project
-        delta = (point[0] - start[0], point[1] - start[1])
         try:
             self._multi_session.preview_interactive_multi_move(*delta)
         except ProjectSessionError:
