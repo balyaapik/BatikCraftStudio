@@ -11,7 +11,18 @@ BatikCraft Studio is packaged with PyInstaller on each target operating system. 
 | macOS Intel | `BatikCraftStudio-macOS-x64` | ZIP containing `BatikCraftStudio.app` |
 | macOS Apple Silicon | `BatikCraftStudio-macOS-arm64` | ZIP containing `BatikCraftStudio.app` |
 
-The workflow can be started manually from **Actions → Build desktop applications → Run workflow**. Pushing a tag such as `v0.1.0` builds all four packages and publishes them to a GitHub release.
+The workflow can be started manually from **Actions → Build desktop applications → Run workflow**. A manual run without a release version only stores workflow artifacts for 14 days.
+
+To build all four targets and publish them as a permanent GitHub Release, provide a version such as `v0.1.0` in the `release_tag` input. From GitHub CLI on Windows:
+
+```powershell
+& "C:\Program Files\GitHub CLI\gh.exe" workflow run 315390261 `
+  --ref main `
+  --repo balyaapik/BatikCraftStudio `
+  -f release_tag=v0.1.0
+```
+
+Pushing a Git tag matching `v*` also builds all four packages and publishes a release. Release versions must follow forms such as `v0.1.0` or `v0.1.0-beta.1`.
 
 ## Local builds
 
