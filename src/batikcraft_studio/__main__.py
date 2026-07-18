@@ -24,6 +24,12 @@ def main() -> int:
 
     activate_managed_ai_packages()
 
+    # Managed packages can contain Hugging Face Hub 0.x and previously persisted
+    # cache paths. Apply compatibility before any AI dialog imports downloader symbols.
+    from .runtime_compatibility import install_runtime_compatibility
+
+    install_runtime_compatibility()
+
     # This must happen before tkinter or any application shell is imported.
     # Otherwise ``python -m batikcraft_studio`` is grouped under python.exe and
     # Windows may keep the Python icon in the taskbar.
