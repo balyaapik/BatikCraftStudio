@@ -78,7 +78,11 @@ def test_incompatible_version_is_selected_for_repair(monkeypatch) -> None:
         "find_spec",
         lambda module: object(),
     )
-    monkeypatch.setattr(dependency_profiles.metadata, "version", lambda distribution: "0.38.0")
+    monkeypatch.setattr(
+        dependency_profiles.metadata,
+        "version",
+        lambda distribution: "0.38.0",
+    )
 
     status = dependency_profiles.dependency_status(spec)
 
