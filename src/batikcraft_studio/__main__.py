@@ -122,6 +122,7 @@ def main() -> int:
     from .ui.cache_directory_guard import install_cache_directory_guard
     from .ui.canvas_selection_semantics import install_canvas_selection_semantics
     from .ui.dependency_integrity_patch import install_dependency_integrity_patch
+    from .ui.dependency_profiles_patch import install_dependency_profiles_patch
     from .ui.inkscape_canvas_patch import install_inkscape_canvas_patch
     from .ui.inkscape_pointer_hotpath import install_inkscape_pointer_hotpath
     from .ui.inkscape_renderer_compat import install_inkscape_renderer_compat
@@ -137,6 +138,7 @@ def main() -> int:
     install_marketplace_model_progress()
     install_dependency_integrity_patch()
     install_model_connectivity_settings_patch()
+    install_dependency_profiles_patch()
     install_cache_directory_guard()
     install_runtime_installer_completion_guard()
     install_realtime_canvas_patch()
@@ -146,6 +148,9 @@ def main() -> int:
     install_canvas_selection_semantics()
 
     from .integrated_market_app import ContextToolApplication
+    from .ui.ai_menu_consolidation_patch import install_ai_menu_consolidation
+
+    install_ai_menu_consolidation(ContextToolApplication)
 
     try:
         application = ContextToolApplication()
