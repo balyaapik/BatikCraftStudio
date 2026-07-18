@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import inspect
 from importlib import metadata
 from pathlib import Path
 
 from batikcraft_studio.ai import dependency_profiles
+from batikcraft_studio.ui import dependency_profiles_patch
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -58,7 +60,6 @@ def test_bundled_module_without_dist_info_is_not_downloaded_again(monkeypatch) -
         raise metadata.PackageNotFoundError(distribution)
 
     monkeypatch.setattr(dependency_profiles.metadata, "version", missing_distribution)
-
     status = dependency_profiles.dependency_status(spec)
 
     assert status.available is True
@@ -91,6 +92,26 @@ def test_incompatible_version_is_selected_for_repair(monkeypatch) -> None:
     assert spec.requirement in dependency_profiles.missing_requirements(
         dependency_profiles.PROFILE_LOCAL
     )
+
+
+def test_dependency_manager_installs_only_local_ai_packages() -> None:
+    modules = {module for module, _requirement in dependency_profiles_patch._LOCAL_REQUIREMENTS}
+
+    assert "torch" in modules
+    assert "diffusers" in modules
+    assert "openai" not in modules
+    assert "google.genai" not in modules
+    assert "keyring" not in modules
+
+
+def test_dependency_manager_explains_cloud_api_and_uses_large_status_table() -> None:
+    source = inspect.getsource(dependency_profiles_patch)
+
+    assert "OpenAI dan Gemini memakai API key" in source
+    assert 'window.title("AI Lokal & Model")' in source
+    assert "width = min(1220" in source
+    assert "window.tree.configure(height=14)" in source
+    assert 'text="Dependency AI Lokal"' in source
 
 
 def test_pyproject_exposes_scoped_ai_extras() -> None:
