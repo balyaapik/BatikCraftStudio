@@ -3,15 +3,17 @@
 from __future__ import annotations
 
 import argparse
+import io
 import platform
 import shutil
+import struct
 import subprocess
 import sys
 import tarfile
 import tempfile
 from pathlib import Path
 
-from PIL import Image
+from PIL import Image, UnidentifiedImageError
 
 ROOT = Path(__file__).resolve().parents[1]
 ENTRY_POINT = ROOT / "packaging" / "desktop_entry.py"
@@ -21,6 +23,7 @@ BUILD_DIR = ROOT / "build"
 RELEASE_DIR = ROOT / "release"
 APP_NAME = "BatikCraftStudio"
 BUNDLE_ID = "com.batikcraft.studio"
+PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 WINDOWS_ICON_SIZES = (
     (16, 16),
     (20, 20),
@@ -48,16 +51,61 @@ def _architecture() -> str:
     return machine.replace(" ", "-") or "unknown"
 
 
+def _read_ico_frames(path: Path) -> list[Image.Image]:
+    """Recover individually valid frames even when the ICO container is malformed."""
+    data = path.read_bytes()
+    if len(data) < 6:
+        return []
+    try:
+        reserved, icon_type, frame_count = struct.unpack_from("<HHH", data, 0)
+    except struct.error:
+        return []
+    if reserved != 0 or icon_type != 1 or frame_count < 1:
+        return []
+
+    frames: list[Image.Image] = []
+    for index in range(frame_count):
+        entry_offset = 6 + index * 16
+        if entry_offset + 16 > len(data):
+            break
+        entry = data[entry_offset : entry_offset + 16]
+        try:
+            payload_size, payload_offset = struct.unpack_from("<II", entry, 8)
+        except struct.error:
+            continue
+        payload_end = payload_offset + payload_size
+        if payload_size < 1 or payload_offset < 0 or payload_end > len(data):
+            continue
+        payload = data[payload_offset:payload_end]
+
+        try:
+            if payload.startswith(PNG_SIGNATURE):
+                source = io.BytesIO(payload)
+            else:
+                # Wrap a DIB frame in a minimal one-frame ICO so Pillow can decode it.
+                single_entry = bytearray(entry)
+                struct.pack_into("<I", single_entry, 12, 22)
+                source = io.BytesIO(b"\x00\x00\x01\x00\x01\x00" + single_entry + payload)
+            with Image.open(source) as frame:
+                frame.load()
+                frames.append(frame.convert("RGBA"))
+        except (OSError, ValueError, struct.error):
+            continue
+    return frames
+
+
 def _largest_icon_image() -> Image.Image:
-    """Read the largest image from an ICO, including Pillow's ICO size variants."""
-    with Image.open(ICON_ICO) as icon:
-        ico_reader = getattr(icon, "ico", None)
-        if ico_reader is not None:
-            sizes = ico_reader.sizes()
-            if sizes:
-                largest = max(sizes, key=lambda size: int(size[0]) * int(size[1]))
-                return ico_reader.getimage(largest).convert("RGBA")
-        return icon.convert("RGBA")
+    """Read the largest recoverable image from the application ICO."""
+    frames = _read_ico_frames(ICON_ICO)
+    if frames:
+        return max(frames, key=lambda image: image.width * image.height)
+
+    try:
+        with Image.open(ICON_ICO) as icon:
+            icon.load()
+            return icon.convert("RGBA")
+    except (OSError, UnidentifiedImageError) as exc:
+        raise RuntimeError(f"No usable image frame found in {ICON_ICO}") from exc
 
 
 def _square_icon_image(size: int = 256) -> Image.Image:
