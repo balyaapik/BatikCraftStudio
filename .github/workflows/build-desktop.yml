@@ -30,17 +30,17 @@ jobs:
       matrix:
         include:
           - os: windows-2022
-            label: Windows x64
-            artifact: BatikCraftStudio-Windows-x64
+            label: Windows x64 installer
+            artifact: BatikCraftStudio-Installer-Windows-x64
           - os: ubuntu-22.04
-            label: Linux x64
-            artifact: BatikCraftStudio-Linux-x64
+            label: Linux x64 installer
+            artifact: BatikCraftStudio-Installer-Linux-x64
           - os: macos-15-intel
-            label: macOS Intel
-            artifact: BatikCraftStudio-macOS-x64
+            label: macOS Intel installer
+            artifact: BatikCraftStudio-Installer-macOS-x64
           - os: macos-15
-            label: macOS Apple Silicon
-            artifact: BatikCraftStudio-macOS-arm64
+            label: macOS Apple Silicon installer
+            artifact: BatikCraftStudio-Installer-macOS-arm64
 
     steps:
       - name: Check out repository
@@ -52,24 +52,39 @@ jobs:
           python-version: "3.11"
           cache: pip
 
+      - name: Install Inno Setup
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          choco install innosetup --no-progress -y
+          $inno = "${env:ProgramFiles(x86)}\Inno Setup 6"
+          $languages = Join-Path $inno "Languages"
+          New-Item -ItemType Directory -Force -Path $languages | Out-Null
+          $indonesian = Join-Path $languages "Indonesian.isl"
+          if (-not (Test-Path $indonesian)) {
+            Copy-Item (Join-Path $inno "Default.isl") $indonesian
+          }
+
       - name: Install desktop build dependencies
         run: python -m pip install --upgrade pip && python -m pip install -e ".[desktop-build]"
 
-      - name: Build native desktop package
+      - name: Build native desktop installer
         run: python scripts/build_desktop.py
 
-      - name: Verify release artifact
+      - name: Verify installer artifact
         shell: bash
         run: |
           python - <<'PY'
           from pathlib import Path
           artifacts = [path for path in Path("release").iterdir() if path.is_file()]
           assert len(artifacts) == 1, artifacts
-          assert artifacts[0].stat().st_size > 0, artifacts[0]
-          print(f"Verified {artifacts[0]} ({artifacts[0].stat().st_size:,} bytes)")
+          artifact = artifacts[0]
+          assert artifact.stat().st_size > 0, artifact
+          assert artifact.suffix.lower() in {".exe", ".dmg", ".deb"}, artifact
+          print(f"Verified installer {artifact} ({artifact.stat().st_size:,} bytes)")
           PY
 
-      - name: Upload native package
+      - name: Upload native installer
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
@@ -86,10 +101,10 @@ jobs:
       contents: write
 
     steps:
-      - name: Download all native packages
+      - name: Download all native installers
         uses: actions/download-artifact@v4
         with:
-          pattern: BatikCraftStudio-*
+          pattern: BatikCraftStudio-Installer-*
           path: release-assets
           merge-multiple: true
 

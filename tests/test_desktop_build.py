@@ -44,24 +44,21 @@ def test_windows_build_uses_onefile_and_other_platforms_use_onedir() -> None:
         module.sys.platform = original_platform
 
 
-def test_windows_packager_publishes_exactly_one_executable(tmp_path: Path) -> None:
+def test_windows_installer_script_registers_install_and_uninstall() -> None:
     module = _load_build_module()
-    dist_dir = tmp_path / "dist"
-    release_dir = tmp_path / "release"
-    dist_dir.mkdir()
-    release_dir.mkdir()
-    source = dist_dir / f"{module.APP_NAME}.exe"
-    source.write_bytes(b"single-file-windows-bundle")
-
-    module.DIST_DIR = dist_dir
-    module.RELEASE_DIR = release_dir
     module._architecture = lambda: "x64"
+    script = module._windows_installer_script(
+        source_executable=Path("C:/build/BatikCraftStudio.exe"),
+        output_directory=Path("C:/release"),
+        icon_path=Path("C:/build/logo.ico"),
+        version="0.1.0",
+    )
 
-    artifact = module._package_windows()
-
-    assert artifact == release_dir / "BatikCraftStudio-Windows-x64.exe"
-    assert artifact.read_bytes() == source.read_bytes()
-    assert list(release_dir.iterdir()) == [artifact]
+    assert "OutputBaseFilename=BatikCraftStudio-Setup-Windows-x64" in script
+    assert "DefaultDirName={localappdata}\\Programs\\BatikCraft Studio" in script
+    assert "UninstallDisplayIcon={app}\\BatikCraftStudio.exe" in script
+    assert "{autoprograms}\\BatikCraft Studio" in script
+    assert "PrivilegesRequired=lowest" in script
 
 
 def test_windows_build_icon_is_square_and_bmp_backed(tmp_path: Path) -> None:
@@ -88,8 +85,6 @@ def test_windows_build_icon_is_square_and_bmp_backed(tmp_path: Path) -> None:
         assert actual_width == actual_height
         assert bits == 32
         assert size > 0
-        # BITMAPINFOHEADER signature. This avoids PNG-compressed ICO frames that have
-        # caused UpdateResourceW failures in Windows PyInstaller builds.
         assert data[offset : offset + 4] == b"(\x00\x00\x00"
 
 
@@ -102,14 +97,14 @@ def test_macos_build_icon_is_square_png(tmp_path: Path) -> None:
         assert icon.size == (256, 256)
 
 
-def test_portable_build_excludes_large_local_ai_frameworks() -> None:
+def test_installer_build_excludes_large_local_ai_frameworks() -> None:
     source = (ROOT / "scripts" / "build_desktop.py").read_text(encoding="utf-8")
 
     for module in ("torch", "diffusers", "transformers", "accelerate", "peft"):
         assert f'"{module}"' in source
 
 
-def test_workflow_builds_all_supported_desktop_targets() -> None:
+def test_workflow_builds_all_supported_installer_targets() -> None:
     workflow = (ROOT / ".github" / "workflows" / "build-desktop.yml").read_text(
         encoding="utf-8"
     )
@@ -118,7 +113,11 @@ def test_workflow_builds_all_supported_desktop_targets() -> None:
     assert "ubuntu-22.04" in workflow
     assert "macos-15-intel" in workflow
     assert "macos-15" in workflow
-    assert "actions/upload-artifact@v4" in workflow
+    assert "choco install innosetup" in workflow
+    assert "BatikCraftStudio-Installer-Windows-x64" in workflow
+    assert "BatikCraftStudio-Installer-Linux-x64" in workflow
+    assert "BatikCraftStudio-Installer-macOS-x64" in workflow
+    assert "BatikCraftStudio-Installer-macOS-arm64" in workflow
     assert "workflow_dispatch:" in workflow
 
 
@@ -134,12 +133,26 @@ def test_workflow_can_publish_a_manual_github_release() -> None:
     assert '--target "${GITHUB_SHA}"' in workflow
 
 
-def test_linux_package_registers_a_desktop_icon() -> None:
+def test_macos_packaging_creates_dmg_with_applications_link() -> None:
     source = (ROOT / "scripts" / "build_desktop.py").read_text(encoding="utf-8")
 
-    assert "batikcraft-studio.desktop.in" in source
-    assert "StartupWMClass=BatikCraftStudio" in source
-    assert "gtk-update-icon-cache" in source
+    assert 'os.symlink("/Applications"' in source
+    assert '"hdiutil"' in source
+    assert '"UDZO"' in source
+    assert "Installer-macOS" in source
+
+
+def test_linux_package_is_deb_with_system_launcher_and_uninstall_metadata() -> None:
+    module = _load_build_module()
+    source = (ROOT / "scripts" / "build_desktop.py").read_text(encoding="utf-8")
+    control = module._linux_control_file("0.1.0", "amd64")
+
+    assert "Package: batikcraft-studio" in control
+    assert "Architecture: amd64" in control
+    assert "dpkg-deb" in source
+    assert "/opt/batikcraft-studio/BatikCraftStudio" in source
+    assert "Exec=/usr/bin/batikcraft-studio" in source
+    assert "Installer-Linux" in source
 
 
 def test_desktop_build_profile_contains_pyinstaller_and_cloud_clients() -> None:
