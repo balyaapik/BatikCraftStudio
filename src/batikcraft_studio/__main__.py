@@ -39,6 +39,12 @@ def main() -> int:
 
     install_diffusers_inference_compatibility()
 
+    # Locally converted SDXL folders may mark tokenizer_2/text_encoder_2 as empty.
+    # Repair those components before device placement and CPU-offload hooks are set.
+    from .ai.sdxl_text_component_repair import install_sdxl_text_component_repair
+
+    install_sdxl_text_component_repair()
+
     # Keep the model manager, persisted local-model profile, and BatikBrew
     # generation path synchronized before the application session is constructed.
     from .ai.lora_activation_persistence import install_lora_activation_persistence
