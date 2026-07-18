@@ -45,6 +45,15 @@ def main() -> int:
 
     install_sdxl_text_component_repair()
 
+    # Older builds stored a local-only flag that was never shown in Settings.
+    # Migrate that hidden value and allow mandatory SDXL text components to repair
+    # themselves from the official cache/repository when internet is available.
+    from .ai.sdxl_online_component_repair import (
+        install_sdxl_online_component_repair,
+    )
+
+    install_sdxl_online_component_repair()
+
     # Keep the model manager, persisted local-model profile, and BatikBrew
     # generation path synchronized before the application session is constructed.
     from .ai.lora_activation_persistence import install_lora_activation_persistence
