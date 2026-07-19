@@ -390,6 +390,7 @@ class OfflineModelManagerWindow(tk.Toplevel):
         self.cpu_offload = tk.BooleanVar(value=False)
         self._build()
         self._sync_managed_runtime_paths()
+        self.bind("<FocusIn>", lambda _e: self._sync_managed_runtime_paths(), add="+")
         self._refresh()
 
     def _build(self) -> None:
@@ -435,18 +436,25 @@ class OfflineModelManagerWindow(tk.Toplevel):
         right.grid(row=0, column=1, sticky="nsew")
         right.columnconfigure(1, weight=1)
         row = 0
-        row = self._path_row(
-            right,
-            row,
-            "offline.models.base_path",
-            self.base_path,
-        )
-        row = self._path_row(
-            right,
-            row,
-            "offline.models.controlnet_path",
-            self.controlnet_path,
-        )
+        # Path base model & ControlNet TIDAK diisi manual: keduanya otomatis
+        # mengikuti runtime terpasang dari Dependency Manager.
+        self.base_path_display = tk.StringVar(master=self)
+        self.controlnet_path_display = tk.StringVar(master=self)
+        for label_key, display in (
+            ("offline.models.base_path", self.base_path_display),
+            ("offline.models.controlnet_path", self.controlnet_path_display),
+        ):
+            ttk.Label(right, text=tr(label_key)).grid(
+                row=row, column=0, sticky="w", pady=4, padx=(0, 8)
+            )
+            ttk.Label(
+                right,
+                textvariable=display,
+                style="Muted.TLabel",
+                wraplength=340,
+                justify="left",
+            ).grid(row=row, column=1, sticky="ew", pady=4)
+            row += 1
         for label_key, variable, values in (
             ("offline.models.device", self.device_value, ("auto", "cuda", "cpu", "mps")),
             (
@@ -547,13 +555,13 @@ class OfflineModelManagerWindow(tk.Toplevel):
             variable.set(selected)
 
     def _sync_managed_runtime_paths(self) -> None:
-        """Isi otomatis path base/ControlNet dari runtime hasil Dependency Manager.
+        """Selaraskan path base/ControlNet dengan runtime dari Dependency Manager.
 
-        Sebelumnya kedua jendela tidak sinkron: Dependency Manager mengunduh
-        runtime ke folder terkelola, tetapi field path di sini tetap kosong
-        sehingga terkesan model belum terpasang (redundan/bentrok).
+        Tidak ada input manual: bila runtime terpasang, path terisi otomatis;
+        bila belum, tampil arahan untuk menginstal lewat menu Dependencies.
         """
 
+        missing = "Belum terpasang — instal lewat menu Dependencies."
         try:
             from batikcraft_studio.ai.runtime_model_installer import (
                 find_installed_runtime_models,
@@ -561,13 +569,19 @@ class OfflineModelManagerWindow(tk.Toplevel):
 
             installed = find_installed_runtime_models()
         except Exception:  # noqa: BLE001 - jangan gagalkan pembukaan jendela
-            return
+            installed = None
         if installed is None:
+            self.base_path.set("")
+            self.controlnet_path.set("")
+            if hasattr(self, "base_path_display"):
+                self.base_path_display.set(missing)
+                self.controlnet_path_display.set(missing)
             return
-        if not self.base_path.get().strip():
-            self.base_path.set(str(installed.base_model))
-        if not self.controlnet_path.get().strip():
-            self.controlnet_path.set(str(installed.controlnet))
+        self.base_path.set(str(installed.base_model))
+        self.controlnet_path.set(str(installed.controlnet))
+        if hasattr(self, "base_path_display"):
+            self.base_path_display.set(str(installed.base_model))
+            self.controlnet_path_display.set(str(installed.controlnet))
 
     def _refresh(self) -> None:
         for item in self.tree.get_children():

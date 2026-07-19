@@ -62,7 +62,7 @@ class GlobalOfflineModelManagerWindow(_BaseOfflineModelManagerWindow):
         if paths is None:
             messagebox.showerror(
                 self.title(),
-                "Model ini memakai SDXL. Tekan 'Instal BatikBrew SDXL…' terlebih dahulu.",
+                "Model ini memakai SDXL. Instal BatikBrew SDXL lewat menu Dependencies → Instal Semua AI + BatikBrew SDXL terlebih dahulu.",
                 parent=self,
             )
             return
@@ -124,26 +124,15 @@ class GlobalOfflineModelManagerWindow(_BaseOfflineModelManagerWindow):
         self.cpu_offload.set(runtime.effective_cpu_offload)
 
     def _add_runtime_installer_buttons(self) -> None:
-        bottom = self.status.master
-        self.runtime_installer_button = ttk.Button(
-            bottom,
-            text="Instal Runtime SD1.5…",
-            command=self._install_managed_runtime,
-        )
-        self.runtime_installer_button.pack(side="right", padx=(0, 6))
-        self.batikbrew_runtime_button = ttk.Button(
-            bottom,
-            text="Instal BatikBrew SDXL…",
-            command=self._install_batikbrew_runtime,
-        )
-        self.batikbrew_runtime_button.pack(side="right", padx=(0, 6))
+        """(Dihapus) Instalasi runtime kini satu pintu di Dependency Manager.
+
+        Jendela ini fokus pada LoRA + pengaturan generasi; path runtime
+        mengikuti Dependency Manager secara otomatis sehingga tidak ada lagi
+        tombol unduh ganda yang redundan.
+        """
 
     def _autofill_managed_runtime(self) -> None:
-        paths = find_installed_runtime_models()
-        if paths is None:
-            return
-        self.base_path.set(str(paths.base_model))
-        self.controlnet_path.set(str(paths.controlnet))
+        self._sync_managed_runtime_paths()
 
     def _install_managed_runtime(self) -> None:
         dialog = RuntimeModelInstallDialog(self, family="sd15")
