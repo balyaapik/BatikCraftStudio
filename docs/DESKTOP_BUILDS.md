@@ -4,26 +4,26 @@ BatikCraft Studio is compiled with PyInstaller on each native operating system a
 
 ## Installer artifacts
 
-Public installer filenames always include the application release version so downloads from different releases are easy to distinguish. For release `v0.3.0`:
+Public installer filenames always include the application release version so downloads from different releases are easy to distinguish. For release `v0.3.1`:
 
 | Platform | Workflow artifact | Installer file |
 | --- | --- | --- |
-| Windows x64 | `BatikCraftStudio-Installer-Windows-x64` | `BatikCraftStudio-v0.3.0-Setup-Windows-x64.exe` |
-| Linux x64 | `BatikCraftStudio-Installer-Linux-x64` | `BatikCraftStudio-v0.3.0-Installer-Linux-x64.deb` |
-| macOS Intel | `BatikCraftStudio-Installer-macOS-x64` | `BatikCraftStudio-v0.3.0-Installer-macOS-x64.dmg` |
-| macOS Apple Silicon | `BatikCraftStudio-Installer-macOS-arm64` | `BatikCraftStudio-v0.3.0-Installer-macOS-arm64.dmg` |
+| Windows x64 | `BatikCraftStudio-Installer-Windows-x64` | `BatikCraftStudio-v0.3.1-Setup-Windows-x64.exe` |
+| Linux x64 | `BatikCraftStudio-Installer-Linux-x64` | `BatikCraftStudio-v0.3.1-Installer-Linux-x64.deb` |
+| macOS Intel | `BatikCraftStudio-Installer-macOS-x64` | `BatikCraftStudio-v0.3.1-Installer-macOS-x64.dmg` |
+| macOS Apple Silicon | `BatikCraftStudio-Installer-macOS-arm64` | `BatikCraftStudio-v0.3.1-Installer-macOS-arm64.dmg` |
 
-The installed application keeps the stable internal identity **BatikCraft Studio** so a new release upgrades the same application instead of creating a conflicting second installation. Windows Installed Apps displays the explicit release name, such as **BatikCraft Studio v0.3.0**.
+The installed application keeps the stable internal identity **BatikCraft Studio** so a new release upgrades the same application instead of creating a conflicting second installation. Windows Installed Apps displays the explicit release name, such as **BatikCraft Studio v0.3.1**.
 
 The workflow can be started from **Actions → Build desktop applications → Run workflow**. A manual run without a release version stores installer artifacts for 14 days.
 
-To build all targets and publish a permanent GitHub Release, provide a version such as `v0.3.0` in the `release_tag` input:
+To build all targets and publish a permanent GitHub Release, provide a version such as `v0.3.1` in the `release_tag` input:
 
 ```powershell
 & "C:\Program Files\GitHub CLI\gh.exe" workflow run 315390261 `
   --ref main `
   --repo balyaapik/BatikCraftStudio `
-  -f release_tag=v0.3.0
+  -f release_tag=v0.3.1
 ```
 
 Pushing a Git tag matching `v*` also builds and publishes all installers.
@@ -55,7 +55,7 @@ python scripts/build_installer.py
 
 ## Windows installer
 
-`BatikCraftStudio-v0.3.0-Setup-Windows-x64.exe` is an Inno Setup installer. It:
+`BatikCraftStudio-v0.3.1-Setup-Windows-x64.exe` is an Inno Setup installer. It:
 
 - installs BatikCraft Studio under `C:\Program Files\BatikCraft Studio`;
 - requests administrator permission during installation;
@@ -80,7 +80,7 @@ The app receives an ad-hoc signature for bundle consistency. Public distribution
 Ubuntu and Debian users install the DEB with:
 
 ```bash
-sudo apt install ./BatikCraftStudio-v0.3.0-Installer-Linux-x64.deb
+sudo apt install ./BatikCraftStudio-v0.3.1-Installer-Linux-x64.deb
 ```
 
 The package installs:
