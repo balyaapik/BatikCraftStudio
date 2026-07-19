@@ -80,3 +80,29 @@ def test_isolate_ornament_returns_cropped_transparent_png() -> None:
         assert alpha.getpixel((0, 0)) == 0
         assert alpha.getpixel((output.width - 1, output.height - 1)) == 0
         assert alpha.getbbox() is not None
+
+
+def test_mode_options_construct_on_slots_dataclass_python_311(tmp_path) -> None:
+    """Regresi: super() tanpa argumen pada dataclass slots=True gagal di
+    Python <= 3.11 dengan 'super(type, obj): obj must be an instance or
+    subtype of type' — muncul sebagai dialog 'Pengaturan AI tidak valid'
+    setiap kali opsi generasi BatikBrew dibuat."""
+
+    from batikcraft_studio.ai.batikbrew_generation_modes import (
+        BatikBrewModeGenerationOptions,
+    )
+
+    lora = tmp_path / "batik.safetensors"
+    lora.write_bytes(b"dummy")
+
+    options = BatikBrewModeGenerationOptions(
+        prompt="uji", output_mode="pattern", lora_path=str(lora)
+    )
+    assert options.output_mode == "pattern"
+    properties = options.to_properties()
+    assert properties["output_mode"] == "pattern"
+
+    ornament = BatikBrewModeGenerationOptions(
+        prompt="uji", output_mode="ornament", tileable=True, lora_path=str(lora)
+    )
+    assert ornament.tileable is False  # mode ornamen selalu non-tile

@@ -36,7 +36,10 @@ class BatikBrewModeGenerationOptions(BatikBrewGenerationOptions):
     output_mode: str = OUTPUT_MODE_PATTERN
 
     def __post_init__(self) -> None:
-        super().__post_init__()
+        # Dataclass slots=True membangun ulang kelas sehingga super() tanpa
+        # argumen gagal di Python <= 3.11 ("obj must be an instance or subtype
+        # of type"). Panggil parent secara eksplisit.
+        BatikBrewGenerationOptions.__post_init__(self)
         mode = str(self.output_mode).strip().casefold()
         if mode not in _OUTPUT_MODES:
             raise BatificationError("Mode hasil harus 'ornament' atau 'pattern'.")
@@ -45,7 +48,7 @@ class BatikBrewModeGenerationOptions(BatikBrewGenerationOptions):
             object.__setattr__(self, "tileable", False)
 
     def to_properties(self) -> dict[str, object]:
-        properties = super().to_properties()
+        properties = BatikBrewGenerationOptions.to_properties(self)
         properties.update(
             {
                 "output_mode": self.output_mode,
