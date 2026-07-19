@@ -87,6 +87,9 @@ class _FakeMenu:
     def entryconfigure(self, index: int, **changes: object) -> None:
         self.entries[index].update(changes)
 
+    def delete(self, index: int) -> None:
+        del self.entries[index]
+
     def add_separator(self) -> None:
         self.entries.append({"type": "separator", "label": "", "command": None})
 
@@ -94,7 +97,7 @@ class _FakeMenu:
         self.entries.append({"type": "command", **values})
 
 
-def test_context_menu_always_exposes_stable_diffusion_lora_action() -> None:
+def test_context_menu_exposes_only_model_based_batification() -> None:
     menu = _FakeMenu(["Batifikasi Non-AI…"])
     editor = SimpleNamespace(
         _selection_context_menu=menu,
@@ -104,7 +107,10 @@ def test_context_menu_always_exposes_stable_diffusion_lora_action() -> None:
     ContextToolEditorWorkspaceView._configure_object_batification_context_actions(editor)
 
     labels = [str(entry["label"]) for entry in menu.entries]
-    assert _NON_AI_CONTEXT_LABEL in labels
+    # Batifikasi tanpa model sudah dihapus: entri lama harus dibuang dan hanya
+    # aksi berbasis model yang tersedia.
+    assert _NON_AI_CONTEXT_LABEL not in labels
+    assert "Batifikasi Non-AI…" not in labels
     assert _AI_CONTEXT_LABEL in labels
     ai_entry = next(entry for entry in menu.entries if entry["label"] == _AI_CONTEXT_LABEL)
     assert callable(ai_entry["command"])

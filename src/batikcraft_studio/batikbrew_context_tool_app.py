@@ -144,6 +144,10 @@ class ContextToolApplication(_ProgressApplication):
             label="Library Model Saya…",
             command=lambda: self.open_web_marketplace("library"),
         )
+        marketplace_menu.add_command(
+            label="Analisis Ekonomi NFT…",
+            command=self.open_nft_economics,
+        )
         marketplace_menu.add_separator()
         marketplace_menu.add_command(
             label="Mint & Publish Project Aktif sebagai NFT…",
@@ -308,6 +312,20 @@ class ContextToolApplication(_ProgressApplication):
                 self.web_client,
                 initial_tab=tab,
             )
+        except BatikCraftWebError as exc:
+            messagebox.showerror("BatikCraftWeb", str(exc), parent=self.root)
+            return
+        window.focus_set()
+
+    def open_nft_economics(self) -> None:
+        """Grafik pergerakan harga NFT seperti analisis pasar pada umumnya."""
+
+        if self._ensure_web_session() is None:
+            return
+        from .ui.nft_economics_dialog import NFTEconomicsWindow
+
+        try:
+            window = NFTEconomicsWindow(self.root, self.web_client)
         except BatikCraftWebError as exc:
             messagebox.showerror("BatikCraftWeb", str(exc), parent=self.root)
             return

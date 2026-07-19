@@ -449,11 +449,73 @@ def _repository_files(api: Any, repo_id: str, patterns: tuple[str, ...]) -> list
         except (TypeError, ValueError):
             numeric_size = 0
         files.append(_RepositoryFile(name=name, size=numeric_size))
+    files = _dedupe_weight_files(files)
     if not files:
         raise RuntimeModelInstallError(
             f"Tidak ada file model yang cocok pada repository {repo_id}."
         )
     return files
+
+
+_WEIGHT_PRIORITY = (".safetensors", ".fp16.safetensors", ".bin", ".fp16.bin")
+
+
+def _dedupe_weight_files(files: list[_RepositoryFile]) -> list[_RepositoryFile]:
+    """Buang bobot duplikat agar unduhan tidak berkali-kali lipat lebih besar.
+
+    Repository Hugging Face menyimpan bobot yang sama dalam beberapa format
+    (``.bin`` + ``.safetensors``) dan beberapa varian (fp32, ``.fp16``,
+    ``non_ema``). Pipeline lokal hanya memuat satu set nama standar, jadi
+    cukup unduh satu format per bobot: ``.safetensors`` diprioritaskan, lalu
+    fp16 safetensors, baru ``.bin``. Varian ``non_ema`` tidak pernah dipakai
+    untuk inferensi sehingga selalu dilewati.
+    """
+
+    groups: dict[str, list[_RepositoryFile]] = {}
+    passthrough: list[_RepositoryFile] = []
+    for item in files:
+        lowered = item.name.lower()
+        if "non_ema" in lowered:
+            continue
+        suffix = None
+        for candidate in _WEIGHT_PRIORITY:
+            if lowered.endswith(candidate):
+                suffix = candidate
+                break
+        if suffix is None:
+            passthrough.append(item)
+            continue
+        stem = item.name[: -len(suffix)]
+        if stem.lower().endswith(".fp16"):
+            stem = stem[: -len(".fp16")]
+        # Konvensi transformers: "pytorch_model.bin" ekuivalen "model.safetensors".
+        directory, _, base = stem.rpartition("/")
+        if base == "pytorch_model":
+            stem = f"{directory}/model" if directory else "model"
+        groups.setdefault(stem, []).append(item)
+
+    selected: list[_RepositoryFile] = []
+    for stem, candidates in groups.items():
+        def _priority(entry: _RepositoryFile) -> int:
+            lowered = entry.name.lower()
+            for rank, candidate in enumerate(_WEIGHT_PRIORITY):
+                if lowered.endswith(candidate):
+                    # ".safetensors" juga cocok untuk ".fp16.safetensors";
+                    # pastikan fp16 tidak salah peringkat.
+                    if candidate == ".safetensors" and lowered.endswith(".fp16.safetensors"):
+                        continue
+                    if candidate == ".bin" and lowered.endswith(".fp16.bin"):
+                        continue
+                    return rank
+            return len(_WEIGHT_PRIORITY)
+
+        best = min(candidates, key=_priority)
+        selected.append(best)
+
+    ordered = passthrough + selected
+    name_order = {item.name: index for index, item in enumerate(files)}
+    ordered.sort(key=lambda item: name_order.get(item.name, 0))
+    return ordered
 
 
 def _download_repository_files(

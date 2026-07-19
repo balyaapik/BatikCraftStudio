@@ -202,6 +202,31 @@ class BatikCraftWebClient:
     def list_nfts(self) -> list[dict[str, Any]]:
         return _result_list(self._request_json("GET", "nfts/"))
 
+    def nft_bids(self, nft_id: int) -> list[dict[str, Any]]:
+        """Riwayat bid satu NFT (kronologis) untuk analisis harga."""
+
+        return _result_list(self._request_json("GET", f"nfts/{int(nft_id)}/bids/"))
+
+    def nft_price_history(self, nft_id: int) -> list[tuple[str, float]]:
+        """Deret (waktu, harga) dari riwayat bid, diurutkan berdasarkan waktu."""
+
+        points: list[tuple[str, float]] = []
+        for bid in self.nft_bids(nft_id):
+            raw_amount = bid.get("amount") or bid.get("price") or 0
+            try:
+                amount = float(str(raw_amount).replace(",", ""))
+            except (TypeError, ValueError):
+                continue
+            stamp = str(
+                bid.get("created_at")
+                or bid.get("timestamp")
+                or bid.get("created")
+                or ""
+            )
+            points.append((stamp, amount))
+        points.sort(key=lambda item: item[0])
+        return points
+
     def place_bid(self, nft_id: int, amount: str) -> dict[str, Any]:
         return self._request_json(
             "POST",

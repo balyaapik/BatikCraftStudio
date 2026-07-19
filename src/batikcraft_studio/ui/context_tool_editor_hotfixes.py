@@ -501,93 +501,19 @@ class _HotfixV3(_HotfixV2):
 import tkinter as tk
 
 from batikcraft_studio.application import (
-    NonMLBatificationProjectSession,
     ProjectSessionError,
 )
 from batikcraft_studio.assets import PersonalAssetStore
 
-from .non_ml_batification_dialog_compat import NonMLBatificationDialog
 
 
 class _HotfixV4(_HotfixV3):
-    """Preview motif transfer before replacing the selected object's pixels."""
+    """(Dihapus) Batifikasi tanpa model tidak lagi tersedia.
 
-    def __init__(self, *args: object, **kwargs: object) -> None:
-        super().__init__(*args, **kwargs)
-        self._selection_context_menu.add_separator()
-        self._selection_context_menu.add_command(
-            label="Batifikasi Non-AI…",
-            command=self.batify_selected_without_model,
-        )
-        self.bind_all(
-            "<Control-Shift-B>",
-            self._on_non_ml_batification_shortcut,
-            add="+",
-        )
-
-    def batify_selected_without_model(self) -> None:
-        """Open a modal preview dialog for the first selected canvas object."""
-
-        try:
-            plan = self._non_ml_batification_session.prepare_non_ml_batification()
-        except ProjectSessionError as exc:
-            self.set_status(str(exc))
-            return
-
-        dialog = NonMLBatificationDialog(
-            self,
-            source_name=plan.source_object.name,
-            source_content=plan.source_content,
-            asset_library=self.asset_library,
-            personal_store=PersonalAssetStore(self.asset_library),
-            render_preview=lambda motif, name, key, options: (
-                self._non_ml_batification_session.render_non_ml_batification_preview(
-                    plan,
-                    motif,
-                    motif_name=name,
-                    motif_library_key=key,
-                    options=options,
-                )
-            ),
-        )
-        self.wait_window(dialog)
-
-        self.asset_library.refresh()
-        try:
-            self.refresh_library()
-        except (AttributeError, tk.TclError):
-            pass
-        preview = dialog.result
-        if preview is None:
-            self.set_status("Batifikasi Non-AI dibatalkan. Objek pada canvas tidak berubah.")
-            return
-
-        try:
-            result = self._non_ml_batification_session.commit_non_ml_batification_preview(
-                plan,
-                preview,
-            )
-        except ProjectSessionError as exc:
-            self.set_status(str(exc))
-            return
-        self.refresh_context()
-        self.activate_select_tool()
-        self.set_status(
-            f"{result.name} diterapkan setelah preview disetujui. Gunakan Undo untuk kembali."
-        )
-
-    def _on_non_ml_batification_shortcut(
-        self,
-        _event: tk.Event[tk.Misc],
-    ) -> str:
-        self.batify_selected_without_model()
-        return "break"
-
-    @property
-    def _non_ml_batification_session(self) -> NonMLBatificationProjectSession:
-        if not isinstance(self.session, NonMLBatificationProjectSession):
-            raise RuntimeError("Editor memerlukan NonMLBatificationProjectSession.")
-        return self.session
+    Semua batifikasi kini harus melalui model (Stable Diffusion lokal atau
+    provider cloud). Layer ini dipertahankan kosong agar rantai kelas dan
+    kompatibilitas impor tetap utuh.
+    """
 
 
 # ==========================================================================
@@ -1872,7 +1798,11 @@ class _HotfixV11(_HotfixV10):
                     non_ai_index = index
 
         if non_ai_index is not None:
-            menu.entryconfigure(non_ai_index, label=_NON_AI_CONTEXT_LABEL)
+            # Batifikasi tanpa model telah dihapus: semua batifikasi via model.
+            try:
+                menu.delete(non_ai_index)
+            except tk.TclError:
+                pass
         if ai_index is not None:
             menu.entryconfigure(
                 ai_index,

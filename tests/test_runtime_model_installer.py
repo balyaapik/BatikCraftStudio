@@ -148,3 +148,35 @@ def test_tqdm_tracker_stops_active_download_when_cancelled() -> None:
     cancel_event.set()
     with pytest.raises(RuntimeModelInstallCancelled):
         bar.update(1)
+
+
+def test_repository_weight_files_are_deduplicated() -> None:
+    from batikcraft_studio.ai.runtime_model_installer import (
+        _dedupe_weight_files,
+        _RepositoryFile,
+    )
+
+    files = [
+        _RepositoryFile("model_index.json", 100),
+        _RepositoryFile("unet/config.json", 10),
+        _RepositoryFile("unet/diffusion_pytorch_model.bin", 3_400),
+        _RepositoryFile("unet/diffusion_pytorch_model.safetensors", 3_400),
+        _RepositoryFile("unet/diffusion_pytorch_model.fp16.bin", 1_700),
+        _RepositoryFile("unet/diffusion_pytorch_model.fp16.safetensors", 1_700),
+        _RepositoryFile("unet/diffusion_pytorch_model.non_ema.safetensors", 3_400),
+        _RepositoryFile("text_encoder/model.safetensors", 490),
+        _RepositoryFile("text_encoder/pytorch_model.bin", 490),
+        _RepositoryFile("vae/diffusion_pytorch_model.fp16.safetensors", 160),
+    ]
+
+    result = {item.name for item in _dedupe_weight_files(files)}
+
+    assert result == {
+        "model_index.json",
+        "unet/config.json",
+        # satu format per bobot: safetensors fp32 menang atas duplikatnya
+        "unet/diffusion_pytorch_model.safetensors",
+        "text_encoder/model.safetensors",
+        # hanya fp16 yang tersedia -> tetap diunduh
+        "vae/diffusion_pytorch_model.fp16.safetensors",
+    }

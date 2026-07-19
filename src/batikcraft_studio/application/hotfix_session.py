@@ -272,10 +272,17 @@ def _fill_enclosed_png_complete(content: bytes, color: str) -> bytes:
             "The boundary is not closed enough to create a safe fill."
         )
 
-    # One project-pixel underlap removes the transparent fringe beneath the line.
-    interior = _iterated_morphology(interior, scale, ImageFilter.MaxFilter)
+    # Selipkan warna fill CUKUP JAUH ke bawah garis. Barrier tadi didilasi
+    # close_radius sehingga interior menyusut menjauh dari tepi garis asli;
+    # tanpa kompensasi penuh akan tampak celah/seam antara garis dan warna
+    # fill. Karena hasil fill dikomposit DI BAWAH goresan, overlap ekstra di
+    # bawah garis tidak terlihat.
+    overlap_radius = close_radius + scale
+    interior = _iterated_morphology(interior, overlap_radius, ImageFilter.MaxFilter)
     if interior.size != (width, height):
         interior = interior.resize((width, height), Image.Resampling.LANCZOS)
+    # Rapatkan tepi hasil LANCZOS agar tidak menyisakan cincin semi-transparan.
+    interior = interior.point(lambda value: 255 if value >= 96 else value)
 
     rgb = ImageColor.getrgb(color)[:3]
     filled = Image.new("RGBA", image.size, (*rgb, 0))
