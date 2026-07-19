@@ -13,13 +13,13 @@ BatikCraft Studio is compiled with PyInstaller on each native operating system a
 
 The workflow can be started from **Actions → Build desktop applications → Run workflow**. A manual run without a release version stores installer artifacts for 14 days.
 
-To build all targets and publish a permanent GitHub Release, provide a version such as `v0.2.0` in the `release_tag` input:
+To build all targets and publish a permanent GitHub Release, provide a version such as `v0.2.1` in the `release_tag` input:
 
 ```powershell
 & "C:\Program Files\GitHub CLI\gh.exe" workflow run 315390261 `
   --ref main `
   --repo balyaapik/BatikCraftStudio `
-  -f release_tag=v0.2.0
+  -f release_tag=v0.2.1
 ```
 
 Pushing a Git tag matching `v*` also builds and publishes all installers.
