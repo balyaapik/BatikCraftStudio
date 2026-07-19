@@ -91,6 +91,11 @@ class _HotfixV1(_BaseContextToolEditor):
 
     _ZOOM_PREVIEW_MAX_SIDE = 4096
 
+    # Elemen scene yang ikut menskala serempak selama gesture zoom sehingga
+    # latar kanvas, bayangan, dan seleksi bergerak BERSAMA gambar (tidak lagi
+    # "gambar dulu, kanvas belakangan").
+    _ZOOM_SCALED_TAGS = ("project-background", "canvas-shadow", "selection", "zoom-preview")
+
     def _begin_or_update_zoom_preview(
         self,
         new_scale: float,
@@ -102,22 +107,17 @@ class _HotfixV1(_BaseContextToolEditor):
             if state is None:
                 # Belum ada tile untuk dipreview; biarkan render normal.
                 return
+            state["last_scale"] = state["base_scale"]
             self._zoom_preview_state = state
             self.canvas.itemconfigure("project-tile", state="hidden")
+            # Grid akan digambar ulang setelah render tajam; selama gesture
+            # jaraknya tidak valid, jadi sembunyikan.
+            self.canvas.delete("canvas-grid")
 
         base_scale = state["base_scale"]
-        if base_scale <= 0 or new_scale <= 0:
+        last_scale = state.get("last_scale", base_scale)
+        if base_scale <= 0 or new_scale <= 0 or last_scale <= 0:
             return
-        ratio = new_scale / base_scale
-        base_image = state["image"]
-        width = max(1, round(base_image.width * ratio))
-        height = max(1, round(base_image.height * ratio))
-        cap = self._ZOOM_PREVIEW_MAX_SIDE
-        if width > cap or height > cap:
-            shrink = min(cap / width, cap / height)
-            width = max(1, round(width * shrink))
-            height = max(1, round(height * shrink))
-        resized = base_image.resize((width, height), Image.Resampling.NEAREST)
 
         if anchor_screen is not None:
             anchor = (
@@ -129,24 +129,45 @@ class _HotfixV1(_BaseContextToolEditor):
                 self.canvas.canvasx(max(1, self.canvas.winfo_width()) / 2),
                 self.canvas.canvasy(max(1, self.canvas.winfo_height()) / 2),
             )
-        origin_x, origin_y = state["origin_canvas"]
-        new_x = anchor[0] + (origin_x - anchor[0]) * ratio
-        new_y = anchor[1] + (origin_y - anchor[1]) * ratio
 
-        self._zoom_preview_photo = ImageTk.PhotoImage(resized)
+        # Pastikan item preview ada sebelum transformasi.
         item = getattr(self, "_zoom_preview_item", None)
         if item is None or not self._canvas_item_alive(item):
-            self._zoom_preview_item = self.canvas.create_image(
-                new_x,
-                new_y,
-                image=self._zoom_preview_photo,
+            origin_x, origin_y = state["origin_canvas"]
+            start_ratio = last_scale / base_scale
+            self._zoom_preview_item = item = self.canvas.create_image(
+                anchor[0] + (origin_x - anchor[0]) * start_ratio,
+                anchor[1] + (origin_y - anchor[1]) * start_ratio,
+                image="",
                 anchor="nw",
                 tags="zoom-preview",
             )
-        else:
-            self.canvas.itemconfigure(item, image=self._zoom_preview_photo)
-            self.canvas.coords(item, new_x, new_y)
-        self.canvas.tag_lower("zoom-preview", "canvas-grid") if self.canvas.find_withtag("canvas-grid") else None
+            self.canvas.tag_raise("zoom-preview", "project-background")
+
+        # Skala inkremental: seluruh elemen scene bergeser bersama di sekitar
+        # kursor, termasuk posisi item preview.
+        step = new_scale / last_scale
+        for tag in self._ZOOM_SCALED_TAGS:
+            try:
+                self.canvas.scale(tag, anchor[0], anchor[1], step, step)
+            except tk.TclError:
+                continue
+        state["last_scale"] = new_scale
+
+        # Konten preview di-resize absolut terhadap gambar dasar (BILINEAR
+        # agar halus, bukan kotak-kotak NEAREST).
+        total_ratio = new_scale / base_scale
+        base_image = state["image"]
+        width = max(1, round(base_image.width * total_ratio))
+        height = max(1, round(base_image.height * total_ratio))
+        cap = self._ZOOM_PREVIEW_MAX_SIDE
+        if width > cap or height > cap:
+            shrink = min(cap / width, cap / height)
+            width = max(1, round(width * shrink))
+            height = max(1, round(height * shrink))
+        resized = base_image.resize((width, height), Image.Resampling.BILINEAR)
+        self._zoom_preview_photo = ImageTk.PhotoImage(resized)
+        self.canvas.itemconfigure(item, image=self._zoom_preview_photo)
 
     def _capture_zoom_preview(self) -> dict | None:
         """Jahit tile yang tampil menjadi satu gambar dasar untuk preview zoom."""
