@@ -930,15 +930,16 @@ class ViewportEditorWorkspaceView(CanvasStructureEditorWorkspaceView):
             self._zoom_out_at(event.x, event.y)
         return "break"
 
+    # Zoom roda mouse memakai langkah kontinu yang kecil supaya terasa halus;
+    # tombol toolbar/menu tetap melompat antar level preset.
+    _WHEEL_ZOOM_STEP = 1.1
+
     def _zoom_in_at(self, screen_x: int, screen_y: int) -> None:
-        current = self.zoom_scale
-        target = next((v for v in _ZOOM_LEVELS if v > current + 1e-9), _MAX_ZOOM)
+        target = min(_MAX_ZOOM, self.zoom_scale * self._WHEEL_ZOOM_STEP)
         self._set_fixed_zoom(target, anchor_screen=(screen_x, screen_y))
 
     def _zoom_out_at(self, screen_x: int, screen_y: int) -> None:
-        current = self.zoom_scale
-        candidates = [v for v in _ZOOM_LEVELS if v < current - 1e-9]
-        target = candidates[-1] if candidates else _MIN_ZOOM
+        target = max(_MIN_ZOOM, self.zoom_scale / self._WHEEL_ZOOM_STEP)
         self._set_fixed_zoom(target, anchor_screen=(screen_x, screen_y))
 
     def _on_mousewheel(self, event: tk.Event[tk.Canvas]) -> str:
