@@ -1,5 +1,5 @@
 {
-  "release_tag": "v0.2.0",
-  "requested_at": "2026-07-19T04:55:34Z",
-  "reason": "Publish BatikCraft Studio 0.2.0 with faster canvas interactions, unified fill and gradient tools, centralized local AI dependencies, hardened SDXL and LoRA runtime handling, and library-first marketplace asset workflows"
+  "release_tag": "v0.2.1",
+  "requested_at": "2026-07-19T05:30:00Z",
+  "reason": "Publish BatikCraft Studio 0.2.1 with complete BatikCraftWeb API integration, server capability discovery, full pagination, original NFT and asset-package uploads, secure package downloads, and SHA-256 integrity verification"
 }
