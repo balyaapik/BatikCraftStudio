@@ -23,7 +23,7 @@ def build_inno_setup_script(
     downloads AI packages and model files there after installation.
     """
 
-    output_base = f"{app_name}-Setup-Windows-{architecture}"
+    output_base = f"{app_name}-v{version}-Setup-Windows-{architecture}"
     lines = [
         f'#define MyAppVersion "{version}"',
         f'#define SourceExe "{source_executable.resolve()}"',
@@ -33,6 +33,7 @@ def build_inno_setup_script(
         "[Setup]",
         f"AppId={app_id}",
         f"AppName={display_name}",
+        f"AppVerName={display_name} v{version}",
         "AppVersion={#MyAppVersion}",
         f"AppPublisher={display_name}",
         f"DefaultDirName={{autopf}}\\{display_name}",
