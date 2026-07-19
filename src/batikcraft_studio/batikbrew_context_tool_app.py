@@ -148,6 +148,10 @@ class ContextToolApplication(_ProgressApplication):
             label="Analisis Ekonomi NFT…",
             command=self.open_nft_economics,
         )
+        marketplace_menu.add_command(
+            label="Studio Paket Aset (Buat, Isi, Jual)…",
+            command=self.open_asset_pack_studio,
+        )
         marketplace_menu.add_separator()
         marketplace_menu.add_command(
             label="Mint & Publish Project Aktif sebagai NFT…",
@@ -315,6 +319,26 @@ class ContextToolApplication(_ProgressApplication):
         except BatikCraftWebError as exc:
             messagebox.showerror("BatikCraftWeb", str(exc), parent=self.root)
             return
+        window.focus_set()
+
+    def open_asset_pack_studio(self) -> None:
+        """Buat pustaka aset, isi dari canvas/impor, ekspor, dan jual."""
+
+        from batikcraft_studio.assets import AssetLibrary
+        from .ui.asset_pack_studio_dialog import AssetPackStudioWindow
+
+        library = getattr(getattr(self, "editor", None), "asset_library", None)
+        if library is None:
+            library = AssetLibrary()
+
+        def client_provider():
+            if self._ensure_web_session() is None:
+                return None
+            return self.web_client
+
+        window = AssetPackStudioWindow(
+            self.root, library=library, client_provider=client_provider
+        )
         window.focus_set()
 
     def open_nft_economics(self) -> None:

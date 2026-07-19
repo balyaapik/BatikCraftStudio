@@ -73,36 +73,37 @@ class DependencyManagerWindow(tk.Toplevel):
         self.refresh()
 
     def _build(self) -> None:
-        body = ttk.Frame(self, padding=16)
+        body = ttk.Frame(self, padding=14)
         body.pack(fill="both", expand=True)
         body.columnconfigure(0, weight=1)
-        body.rowconfigure(3, weight=1)
+        body.rowconfigure(1, weight=1)
 
         ttk.Label(
             body,
             text="BatikCraft AI Setup",
-            font=("TkDefaultFont", 16, "bold"),
-        ).grid(row=0, column=0, sticky="w")
-        ttk.Label(
-            body,
-            text=(
-                "Paket Python AI, pengunduh model, dan BatikBrew dipasang langsung "
-                "dari aplikasi ke folder dependencies. Pengguna tidak perlu mencari "
-                "Python, pip, atau dependency melalui terminal."
-            ),
-            style="Muted.TLabel",
-            wraplength=860,
-            justify="left",
-        ).grid(row=1, column=0, sticky="ew", pady=(4, 10))
+            font=("TkDefaultFont", 15, "bold"),
+        ).grid(row=0, column=0, sticky="w", pady=(0, 8))
 
-        quick_setup = ttk.LabelFrame(body, text="Instalasi Sekali Klik", padding=12)
-        quick_setup.grid(row=2, column=0, sticky="ew", pady=(0, 12))
+        # Dua tab: instalasi (dependensi + model) dan log — sesuai kebutuhan
+        # user agar jendela tidak panjang dan log tidak mengganggu.
+        self.notebook = ttk.Notebook(body)
+        self.notebook.grid(row=1, column=0, sticky="nsew")
+        tab_main = ttk.Frame(self.notebook, padding=10)
+        tab_log = ttk.Frame(self.notebook, padding=8)
+        self.notebook.add(tab_main, text="Dependensi AI Lokal")
+        self.notebook.add(tab_log, text="Log Instalasi")
+        tab_main.columnconfigure(0, weight=1)
+        tab_main.rowconfigure(2, weight=1)
+
+        # --- Instalasi sekali klik -----------------------------------------
+        quick_setup = ttk.LabelFrame(tab_main, text="Instalasi Sekali Klik", padding=12)
+        quick_setup.grid(row=0, column=0, sticky="ew", pady=(0, 10))
         quick_setup.columnconfigure(0, weight=1)
         ttk.Label(
             quick_setup,
             text=(
-                "Memasang atau memperbaiki seluruh paket AI, lalu otomatis membuka "
-                "unduhan BatikBrew SDXL dengan progres byte dan persentase."
+                "Satu tombol untuk memasang seluruh paket AI lokal beserta model "
+                "BatikBrew SDXL, lengkap dengan progres byte dan persentase."
             ),
             wraplength=680,
             justify="left",
@@ -113,16 +114,9 @@ class DependencyManagerWindow(tk.Toplevel):
             command=self.install_complete_batikbrew,
         )
         self.install_all_button.grid(row=0, column=1, sticky="e", padx=(12, 0))
-        self.install_progress = ttk.Progressbar(
-            quick_setup,
-            mode="indeterminate",
-        )
+        self.install_progress = ttk.Progressbar(quick_setup, mode="indeterminate")
         self.install_progress.grid(
-            row=1,
-            column=0,
-            columnspan=2,
-            sticky="ew",
-            pady=(10, 0),
+            row=1, column=0, columnspan=2, sticky="ew", pady=(10, 0)
         )
         self.install_progress_text = tk.StringVar(master=self, value="Siap")
         ttk.Label(
@@ -131,17 +125,67 @@ class DependencyManagerWindow(tk.Toplevel):
             style="Muted.TLabel",
         ).grid(row=2, column=0, columnspan=2, sticky="w", pady=(3, 0))
 
-        content = ttk.PanedWindow(body, orient=tk.VERTICAL)
-        content.grid(row=3, column=0, sticky="nsew")
+        # --- Komponen unduhan + perkiraan ukuran ---------------------------
+        components = ttk.LabelFrame(
+            tab_main, text="Komponen yang Diunduh", padding=10
+        )
+        components.grid(row=1, column=0, sticky="ew", pady=(0, 10))
+        components.columnconfigure(0, weight=1)
+        self.component_tree = ttk.Treeview(
+            components,
+            columns=("size", "status"),
+            show="tree headings",
+            height=4,
+            selectmode="none",
+        )
+        self.component_tree.heading("#0", text="Komponen")
+        self.component_tree.heading("size", text="Perkiraan Ukuran")
+        self.component_tree.heading("status", text="Status")
+        self.component_tree.column("#0", width=340)
+        self.component_tree.column("size", width=150, anchor="e")
+        self.component_tree.column("status", width=190)
+        self.component_tree.grid(row=0, column=0, sticky="ew")
+        runtime_actions = ttk.Frame(components)
+        runtime_actions.grid(row=1, column=0, sticky="w", pady=(8, 0))
+        ttk.Button(
+            runtime_actions,
+            text="Unduh / Instal BatikBrew SDXL…",
+            command=self.install_sdxl,
+        ).pack(side="left")
+        ttk.Button(
+            runtime_actions,
+            text="Unduh / Instal SD1.5 + ControlNet…",
+            command=self.install_sd15,
+        ).pack(side="left", padx=(8, 0))
+        ttk.Button(
+            runtime_actions,
+            text="Instal / Kelola LoRA…",
+            command=self.manage_lora,
+        ).pack(side="left", padx=(8, 0))
+        ttk.Button(
+            runtime_actions,
+            text="Buka Folder Dependencies",
+            command=lambda: reveal_path(default_managed_dependency_root()),
+        ).pack(side="left", padx=(8, 0))
+        self.runtime_status = tk.StringVar(master=self)
+        ttk.Label(
+            components,
+            textvariable=self.runtime_status,
+            justify="left",
+            wraplength=840,
+            style="Muted.TLabel",
+        ).grid(row=2, column=0, sticky="ew", pady=(8, 0))
 
-        packages = ttk.LabelFrame(content, text="Python AI Packages", padding=10)
+        # --- Rincian paket Python ------------------------------------------
+        packages = ttk.LabelFrame(tab_main, text="Python AI Packages", padding=10)
+        packages.grid(row=2, column=0, sticky="nsew")
         packages.columnconfigure(0, weight=1)
         packages.rowconfigure(0, weight=1)
         self.tree = ttk.Treeview(
             packages,
             columns=("requirement", "status"),
             show="headings",
-            height=9,
+            height=7,
         )
         self.tree.heading("requirement", text="Dependency")
         self.tree.heading("status", text="Status")
@@ -167,50 +211,18 @@ class DependencyManagerWindow(tk.Toplevel):
             style="Muted.TLabel",
             wraplength=840,
         ).grid(row=2, column=0, sticky="w", pady=(8, 0))
-        content.add(packages, weight=1)
 
-        runtime = ttk.LabelFrame(content, text="Runtime, Base Model & LoRA", padding=10)
-        runtime.columnconfigure(0, weight=1)
-        self.runtime_status = tk.StringVar(master=self)
-        ttk.Label(
-            runtime,
-            textvariable=self.runtime_status,
-            justify="left",
-            wraplength=840,
-        ).grid(row=0, column=0, sticky="ew")
-        runtime_actions = ttk.Frame(runtime)
-        runtime_actions.grid(row=1, column=0, sticky="w", pady=(10, 0))
-        ttk.Button(
-            runtime_actions,
-            text="Unduh / Instal BatikBrew SDXL…",
-            command=self.install_sdxl,
-        ).pack(side="left")
-        ttk.Button(
-            runtime_actions,
-            text="Unduh / Instal SD1.5 + ControlNet…",
-            command=self.install_sd15,
-        ).pack(side="left", padx=(8, 0))
-        ttk.Button(
-            runtime_actions,
-            text="Instal / Kelola LoRA…",
-            command=self.manage_lora,
-        ).pack(side="left", padx=(8, 0))
-        ttk.Button(
-            runtime_actions,
-            text="Buka Folder Dependencies",
-            command=lambda: reveal_path(default_managed_dependency_root()),
-        ).pack(side="left", padx=(8, 0))
-        content.add(runtime, weight=0)
-
-        log_frame = ttk.LabelFrame(content, text="Log Instalasi", padding=8)
-        log_frame.columnconfigure(0, weight=1)
-        log_frame.rowconfigure(0, weight=1)
-        self.log = tk.Text(log_frame, height=9, wrap="word", state="disabled")
+        # --- Tab log --------------------------------------------------------
+        tab_log.columnconfigure(0, weight=1)
+        tab_log.rowconfigure(0, weight=1)
+        self.log = tk.Text(tab_log, height=18, wrap="word", state="disabled")
         self.log.grid(row=0, column=0, sticky="nsew")
-        content.add(log_frame, weight=1)
+        log_scroll = ttk.Scrollbar(tab_log, orient="vertical", command=self.log.yview)
+        log_scroll.grid(row=0, column=1, sticky="ns")
+        self.log.configure(yscrollcommand=log_scroll.set)
 
         footer = ttk.Frame(body)
-        footer.grid(row=4, column=0, sticky="e", pady=(12, 0))
+        footer.grid(row=2, column=0, sticky="e", pady=(10, 0))
         self.cancel_button = ttk.Button(
             footer,
             text="Hentikan Instalasi",
@@ -220,8 +232,42 @@ class DependencyManagerWindow(tk.Toplevel):
         self.cancel_button.pack(side="right", padx=(8, 0))
         ttk.Button(footer, text="Tutup", command=self._close).pack(side="right")
 
+    def _refresh_component_overview(self) -> None:
+        """Isi daftar komponen unduhan beserta perkiraan ukuran dan status."""
+
+        tree = getattr(self, "component_tree", None)
+        if tree is None or not tree.winfo_exists():
+            return
+        for item in tree.get_children(""):
+            tree.delete(item)
+
+        missing = len(self._missing_requirements())
+        packages_status = (
+            "Terpasang lengkap" if missing == 0 else f"{missing} paket belum terpasang"
+        )
+        sdxl = find_installed_batikbrew_runtime()
+        sd15 = find_installed_runtime_models()
+        rows = (
+            ("Paket Python AI Lokal (torch, diffusers, dll.)", "± 2–3 GB", packages_status),
+            (
+                "BatikBrew SDXL (base model)",
+                "± 13 GB",
+                "Terpasang" if sdxl is not None else "Belum diunduh",
+            ),
+            (
+                "Stable Diffusion 1.5 + ControlNet",
+                "± 6,6 GB",
+                "Terpasang" if sd15 is not None else "Belum diunduh",
+            ),
+            ("LoRA Batik (opsional, per paket)", "± 50–500 MB", "Kelola lewat tombol LoRA"),
+        )
+        for name, size, status in rows:
+            tree.insert("", "end", text=name, values=(size, status))
+
+
     def refresh(self) -> None:
         activate_managed_ai_packages()
+        self._refresh_component_overview()
         for item in self.tree.get_children(""):
             self.tree.delete(item)
         for module, requirement in PYTHON_AI_DEPENDENCIES:

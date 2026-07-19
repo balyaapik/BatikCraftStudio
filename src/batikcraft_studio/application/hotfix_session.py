@@ -272,21 +272,27 @@ def _fill_enclosed_png_complete(content: bytes, color: str) -> bytes:
             "The boundary is not closed enough to create a safe fill."
         )
 
-    # Selipkan warna fill CUKUP JAUH ke bawah garis. Barrier tadi didilasi
-    # close_radius sehingga interior menyusut menjauh dari tepi garis asli;
-    # tanpa kompensasi penuh akan tampak celah/seam antara garis dan warna
-    # fill. Karena hasil fill dikomposit DI BAWAH goresan, overlap ekstra di
-    # bawah garis tidak terlihat.
-    overlap_radius = close_radius + scale
-    interior = _iterated_morphology(interior, overlap_radius, ImageFilter.MaxFilter)
-    if interior.size != (width, height):
-        interior = interior.resize((width, height), Image.Resampling.LANCZOS)
+    # ANTI-CELAH: warna fill tidak berhenti di tepi dalam garis, melainkan
+    # mengisi SELURUH area tertutup termasuk badan garis (garis dikomposit di
+    # atasnya). Dengan begitu tidak mungkin ada cincin putih di antara fill
+    # dan garis, berapa pun lebar fringe anti-alias goresan.
+    #
+    # enclosed = bukan-eksterior (interior + badan barrier yang sudah
+    # didilasi). Dilasi barrier juga melebar KELUAR, jadi tarik kembali
+    # tepi luarnya sebesar dilasi bersih (close_radius - erode_radius)
+    # dikurangi 1 px agar tetap menyelip di bawah fringe luar garis.
+    exterior = ImageChops.subtract(free_space, interior)
+    enclosed = exterior.point(lambda value: 0 if value else 255)
+    outward = max(0, close_radius - erode_radius - 1)
+    fill_mask = _iterated_morphology(enclosed, outward, ImageFilter.MinFilter)
+    if fill_mask.size != (width, height):
+        fill_mask = fill_mask.resize((width, height), Image.Resampling.LANCZOS)
     # Rapatkan tepi hasil LANCZOS agar tidak menyisakan cincin semi-transparan.
-    interior = interior.point(lambda value: 255 if value >= 96 else value)
+    fill_mask = fill_mask.point(lambda value: 255 if value >= 96 else value)
 
     rgb = ImageColor.getrgb(color)[:3]
     filled = Image.new("RGBA", image.size, (*rgb, 0))
-    filled.putalpha(interior)
+    filled.putalpha(fill_mask)
     output = BytesIO()
     filled.save(output, format="PNG")
     return output.getvalue()

@@ -2504,6 +2504,92 @@ from .progress_dialog import ProgressDialog, ProgressUpdate
 class ContextToolEditorWorkspaceView(_HotfixV14):
     """Generate with a model explicitly selected from centrally saved settings."""
 
+    def __init__(self, *args: object, **kwargs: object) -> None:
+        super().__init__(*args, **kwargs)
+        menu = getattr(self, "_selection_context_menu", None)
+        if menu is not None:
+            menu.add_separator()
+            menu.add_command(
+                label="Gradasi Warna Objek…",
+                command=self.open_gradient_dialog,
+            )
+            menu.add_command(
+                label="Simpan Objek Terpilih ke Pustaka Aset",
+                command=self.save_selected_objects_to_library,
+            )
+
+    def save_selected_objects_to_library(self) -> None:
+        """Masukkan objek terpilih di canvas ke pustaka aset pribadi."""
+
+        from batikcraft_studio.imaging.structured_batification import (
+            renderable_source_content,
+        )
+
+        project = self.session.project
+        selected = tuple(self._multi_session.selected_object_ids)
+        if project is None or not selected:
+            self.set_status("Pilih objek di canvas untuk disimpan ke pustaka aset.")
+            return
+        store = PersonalAssetStore(self.asset_library)
+        saved = 0
+        for object_id in selected:
+            try:
+                item = project.get_object(object_id)
+                content = renderable_source_content(item, self.session.assets)
+                category = item.properties.get("asset_category", "ornamen")
+                if not isinstance(category, str):
+                    category = "ornamen"
+                store.import_image(f"{item.name}.png", content, category=category)
+                saved += 1
+            except Exception as exc:  # noqa: BLE001
+                self.set_status(f"{getattr(item, 'name', object_id)}: {exc}")
+        if saved:
+            try:
+                self.refresh_library()
+            except Exception:  # noqa: BLE001
+                pass
+            self.set_status(f"{saved} objek tersimpan ke pustaka aset pribadi.")
+
+    def open_gradient_dialog(self) -> None:
+        """Terapkan gradasi warna (linear/radial) pada objek terpilih."""
+
+        selected = tuple(self._multi_session.selected_object_ids)
+        if not selected:
+            self.set_status("Pilih objek terlebih dahulu untuk memberi gradasi warna.")
+            return
+
+        from .gradient_dialog import ObjectGradientDialog
+
+        def apply(fill_mode: str, gradient: dict | None) -> None:
+            session = self.session
+            updated = []
+            for object_id in selected:
+                try:
+                    updated.append(
+                        session.set_object_gradient(object_id, fill_mode, gradient)
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    self.set_status(str(exc))
+                    return
+            announce = getattr(self, "_announce_bounded_change", None)
+            dirty = getattr(self, "_objects_dirty_bounds", None)
+            if announce is not None and dirty is not None:
+                announce(dirty(updated))
+            self.refresh_context()
+            if fill_mode == "solid":
+                self.set_status(f"Gradasi dihapus dari {len(updated)} objek.")
+            else:
+                jenis = "linear" if fill_mode == "linear_gradient" else "radial"
+                self.set_status(f"Gradasi {jenis} diterapkan pada {len(updated)} objek.")
+
+        dialog = ObjectGradientDialog(
+            self,
+            start_color=self.foreground_color_value.get(),
+            end_color=getattr(self, "background_color_value", self.foreground_color_value).get(),
+            on_apply=apply,
+        )
+        dialog.focus_set()
+
     def batify_selected_with_pretrained_ai(self) -> None:
         if self._pretrained_ai_running:
             self.set_status("Generasi BatikBrew masih berjalan. Tunggu proses sebelumnya selesai.")

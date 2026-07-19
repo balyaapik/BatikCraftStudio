@@ -56,14 +56,15 @@ def test_unified_fill_leaves_no_gap_between_line_and_fill() -> None:
     combined = Image.open(BytesIO(combined_bytes)).convert("RGBA")
     alpha = combined.getchannel("A")
 
-    # Telusur dari pusat ke kanan: alpha tidak boleh turun (celah) sebelum
-    # mencapai garis; setiap piksel di antara fill dan garis harus opaque.
+    # Telusur dari pusat ke kanan MELEWATI seluruh badan garis (termasuk
+    # fringe anti-alias di kedua sisinya): alpha gabungan tidak boleh turun
+    # sebelum melewati tepi luar garis — tidak boleh ada cincin/celah putih.
     center = size // 2
-    line_inner = None
-    for x in range(center, size):
+    line_outer = None
+    for x in range(size - 1, center, -1):
         if stroke.getpixel((x, center))[3] >= 250:
-            line_inner = x
+            line_outer = x
             break
-    assert line_inner is not None
-    for x in range(center, line_inner + 1):
-        assert alpha.getpixel((x, center)) >= 240, f"celah pada x={x}"
+    assert line_outer is not None
+    for x in range(center, line_outer + 1):
+        assert alpha.getpixel((x, center)) >= 250, f"celah pada x={x}"
