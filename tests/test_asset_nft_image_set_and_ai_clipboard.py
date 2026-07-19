@@ -126,7 +126,9 @@ def test_integrated_entrypoint_exposes_requested_menu_and_shortcuts() -> None:
 
     assert "integrated_market_app" in main_source
     assert "Generate Motif BatikBrew…" in app_source
-    assert "Jual Asset Pustaka sebagai NFT…" in app_source
+    # Penjualan pustaka kini dari PUSTAKA terpilih (bukan objek canvas).
+    assert "Jual Pustaka Aset…" in app_source
+    assert "list_user_libraries" in app_source
     assert "Set Gambar Training SDXL…" in app_source
     assert "OBJECT_COPY_SEQUENCE" in app_source
     assert "OBJECT_PASTE_SEQUENCE" in app_source

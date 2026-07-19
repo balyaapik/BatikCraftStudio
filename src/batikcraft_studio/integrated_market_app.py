@@ -13,7 +13,6 @@ from batikcraft_studio.ui.keyboard import (
     OBJECT_PASTE_SEQUENCE,
     event_targets_text_input,
 )
-from batikcraft_studio.ui.library_asset_nft_dialog import PublishLibraryAssetNFTDialog
 
 from .app_icon import apply_app_icon, prepare_windows_app_identity
 from .batikbrew_context_tool_app import ContextToolApplication as _BaseApplication
@@ -52,7 +51,7 @@ class ContextToolApplication(_BaseApplication):
         _market_index, marketplace_menu = _find_cascade_menu(menu_bar, "Marketplace")
         _ensure_command(
             marketplace_menu,
-            label="Jual Asset Pustaka sebagai NFT…",
+            label="Jual Pustaka Aset…",
             command=self.publish_library_asset_to_web,
             preferred_before="Jual Model ke Marketplace…",
         )
@@ -111,44 +110,64 @@ class ContextToolApplication(_BaseApplication):
         window.focus_set()
 
     def publish_library_asset_to_web(self) -> None:
+        """Jual PUSTAKA ASET terpilih (bukan objek canvas) ke BatikCraftWeb.
+
+        Alur: pustaka harus sudah dibuat dan berisi (menu Asset). Menu ini
+        memilih pustaka mana yang dijual, lalu membuka Studio Pustaka Aset
+        dengan pustaka tersebut terpilih agar user meninjau isi + harga
+        sebelum menekan "Jual Pustaka Ini…".
+        """
+
         session = self._ensure_web_session()
         if session is None:
             return
         if session.account.role != "creator":
             messagebox.showerror(
                 "Akun creator diperlukan",
-                "Hanya akun Creator / User yang dapat menjual asset pustaka sebagai NFT.",
+                "Hanya akun Creator / User yang dapat menjual pustaka aset.",
                 parent=self.root,
             )
             return
 
-        project = self.session.project
-        if project is None or project.active_object_id is None:
-            messagebox.showerror(
-                "Pilih asset pustaka",
-                "Pilih satu objek asset pada canvas atau panel layer terlebih dahulu.",
-                parent=self.root,
-            )
-            return
-        item = project.get_object(project.active_object_id)
-        asset_ref = item.asset_ref
-        if not asset_ref or asset_ref not in self.session.assets:
-            messagebox.showerror(
-                "Asset tidak dapat dijual",
-                "Objek aktif tidak memiliki gambar raster yang dapat diunggah sebagai NFT.",
+        from batikcraft_studio.assets.personal_store import list_user_libraries
+
+        library = self._asset_library()
+        library.refresh()
+        packs = list(list_user_libraries(library))
+        if not packs:
+            messagebox.showinfo(
+                "Buat pustaka dulu",
+                "Belum ada pustaka aset. Buat wadah pustaka lewat menu "
+                "Asset → Buat Pustaka Aset Baru…, isi dengan objek canvas "
+                "atau gambar impor, baru pustaka dapat dijual.",
                 parent=self.root,
             )
             return
 
-        dialog = PublishLibraryAssetNFTDialog(
-            self.root,
-            client=self.web_client,
-            session=session,
-            project=project,
-            item=item,
-            content=self.session.assets[asset_ref],
+        if len(packs) == 1:
+            target = packs[0]
+        else:
+            from batikcraft_studio.ui.asset_pack_studio_dialog import (
+                LibraryPickerDialog,
+            )
+
+            picker = LibraryPickerDialog(self.root, packs)
+            self.root.wait_window(picker)
+            if picker.result is None:
+                return
+            target = next(pack for pack in packs if pack.pack_id == picker.result)
+
+        from batikcraft_studio.ui.asset_pack_studio_dialog import (
+            AssetPackStudioWindow,
         )
-        dialog.focus_set()
+
+        window = AssetPackStudioWindow(
+            self.root,
+            library=library,
+            client_provider=lambda: self.web_client,
+        )
+        window.refresh_packs(select_pack_id=target.pack_id)
+        window.focus_set()
 
     def copy_canvas_selection(self) -> None:
         """Copy selected canvas objects and make them the active paste source."""
