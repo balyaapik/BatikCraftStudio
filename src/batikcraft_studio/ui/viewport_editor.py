@@ -80,7 +80,7 @@ _VIEW_PADDING = 28
 _GRID_BASE = 25.0
 _GRID_MINOR = "#B8C0C8"
 _GRID_MAJOR = "#8793A0"
-_ZOOM_DEBOUNCE_MS = 150  # milliseconds after last zoom event before final render
+_ZOOM_DEBOUNCE_MS = 100  # milliseconds after last zoom event before final render
 
 
 class ViewportEditorWorkspaceView(CanvasStructureEditorWorkspaceView):

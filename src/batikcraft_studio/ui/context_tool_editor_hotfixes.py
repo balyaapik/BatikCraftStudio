@@ -78,9 +78,155 @@ class _HotfixV1(_BaseContextToolEditor):
         *,
         anchor_screen: tuple[int, int] | None = None,
     ) -> None:
-        # Do not keep wrongly-scaled Tk tiles while waiting for the new generation.
-        self._delete_all_screen_tiles()
+        # Anti-lag zoom: alih-alih menghapus semua tile (layar blank sampai
+        # render debounce selesai), tampilkan preview instan hasil penskalaan
+        # NEAREST dari tile yang sudah ada. Render tajam menggantikannya
+        # begitu selesai.
+        try:
+            self._begin_or_update_zoom_preview(scale, anchor_screen)
+        except Exception:  # noqa: BLE001 - fallback ke perilaku lama yang aman
+            self._clear_zoom_preview()
+            self._delete_all_screen_tiles()
         super()._set_fixed_zoom(scale, anchor_screen=anchor_screen)
+
+    _ZOOM_PREVIEW_MAX_SIDE = 4096
+
+    def _begin_or_update_zoom_preview(
+        self,
+        new_scale: float,
+        anchor_screen: tuple[int, int] | None,
+    ) -> None:
+        state = getattr(self, "_zoom_preview_state", None)
+        if state is None:
+            state = self._capture_zoom_preview()
+            if state is None:
+                # Belum ada tile untuk dipreview; biarkan render normal.
+                return
+            self._zoom_preview_state = state
+            self.canvas.itemconfigure("project-tile", state="hidden")
+
+        base_scale = state["base_scale"]
+        if base_scale <= 0 or new_scale <= 0:
+            return
+        ratio = new_scale / base_scale
+        base_image = state["image"]
+        width = max(1, round(base_image.width * ratio))
+        height = max(1, round(base_image.height * ratio))
+        cap = self._ZOOM_PREVIEW_MAX_SIDE
+        if width > cap or height > cap:
+            shrink = min(cap / width, cap / height)
+            width = max(1, round(width * shrink))
+            height = max(1, round(height * shrink))
+        resized = base_image.resize((width, height), Image.Resampling.NEAREST)
+
+        if anchor_screen is not None:
+            anchor = (
+                self.canvas.canvasx(anchor_screen[0]),
+                self.canvas.canvasy(anchor_screen[1]),
+            )
+        else:
+            anchor = (
+                self.canvas.canvasx(max(1, self.canvas.winfo_width()) / 2),
+                self.canvas.canvasy(max(1, self.canvas.winfo_height()) / 2),
+            )
+        origin_x, origin_y = state["origin_canvas"]
+        new_x = anchor[0] + (origin_x - anchor[0]) * ratio
+        new_y = anchor[1] + (origin_y - anchor[1]) * ratio
+
+        self._zoom_preview_photo = ImageTk.PhotoImage(resized)
+        item = getattr(self, "_zoom_preview_item", None)
+        if item is None or not self._canvas_item_alive(item):
+            self._zoom_preview_item = self.canvas.create_image(
+                new_x,
+                new_y,
+                image=self._zoom_preview_photo,
+                anchor="nw",
+                tags="zoom-preview",
+            )
+        else:
+            self.canvas.itemconfigure(item, image=self._zoom_preview_photo)
+            self.canvas.coords(item, new_x, new_y)
+        self.canvas.tag_lower("zoom-preview", "canvas-grid") if self.canvas.find_withtag("canvas-grid") else None
+
+    def _capture_zoom_preview(self) -> dict | None:
+        """Jahit tile yang tampil menjadi satu gambar dasar untuk preview zoom."""
+
+        entries = []
+        for key, canvas_id in self._tile_canvas_ids.items():
+            stored = self._tile_photos.get(key)
+            if stored is None:
+                continue
+            pil_image = stored[0] if isinstance(stored, tuple) else None
+            if pil_image is None:
+                continue
+            coords = self.canvas.coords(canvas_id)
+            if len(coords) < 2:
+                continue
+            entries.append((coords[0], coords[1], pil_image))
+        if not entries:
+            return None
+        min_x = min(entry[0] for entry in entries)
+        min_y = min(entry[1] for entry in entries)
+        max_x = max(entry[0] + entry[2].width for entry in entries)
+        max_y = max(entry[1] + entry[2].height for entry in entries)
+        width = int(max_x - min_x)
+        height = int(max_y - min_y)
+        if width <= 0 or height <= 0 or width > self._ZOOM_PREVIEW_MAX_SIDE or height > self._ZOOM_PREVIEW_MAX_SIDE:
+            return None
+        stitched = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+        for left, top, pil_image in entries:
+            stitched.paste(pil_image, (int(left - min_x), int(top - min_y)))
+        scale = self._preview_scale if self._preview_scale > 0 else 1.0
+        return {
+            "image": stitched,
+            "base_scale": scale,
+            "origin_canvas": (min_x, min_y),
+            "origin_project": (
+                (min_x - self._preview_left) / scale,
+                (min_y - self._preview_top) / scale,
+            ),
+            "project_size": (width / scale, height / scale),
+        }
+
+    def _reposition_zoom_preview_for_render(self) -> None:
+        """Selaraskan preview dengan geometry baru setelah _render menggeser scroll."""
+
+        state = getattr(self, "_zoom_preview_state", None)
+        item = getattr(self, "_zoom_preview_item", None)
+        if state is None or item is None or not self._canvas_item_alive(item):
+            return
+        scale = self._preview_scale
+        if scale <= 0:
+            return
+        proj_x, proj_y = state["origin_project"]
+        proj_w, proj_h = state["project_size"]
+        new_x = self._preview_left + proj_x * scale
+        new_y = self._preview_top + proj_y * scale
+        width = max(1, round(proj_w * scale))
+        height = max(1, round(proj_h * scale))
+        cap = self._ZOOM_PREVIEW_MAX_SIDE
+        if width <= cap and height <= cap:
+            resized = state["image"].resize((width, height), Image.Resampling.NEAREST)
+            self._zoom_preview_photo = ImageTk.PhotoImage(resized)
+            self.canvas.itemconfigure(item, image=self._zoom_preview_photo)
+        self.canvas.coords(item, new_x, new_y)
+
+    def _canvas_item_alive(self, item: int) -> bool:
+        try:
+            return bool(self.canvas.find_withtag(item))
+        except tk.TclError:
+            return False
+
+    def _clear_zoom_preview(self) -> None:
+        item = getattr(self, "_zoom_preview_item", None)
+        if item is not None:
+            try:
+                self.canvas.delete(item)
+            except tk.TclError:
+                pass
+        self._zoom_preview_item = None
+        self._zoom_preview_photo = None
+        self._zoom_preview_state = None
 
     def _show_quick_preview(
         self,
@@ -114,6 +260,7 @@ class _HotfixV1(_BaseContextToolEditor):
         content_height: float,
     ) -> None:
         del content_width, content_height
+        self._reposition_zoom_preview_for_render()
         self._submit_visible_tiles(project, zoom_scale, generation)
 
     def _schedule_tile_update(self) -> None:
@@ -266,6 +413,12 @@ class _HotfixV1(_BaseContextToolEditor):
                 self.canvas.itemconfigure(canvas_id, image=photo)
                 self.canvas.coords(canvas_id, canvas_x, canvas_y)
 
+        if tiles:
+            self._clear_zoom_preview()
+            try:
+                self.canvas.itemconfigure("project-tile", state="normal")
+            except tk.TclError:
+                pass
         if changed:
             self._draw_grid()
             self._draw_selection()
@@ -279,6 +432,7 @@ class _HotfixV1(_BaseContextToolEditor):
         self._last_preview_pil = None
 
     def _delete_all_screen_tiles(self) -> None:
+        self._clear_zoom_preview()
         canvas = getattr(self, "canvas", None)
         if canvas is not None:
             for canvas_id in tuple(getattr(self, "_tile_canvas_ids", {}).values()):
