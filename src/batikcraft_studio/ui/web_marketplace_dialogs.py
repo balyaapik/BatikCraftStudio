@@ -625,6 +625,14 @@ class PublishModelDialog(tk.Toplevel):
         ).grid(row=1, column=0, columnspan=3, sticky="ew", pady=(4, 14))
         self._file_row(body, 2, "Model", self.model_value, "*.batikmodel")
         self._file_row(body, 3, "Preview", self.preview_value, "*.png *.jpg *.jpeg *.webp")
+        self._preview_photo = None
+        self.preview_thumb = ttk.Label(
+            body, text="(preview wajib untuk estetika listing)", anchor="w",
+            style="Muted.TLabel",
+        )
+        self.preview_thumb.grid(row=3, column=3, sticky="w", padx=(8, 0))
+        self.preview_value.trace_add("write", lambda *_a: self._show_preview_thumb())
+        self.model_value.trace_add("write", lambda *_a: self._suggest_pack_preview())
         self._entry_row(body, 4, "Harga", self.price_value)
         self._entry_row(body, 5, "Kategori", self.category_value)
         ttk.Label(body, text="Lisensi").grid(row=6, column=0, sticky="w", pady=5)
@@ -698,7 +706,55 @@ class PublishModelDialog(tk.Toplevel):
         if value:
             variable.set(value)
 
+    def _show_preview_thumb(self) -> None:
+        path = Path(self.preview_value.get().strip())
+        if not path.is_file():
+            self.preview_thumb.configure(image="", text="(preview wajib untuk estetika listing)")
+            self._preview_photo = None
+            return
+        try:
+            from io import BytesIO
+
+            from PIL import Image, ImageTk
+
+            with Image.open(path) as source:
+                source.load()
+                image = source.convert("RGBA")
+            image.thumbnail((96, 96), Image.Resampling.LANCZOS)
+            self._preview_photo = ImageTk.PhotoImage(image, master=self)
+            self.preview_thumb.configure(image=self._preview_photo, text="")
+        except Exception:  # noqa: BLE001
+            self.preview_thumb.configure(image="", text="(gambar preview tidak valid)")
+            self._preview_photo = None
+
+    def _suggest_pack_preview(self) -> None:
+        """Bila paket model memuat gambar preview/sample, tawarkan otomatis."""
+
+        if self.preview_value.get().strip():
+            return
+        from batikcraft_studio.assets.preview import extract_model_pack_preview
+
+        content = extract_model_pack_preview(self.model_value.get().strip())
+        if content is None:
+            return
+        import tempfile
+
+        holder = Path(tempfile.gettempdir()) / "batikcraft-model-preview.png"
+        try:
+            holder.write_bytes(content)
+        except OSError:
+            return
+        self.preview_value.set(str(holder))
+
     def _publish(self) -> None:
+        if not Path(self.preview_value.get().strip()).is_file():
+            messagebox.showerror(
+                "Preview diperlukan",
+                "Pilih gambar preview model. Preview dipakai sebagai wajah "
+                "listing di BatikCraftWeb.",
+                parent=self,
+            )
+            return
         try:
             item = self.client.publish_model_pack(
                 self.model_value.get(),

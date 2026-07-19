@@ -33,6 +33,7 @@ from batikcraft_studio.assets.personal_store import (
     list_user_libraries,
     parse_library_description,
 )
+from batikcraft_studio.assets.preview import compose_collage_preview
 from batikcraft_studio.config import APP_VERSION
 from batikcraft_studio.web_bridge import BatikCraftWebClient, BatikCraftWebError
 
@@ -191,9 +192,29 @@ class AssetPackStudioWindow(tk.Toplevel):
         )
         self.tree.heading("#0", text="Isi pustaka")
         self.tree.heading("category", text="Kategori")
-        self.tree.column("#0", width=380)
-        self.tree.column("category", width=130)
-        self.tree.grid(row=2, column=0, columnspan=3, sticky="nsew")
+        self.tree.column("#0", width=330)
+        self.tree.column("category", width=120)
+        self.tree.grid(row=2, column=0, columnspan=2, sticky="nsew")
+
+        # Panel preview: wajah listing pustaka di BatikCraftWeb.
+        preview_panel = ttk.LabelFrame(body, text="Preview Pustaka", padding=(6, 6))
+        preview_panel.grid(row=2, column=2, sticky="nsew", padx=(8, 0))
+        self._preview_bytes: bytes | None = None
+        self._preview_photo = None
+        self.preview_label = ttk.Label(
+            preview_panel, text="(belum ada preview)", anchor="center", width=24
+        )
+        self.preview_label.grid(row=0, column=0, sticky="nsew", pady=(0, 6))
+        ttk.Button(
+            preview_panel,
+            text="Ganti Gambar Preview…",
+            command=self.choose_custom_preview,
+        ).grid(row=1, column=0, sticky="ew")
+        ttk.Button(
+            preview_panel,
+            text="Kolase Otomatis",
+            command=lambda: self._refresh_preview(force_auto=True),
+        ).grid(row=2, column=0, sticky="ew", pady=(4, 0))
 
         buttons = ttk.Frame(body)
         buttons.grid(row=3, column=0, columnspan=3, sticky="ew", pady=(10, 0))
@@ -276,6 +297,7 @@ class AssetPackStudioWindow(tk.Toplevel):
         )
         self._records = list(pack.assets)
         self._render_records()
+        self._refresh_preview(force_auto=True)
         self._update_action_states()
 
     def _render_records(self) -> None:
@@ -295,6 +317,64 @@ class AssetPackStudioWindow(tk.Toplevel):
         )
         sellable = has_pack and has_assets and self.client_provider is not None
         self.sell_button.configure(state="normal" if sellable else "disabled")
+
+    def _refresh_preview(self, *, force_auto: bool = False) -> None:
+        """Susun kolase preview otomatis dari isi pustaka terpilih."""
+
+        if not force_auto and self._preview_bytes is not None:
+            return
+        contents: list[bytes] = []
+        for record in self._records[:9]:
+            try:
+                thumb = self.library.read_thumbnail(record)
+                contents.append(thumb if thumb is not None else self.library.read_asset(record))
+            except (AssetLibraryError, OSError):
+                continue
+        if not contents:
+            self._preview_bytes = None
+            self._set_preview_photo(None)
+            return
+        try:
+            self._preview_bytes = compose_collage_preview(contents)
+        except ValueError:
+            self._preview_bytes = None
+        self._set_preview_photo(self._preview_bytes)
+
+    def choose_custom_preview(self) -> None:
+        path = filedialog.askopenfilename(
+            parent=self,
+            title="Pilih gambar preview pustaka",
+            filetypes=[("Gambar", "*.png *.jpg *.jpeg *.webp"), ("Semua file", "*.*")],
+        )
+        if not path:
+            return
+        try:
+            content = Path(path).read_bytes()
+        except OSError as exc:
+            messagebox.showerror("Preview gagal dibaca", str(exc), parent=self)
+            return
+        self._preview_bytes = content
+        self._set_preview_photo(content)
+
+    def _set_preview_photo(self, content: bytes | None) -> None:
+        if content is None:
+            self.preview_label.configure(text="(belum ada preview)", image="")
+            self._preview_photo = None
+            return
+        from io import BytesIO
+
+        from PIL import Image, ImageTk
+
+        try:
+            with Image.open(BytesIO(content)) as source:
+                source.load()
+                image = source.convert("RGBA")
+        except Exception as exc:  # noqa: BLE001
+            messagebox.showerror("Preview tidak valid", str(exc), parent=self)
+            return
+        image.thumbnail((190, 190), Image.Resampling.LANCZOS)
+        self._preview_photo = ImageTk.PhotoImage(image, master=self)
+        self.preview_label.configure(image=self._preview_photo, text="")
 
     # ------------------------------------------------------------------
     def create_library(self) -> None:
@@ -418,7 +498,9 @@ class AssetPackStudioWindow(tk.Toplevel):
             archive = pack_path.read_bytes()
 
         checksum = hashlib.sha256(archive).hexdigest()
-        preview = candidates[0].content
+        if self._preview_bytes is None:
+            self._refresh_preview(force_auto=True)
+        preview = self._preview_bytes or candidates[0].content
         self.status_value.set("Mengunggah pustaka ke BatikCraftWeb…")
         self.sell_button.configure(state="disabled")
 
