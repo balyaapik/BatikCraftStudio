@@ -1,5 +1,5 @@
 {
-  "release_tag": "v0.3.1",
-  "requested_at": "2026-07-19T12:50:00Z",
-  "reason": "Publish BatikCraft Studio 0.3.1 with restored online SDXL downloads after offline inference, managed AI package reactivation before imports, clearer Dependency Manager recovery guidance, and versioned cross-platform installer filenames such as BatikCraftStudio-v0.3.1"
+  "release_tag": "v0.3.2",
+  "requested_at": "2026-07-19T13:20:00Z",
+  "reason": "Publish BatikCraft Studio 0.3.2 with writable per-user managed dependencies for Program Files installations, read-only fallback support for legacy packages and models, clearer dependency diagnostics, and versioned cross-platform installer filenames such as BatikCraftStudio-v0.3.2"
 }
