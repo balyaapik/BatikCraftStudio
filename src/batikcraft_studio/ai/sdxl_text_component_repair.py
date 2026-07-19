@@ -17,11 +17,11 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+from batikcraft_studio.ai import batikbrew_generation
 from batikcraft_studio.dependency_bootstrap import (
     activate_managed_ai_packages,
     describe_ai_import_error,
 )
-from batikcraft_studio.ai import batikbrew_generation
 from batikcraft_studio.imaging.structured_batification import BatificationError
 
 _INSTALLED = False
@@ -55,9 +55,7 @@ def _complete_sdxl_pipeline_factory(settings: Any) -> tuple[Any, Any, str]:
         import torch
         from diffusers import StableDiffusionXLPipeline
     except ImportError as exc:
-        raise BatificationError(
-            describe_ai_import_error(exc)
-        ) from exc
+        raise BatificationError(describe_ai_import_error(exc)) from exc
 
     device = batikbrew_generation._resolve_device(torch, settings.device)
     dtype = batikbrew_generation._resolve_dtype(

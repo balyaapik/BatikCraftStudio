@@ -252,7 +252,7 @@ def diagnose_ai_runtime(
             import torch as imported_torch
 
             torch = imported_torch
-    except ImportError:
+    except ImportError as exc:
         recommendation = AIRuntimeRecommendation(
             device="cpu",
             precision="float32",
