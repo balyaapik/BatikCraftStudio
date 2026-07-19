@@ -557,13 +557,17 @@ def _open_rgb(content: bytes, label: str) -> Image.Image:
 def _default_sdxl_pipeline_factory(
     settings: BatikBrewGenerationOptions,
 ) -> tuple[Any, Any, str]:
+    from batikcraft_studio.dependency_bootstrap import (
+        activate_managed_ai_packages,
+        describe_ai_import_error,
+    )
+
     try:
+        activate_managed_ai_packages()
         import torch
         from diffusers import StableDiffusionXLPipeline
     except ImportError as exc:
-        raise BatificationError(
-            'Runtime SDXL belum terpasang. Jalankan: python -m pip install -e ".[ai]"'
-        ) from exc
+        raise BatificationError(describe_ai_import_error(exc)) from exc
 
     device = _resolve_device(torch, settings.device)
     dtype = _resolve_dtype(torch, device, settings.precision)

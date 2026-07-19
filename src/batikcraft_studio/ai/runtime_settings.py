@@ -9,6 +9,11 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Mapping
 
+from batikcraft_studio.dependency_bootstrap import (
+    activate_managed_ai_packages,
+    describe_ai_import_error,
+)
+
 AI_SETTINGS_SCHEMA_VERSION = 1
 DEFAULT_MODEL_ID = "stable-diffusion-v1-5/stable-diffusion-v1-5"
 _DEVICE_VALUES = {"auto", "cpu", "cuda", "mps"}
@@ -240,6 +245,7 @@ def diagnose_ai_runtime(
 ) -> AIRuntimeReport:
     """Inspect Torch/CUDA/MPS and optionally execute one tiny tensor operation."""
 
+    activate_managed_ai_packages()
     try:
         torch = torch_module
         if torch is None:
@@ -269,7 +275,7 @@ def diagnose_ai_runtime(
             tensor_test_ok=None,
             tensor_test_ms=None,
             recommendation=recommendation,
-            error='PyTorch belum terpasang. Jalankan: python -m pip install -e ".[ai]"',
+            error=describe_ai_import_error(exc),
         )
 
     cuda = getattr(torch, "cuda", None)

@@ -261,6 +261,25 @@ def _configure_managed_dependency_environment() -> None:
     os.environ.setdefault("DIFFUSERS_CACHE", str(cache / "diffusers"))
 
 
+def describe_ai_import_error(exc: BaseException) -> str:
+    """Pesan aksi untuk kegagalan impor runtime AI di aplikasi desktop.
+
+    Aplikasi memasang paket AI ke folder terkelola lewat Dependency Manager,
+    jadi jangan pernah menyuruh user menjalankan pip di terminal.
+    """
+
+    if isinstance(exc, ModuleNotFoundError):
+        return (
+            "Paket AI lokal belum aktif di aplikasi. Buka menu Dependencies → "
+            "'Instal Semua AI + BatikBrew SDXL'. Jika instalasi baru saja "
+            "selesai, tutup dan buka kembali aplikasi."
+        )
+    return (
+        f"Runtime AI gagal dimuat: {exc}. Buka menu Dependencies → "
+        "'Instal / Reparasi Paket AI' untuk memperbaiki instalasi."
+    )
+
+
 def activate_managed_ai_packages(path: str | Path | None = None) -> Path:
     """Make app-managed packages importable and migrate previous storage layouts."""
 

@@ -12,6 +12,10 @@ from typing import Any
 
 from PIL import Image, ImageOps, UnidentifiedImageError
 
+from batikcraft_studio.dependency_bootstrap import (
+    activate_managed_ai_packages,
+    describe_ai_import_error,
+)
 from batikcraft_studio.imaging.structured_batification import BatificationError
 
 _DEFAULT_MODEL = "stable-diffusion-v1-5/stable-diffusion-v1-5"
@@ -278,12 +282,13 @@ def _default_pipeline_factory(
     settings: AIBatikBackgroundOptions,
     mode: str,
 ) -> tuple[Any, Any, str]:
+    activate_managed_ai_packages()
     try:
         import torch
         from diffusers import AutoPipelineForImage2Image, AutoPipelineForText2Image
     except ImportError as exc:
         raise BatificationError(
-            'Runtime AI belum terpasang. Jalankan: python -m pip install -e ".[ai]"'
+            describe_ai_import_error(exc)
         ) from exc
 
     device = _resolve_device(torch, settings.device)

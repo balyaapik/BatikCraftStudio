@@ -17,6 +17,10 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+from batikcraft_studio.dependency_bootstrap import (
+    activate_managed_ai_packages,
+    describe_ai_import_error,
+)
 from batikcraft_studio.ai import batikbrew_generation
 from batikcraft_studio.imaging.structured_batification import BatificationError
 
@@ -46,12 +50,13 @@ def install_sdxl_text_component_repair() -> None:
 def _complete_sdxl_pipeline_factory(settings: Any) -> tuple[Any, Any, str]:
     """Load SDXL, repair prompt components, then configure device placement."""
 
+    activate_managed_ai_packages()
     try:
         import torch
         from diffusers import StableDiffusionXLPipeline
     except ImportError as exc:
         raise BatificationError(
-            'Runtime SDXL belum terpasang. Jalankan: python -m pip install -e ".[ai]"'
+            describe_ai_import_error(exc)
         ) from exc
 
     device = batikbrew_generation._resolve_device(torch, settings.device)

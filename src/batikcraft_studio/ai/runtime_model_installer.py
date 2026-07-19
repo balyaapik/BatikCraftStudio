@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import fnmatch
 import io
+import os
 import threading
 import time
 from collections.abc import Callable
@@ -412,7 +413,31 @@ def install_batikbrew_runtime(
     return paths
 
 
+def _allow_hub_network() -> None:
+    """Buka akses jaringan Hugging Face untuk pengunduh model.
+
+    Inferensi offline menyetel HF_HUB_OFFLINE=1 untuk seluruh proses; tanpa
+    pembersihan ini, unduhan lewat Dependency Manager gagal dengan
+    'offline mode is enabled' meskipun koneksi internet tersedia.
+    """
+
+    for name in (
+        "HF_HUB_OFFLINE",
+        "TRANSFORMERS_OFFLINE",
+        "DIFFUSERS_OFFLINE",
+        "HF_DATASETS_OFFLINE",
+    ):
+        os.environ.pop(name, None)
+    try:  # konstanta dibaca saat import; paksa nonaktif juga di runtime
+        from huggingface_hub import constants as _hub_constants
+
+        _hub_constants.HF_HUB_OFFLINE = False
+    except Exception:  # noqa: BLE001 - versi hub berbeda-beda
+        pass
+
+
 def _load_hub_tools() -> tuple[Any, HubFileDownload]:
+    _allow_hub_network()
     try:
         from huggingface_hub import HfApi, hf_hub_download
     except ImportError as exc:
