@@ -122,6 +122,8 @@ class ContextToolApplication(_ProgressApplication):
         )
         _insert_before_help(menu_bar, "Dependencies", dependencies_menu)
 
+        self._extend_asset_menu(menu_bar)
+
         marketplace_menu = tk.Menu(menu_bar, tearoff=False)
         marketplace_menu.add_command(
             label="Login / Akun BatikCraftWeb…",
@@ -148,10 +150,7 @@ class ContextToolApplication(_ProgressApplication):
             label="Analisis Ekonomi NFT…",
             command=self.open_nft_economics,
         )
-        marketplace_menu.add_command(
-            label="Studio Paket Aset (Buat, Isi, Jual)…",
-            command=self.open_asset_pack_studio,
-        )
+
         marketplace_menu.add_separator()
         marketplace_menu.add_command(
             label="Mint & Publish Project Aktif sebagai NFT…",
@@ -321,15 +320,71 @@ class ContextToolApplication(_ProgressApplication):
             return
         window.focus_set()
 
+    def _extend_asset_menu(self, menu_bar: tk.Menu) -> None:
+        """Masukkan seluruh fungsi pustaka aset ke dalam menu Asset."""
+
+        from batikcraft_studio.i18n import tr as _tr
+
+        asset_label = _tr("menu.asset")
+        end = menu_bar.index("end")
+        asset_menu: tk.Menu | None = None
+        if end is not None:
+            for index in range(int(end) + 1):
+                try:
+                    if str(menu_bar.entrycget(index, "label")) == asset_label:
+                        menu_name = str(menu_bar.entrycget(index, "menu"))
+                        asset_menu = menu_bar.nametowidget(menu_name)
+                        break
+                except tk.TclError:
+                    continue
+        if asset_menu is None:
+            asset_menu = tk.Menu(menu_bar, tearoff=False)
+            _insert_before_help(menu_bar, asset_label, asset_menu)
+
+        asset_menu.add_separator()
+        asset_menu.add_command(
+            label="Buat Pustaka Aset Baru…",
+            command=self.create_asset_library,
+        )
+        asset_menu.add_command(
+            label="Studio Pustaka Aset (Isi, Kelola, Jual)…",
+            command=self.open_asset_pack_studio,
+        )
+        asset_menu.add_command(
+            label="Simpan Objek Terpilih ke Pustaka…",
+            command=self.save_selection_to_asset_library,
+        )
+
+    def create_asset_library(self) -> None:
+        """Buat wadah pustaka (nama, author, filosofi, tipe) sebelum diisi."""
+
+        from .ui.asset_pack_studio_dialog import CreateLibraryDialog
+
+        dialog = CreateLibraryDialog(self.root, self._asset_library())
+        dialog.focus_set()
+
+    def save_selection_to_asset_library(self) -> None:
+        try:
+            editor = self.main_window._editor()
+        except Exception as exc:  # noqa: BLE001
+            messagebox.showerror("Editor tidak tersedia", str(exc), parent=self.root)
+            return
+        editor.save_selected_objects_to_library()
+
+    def _asset_library(self):
+        from batikcraft_studio.assets import AssetLibrary
+
+        try:
+            return self.main_window._editor().asset_library
+        except Exception:  # noqa: BLE001
+            return AssetLibrary()
+
     def open_asset_pack_studio(self) -> None:
         """Buat pustaka aset, isi dari canvas/impor, ekspor, dan jual."""
 
-        from batikcraft_studio.assets import AssetLibrary
         from .ui.asset_pack_studio_dialog import AssetPackStudioWindow
 
-        library = getattr(getattr(self, "editor", None), "asset_library", None)
-        if library is None:
-            library = AssetLibrary()
+        library = self._asset_library()
 
         def client_provider():
             if self._ensure_web_session() is None:

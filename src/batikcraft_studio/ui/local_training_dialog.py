@@ -124,7 +124,17 @@ class LocalLoraTrainingWindow(tk.Toplevel):
             textvariable=self.status_value,
             style="Muted.TLabel",
             wraplength=860,
-        ).grid(row=9, column=0, columnspan=3, sticky="ew", pady=(4, 8))
+        ).grid(row=9, column=0, columnspan=3, sticky="ew", pady=(4, 4))
+
+        progress_row = ttk.Frame(body)
+        progress_row.grid(row=8, column=0, columnspan=3, sticky="ew", pady=(6, 2))
+        progress_row.columnconfigure(0, weight=1)
+        self.training_progress = ttk.Progressbar(progress_row, mode="determinate", maximum=100.0)
+        self.training_progress.grid(row=0, column=0, sticky="ew")
+        self.training_percent_value = tk.StringVar(master=self, value="0%")
+        ttk.Label(progress_row, textvariable=self.training_percent_value, width=5, anchor="e").grid(
+            row=0, column=1, padx=(8, 0)
+        )
 
         actions = ttk.Frame(body)
         actions.grid(row=10, column=0, columnspan=3, sticky="ew")
@@ -354,6 +364,17 @@ class LocalLoraTrainingWindow(tk.Toplevel):
 
         def worker() -> None:
             flags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
+            # Prioritas proses diturunkan supaya UI dan pekerjaan user tetap
+            # responsif ketika training memakan CPU/GPU.
+            if os.name == "nt":
+                flags |= getattr(subprocess, "BELOW_NORMAL_PRIORITY_CLASS", 0)
+                preexec = None
+            else:
+                def preexec() -> None:
+                    try:
+                        os.nice(10)
+                    except OSError:
+                        pass
             try:
                 process = subprocess.Popen(
                     command,
@@ -362,6 +383,7 @@ class LocalLoraTrainingWindow(tk.Toplevel):
                     text=True,
                     bufsize=1,
                     creationflags=flags,
+                    preexec_fn=preexec,
                 )
                 self._process = process
                 assert process.stdout is not None
@@ -380,6 +402,7 @@ class LocalLoraTrainingWindow(tk.Toplevel):
 
     def _poll_messages(self) -> None:
         exit_code: int | None = None
+        pending_lines: list[str] = []
         while True:
             try:
                 message = self._messages.get_nowait()
@@ -387,11 +410,17 @@ class LocalLoraTrainingWindow(tk.Toplevel):
                 break
             if message.startswith("RESULT:"):
                 self._result_path = Path(message.split(":", 1)[1])
-                self._append_log(message)
+                pending_lines.append(message)
             elif message.startswith("__EXIT__:"):
                 exit_code = int(message.split(":", 1)[1])
             else:
-                self._append_log(message)
+                if message.startswith("STEP "):
+                    self._update_training_progress(message)
+                pending_lines.append(message)
+        if pending_lines:
+            # Satu insert per poll (bukan per baris) agar Text widget tidak
+            # membuat UI tersendat saat training menulis log dengan cepat.
+            self._append_log("\n".join(pending_lines))
         if exit_code is None:
             self.after(100, self._poll_messages)
             return
@@ -406,8 +435,32 @@ class LocalLoraTrainingWindow(tk.Toplevel):
     def _append_log(self, message: str) -> None:
         self.log.configure(state="normal")
         self.log.insert("end", message + "\n")
+        # Batasi panjang log agar widget tetap ringan pada training panjang.
+        try:
+            lines = int(self.log.index("end-1c").split(".")[0])
+            if lines > 2000:
+                self.log.delete("1.0", f"{lines - 2000}.0")
+        except (tk.TclError, ValueError):
+            pass
         self.log.see("end")
         self.log.configure(state="disabled")
+
+    def _update_training_progress(self, message: str) -> None:
+        """Parse baris "STEP g/t · loss=…" menjadi progress bar determinate."""
+
+        bar = getattr(self, "training_progress", None)
+        if bar is None or not bar.winfo_exists():
+            return
+        try:
+            fraction = message.split(" ", 2)[1]
+            current_text, total_text = fraction.split("/", 1)
+            current = int(current_text)
+            total = max(1, int(total_text.split(" ")[0].split("\u00b7")[0].strip()))
+        except (IndexError, ValueError):
+            return
+        percent = max(0.0, min(100.0, current / total * 100.0))
+        bar.configure(mode="determinate", maximum=100.0, value=percent)
+        self.training_percent_value.set(f"{percent:.0f}%")
 
     def cancel_training(self) -> None:
         process = self._process

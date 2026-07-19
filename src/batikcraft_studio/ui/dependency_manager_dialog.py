@@ -88,12 +88,42 @@ class DependencyManagerWindow(tk.Toplevel):
         # user agar jendela tidak panjang dan log tidak mengganggu.
         self.notebook = ttk.Notebook(body)
         self.notebook.grid(row=1, column=0, sticky="nsew")
-        tab_main = ttk.Frame(self.notebook, padding=10)
+        tab_host = ttk.Frame(self.notebook)
         tab_log = ttk.Frame(self.notebook, padding=8)
-        self.notebook.add(tab_main, text="Dependensi AI Lokal")
+        self.notebook.add(tab_host, text="Dependensi AI Lokal")
         self.notebook.add(tab_log, text="Log Instalasi")
+
+        # Konten tab instalasi dapat digulir sehingga muat di layar pendek
+        # (sebelumnya bagian bawah jendela terpotong/"rusak").
+        tab_host.columnconfigure(0, weight=1)
+        tab_host.rowconfigure(0, weight=1)
+        tab_canvas = tk.Canvas(tab_host, highlightthickness=0, borderwidth=0)
+        tab_canvas.grid(row=0, column=0, sticky="nsew")
+        tab_scroll = ttk.Scrollbar(tab_host, orient="vertical", command=tab_canvas.yview)
+        tab_scroll.grid(row=0, column=1, sticky="ns")
+        tab_canvas.configure(yscrollcommand=tab_scroll.set)
+        tab_main = ttk.Frame(tab_canvas, padding=10)
+        _tab_window = tab_canvas.create_window((0, 0), window=tab_main, anchor="nw")
+
+        def _sync_tab_scroll(_event: object = None) -> None:
+            try:
+                tab_canvas.configure(scrollregion=tab_canvas.bbox("all"))
+                tab_canvas.itemconfigure(_tab_window, width=tab_canvas.winfo_width())
+            except tk.TclError:
+                pass
+
+        tab_main.bind("<Configure>", _sync_tab_scroll)
+        tab_canvas.bind("<Configure>", _sync_tab_scroll)
+
+        def _tab_wheel(event: tk.Event) -> None:
+            tab_canvas.yview_scroll(-1 if getattr(event, "delta", 0) > 0 else 1, "units")
+
+        for widget in (tab_canvas, tab_main):
+            widget.bind("<MouseWheel>", _tab_wheel)
+        tab_canvas.bind("<Button-4>", lambda _e: tab_canvas.yview_scroll(-1, "units"))
+        tab_canvas.bind("<Button-5>", lambda _e: tab_canvas.yview_scroll(1, "units"))
+
         tab_main.columnconfigure(0, weight=1)
-        tab_main.rowconfigure(2, weight=1)
 
         # --- Instalasi sekali klik -----------------------------------------
         quick_setup = ttk.LabelFrame(tab_main, text="Instalasi Sekali Klik", padding=12)
@@ -192,6 +222,9 @@ class DependencyManagerWindow(tk.Toplevel):
         self.tree.column("requirement", width=520)
         self.tree.column("status", width=180)
         self.tree.grid(row=0, column=0, sticky="nsew")
+        package_scroll = ttk.Scrollbar(packages, orient="vertical", command=self.tree.yview)
+        package_scroll.grid(row=0, column=1, sticky="ns")
+        self.tree.configure(yscrollcommand=package_scroll.set)
         package_actions = ttk.Frame(packages)
         package_actions.grid(row=1, column=0, sticky="ew", pady=(8, 0))
         self.install_packages_button = ttk.Button(
@@ -223,6 +256,11 @@ class DependencyManagerWindow(tk.Toplevel):
 
         footer = ttk.Frame(body)
         footer.grid(row=2, column=0, sticky="e", pady=(10, 0))
+        # Ukuran wajar untuk layout tab; patch _fit_window_to_screen hanya
+        # membatasi terhadap layar, jadi tetapkan tinggi yang pas di sini agar
+        # tidak ada area kosong memanjang di bawah konten.
+        self.geometry("1000x640")
+        self.minsize(880, 560)
         self.cancel_button = ttk.Button(
             footer,
             text="Hentikan Instalasi",

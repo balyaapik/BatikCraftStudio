@@ -195,16 +195,16 @@ def _fit_window_to_screen(window: tk.Toplevel) -> None:
     window.update_idletasks()
     screen_width = max(1, int(window.winfo_screenwidth()))
     screen_height = max(1, int(window.winfo_screenheight()))
-    width = min(1220, max(900, screen_width - 80))
-    height = min(900, max(680, screen_height - 100))
+    width = min(1120, max(900, screen_width - 80))
+    height = min(720, max(560, screen_height - 140))
     x = max(0, (screen_width - width) // 2)
     y = max(0, (screen_height - height) // 2)
     window.geometry(f"{width}x{height}+{x}+{y}")
-    window.minsize(min(980, width), min(700, height))
+    window.minsize(min(900, width), min(560, height))
 
 
 def _configure_local_dependency_table(window: Any) -> None:
-    window.tree.configure(height=14)
+    window.tree.configure(height=7)
     window.tree.heading("requirement", text="Dependency AI Lokal")
     window.tree.heading("status", text="Status Instalasi")
     window.tree.column("requirement", width=720, minwidth=440, stretch=True)

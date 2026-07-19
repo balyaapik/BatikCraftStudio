@@ -1,4 +1,4 @@
-"""Pustaka aset: isi dari canvas/impor, ekspor paket, dan alur jual."""
+"""Pustaka aset: wadah bermetadata dulu, lalu isi, lalu ekspor/jual."""
 
 from __future__ import annotations
 
@@ -6,11 +6,17 @@ import inspect
 from io import BytesIO
 from pathlib import Path
 
+import pytest
 from PIL import Image
 
-from batikcraft_studio.assets import AssetLibrary
+from batikcraft_studio.assets import AssetLibrary, AssetLibraryError
 from batikcraft_studio.assets.builder import AssetCandidate, AssetPackMetadata, build_asset_pack
-from batikcraft_studio.assets.personal_store import PERSONAL_PACK_ID, PersonalAssetStore
+from batikcraft_studio.assets.personal_store import (
+    PersonalAssetStore,
+    create_user_library,
+    list_user_libraries,
+    parse_library_description,
+)
 
 
 def _png(color: tuple[int, int, int, int]) -> bytes:
@@ -20,14 +26,35 @@ def _png(color: tuple[int, int, int, int]) -> bytes:
     return buffer.getvalue()
 
 
-def test_personal_library_fills_and_exports_installable_pack(tmp_path: Path) -> None:
+def test_import_requires_existing_library_container(tmp_path: Path) -> None:
     library = AssetLibrary(tmp_path / "library")
     store = PersonalAssetStore(library)
-    store.import_image("ornamen-a.png", _png((120, 40, 20, 255)))
-    store.import_image("ornamen-b.png", _png((20, 40, 120, 255)))
-    library.refresh()
+    with pytest.raises(AssetLibraryError, match="Buat pustaka dulu"):
+        store.import_image("x.png", _png((1, 2, 3, 255)), pack_id="userlib-belum-ada")
 
-    records = library.search(pack_id=PERSONAL_PACK_ID)
+
+def test_create_library_then_fill_then_export(tmp_path: Path) -> None:
+    library = AssetLibrary(tmp_path / "library")
+    store = PersonalAssetStore(library)
+
+    pack_id = create_user_library(
+        library,
+        name="Pustaka Parang",
+        author="Balya",
+        philosophy="Keteguhan dan kesinambungan",
+        library_type="motif-pokok",
+    )
+    packs = list_user_libraries(library)
+    assert [pack.name for pack in packs] == ["Pustaka Parang"]
+    library_type, philosophy = parse_library_description(packs[0].description)
+    assert library_type == "motif-pokok"
+    assert philosophy == "Keteguhan dan kesinambungan"
+    assert packs[0].author == "Balya"
+
+    store.import_image("parang-1.png", _png((120, 40, 20, 255)), category="motif-pokok", pack_id=pack_id)
+    store.import_image("parang-2.png", _png((20, 40, 120, 255)), category="motif-pokok", pack_id=pack_id)
+    library.refresh()
+    records = library.search(pack_id=pack_id)
     assert len(records) == 2
 
     candidates = [
@@ -39,31 +66,31 @@ def test_personal_library_fills_and_exports_installable_pack(tmp_path: Path) -> 
         )
         for record in records
     ]
+    pack = library.get_pack(pack_id)
     metadata = AssetPackMetadata(
-        pack_id="user-pack-test",
-        name="Paket Uji",
-        author="Tester",
+        pack_id=pack.pack_id, name=pack.name, author=pack.author, description=pack.description
     )
     output = build_asset_pack(candidates, metadata, tmp_path / "jual.batikpack")
-    assert output.exists() and output.stat().st_size > 0
-
-    # Paket hasil ekspor harus valid dan dapat dipasang kembali.
     installed = library.install_pack(output, replace=True)
-    assert installed.name == "Paket Uji"
+    assert installed.name == "Pustaka Parang"
 
 
-def test_editor_and_marketplace_expose_asset_library_flow() -> None:
+def test_asset_menu_hosts_all_library_functions() -> None:
     from batikcraft_studio import batikbrew_context_tool_app as app
     from batikcraft_studio.ui import asset_pack_studio_dialog, context_tool_editor_hotfixes
 
-    editor_source = inspect.getsource(context_tool_editor_hotfixes)
-    assert "Simpan Objek Terpilih ke Pustaka Aset" in editor_source
-    assert "save_selected_objects_to_library" in editor_source
-
     app_source = inspect.getsource(app)
-    assert "Studio Paket Aset (Buat, Isi, Jual)…" in app_source
+    # Semua fungsi pustaka masuk menu Asset, bukan Marketplace.
+    assert "_extend_asset_menu" in app_source
+    assert "Buat Pustaka Aset Baru…" in app_source
+    assert "Studio Pustaka Aset (Isi, Kelola, Jual)…" in app_source
+    assert "Simpan Objek Terpilih ke Pustaka…" in app_source
+    assert "Studio Paket Aset (Buat, Isi, Jual)…" not in app_source
 
     studio_source = inspect.getsource(asset_pack_studio_dialog)
-    assert "import_images" in studio_source  # impor gambar dari luar aplikasi
-    assert "export_pack" in studio_source
-    assert "sell_pack" in studio_source
+    assert "CreateLibraryDialog" in studio_source
+    assert "Filosofi" in studio_source
+    assert "LIBRARY_TYPES" in studio_source
+
+    editor_source = inspect.getsource(context_tool_editor_hotfixes)
+    assert "Buat wadah pustaka dulu" in editor_source or "Buat pustaka dulu" in editor_source

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import threading
 import tkinter as tk
 from collections.abc import Callable
 from pathlib import Path
@@ -302,15 +303,63 @@ class DatasetStudioWindow(tk.Toplevel):
                 base_model_family=self.base_family_value.get(),
                 trigger_word=self.trigger_value.get(),
             )
-            output = build_batik_dataset(self.samples, metadata, destination)
-        except (BatikDatasetError, OSError) as exc:
+        except (BatikDatasetError, ValueError) as exc:
             messagebox.showerror(self.title(), str(exc), parent=self)
             return
-        messagebox.showinfo(
-            self.title(),
-            tr("offline.dataset.exported", path=output),
-            parent=self,
+
+        # Ekspor berjalan di background worker dengan progress bar sehingga
+        # jendela tidak membeku saat menormalkan banyak gambar besar.
+        from .progress_dialog import ProgressDialog, ProgressUpdate
+
+        samples = list(self.samples)
+        progress = ProgressDialog(
+            self,
+            title=tr("offline.dataset.export"),
+            message=f"Mengekspor {len(samples)} sampel dataset…",
+            cancellable=False,
+            auto_close_ms=700,
         )
+        progress.post(
+            ProgressUpdate(
+                f"Menormalkan dan mengemas {len(samples)} sampel…",
+                None,
+                None,
+                detail=str(destination),
+            )
+        )
+
+        def worker() -> None:
+            try:
+                output = build_batik_dataset(samples, metadata, destination)
+            except (BatikDatasetError, OSError) as exc:
+                message = str(exc)
+                self.after(0, lambda: self._finish_export_error(progress, message))
+                return
+            self.after(0, lambda: self._finish_export_success(progress, output))
+
+        threading.Thread(
+            target=worker, daemon=True, name="batikcraft-dataset-export"
+        ).start()
+
+    def _finish_export_success(self, progress: object, output: object) -> None:
+        try:
+            progress.reporter.complete("Dataset selesai diekspor.")
+        except Exception:  # noqa: BLE001
+            pass
+        if self.winfo_exists():
+            messagebox.showinfo(
+                self.title(),
+                tr("offline.dataset.exported", path=output),
+                parent=self,
+            )
+
+    def _finish_export_error(self, progress: object, message: str) -> None:
+        try:
+            progress.fail(message)
+        except Exception:  # noqa: BLE001
+            pass
+        if self.winfo_exists():
+            messagebox.showerror(self.title(), message, parent=self)
 
 
 class OfflineModelManagerWindow(tk.Toplevel):
@@ -340,6 +389,7 @@ class OfflineModelManagerWindow(tk.Toplevel):
         self.lora_value = tk.DoubleVar(value=0.85)
         self.cpu_offload = tk.BooleanVar(value=False)
         self._build()
+        self._sync_managed_runtime_paths()
         self._refresh()
 
     def _build(self) -> None:
@@ -495,6 +545,29 @@ class OfflineModelManagerWindow(tk.Toplevel):
         selected = filedialog.askdirectory(parent=self)
         if selected:
             variable.set(selected)
+
+    def _sync_managed_runtime_paths(self) -> None:
+        """Isi otomatis path base/ControlNet dari runtime hasil Dependency Manager.
+
+        Sebelumnya kedua jendela tidak sinkron: Dependency Manager mengunduh
+        runtime ke folder terkelola, tetapi field path di sini tetap kosong
+        sehingga terkesan model belum terpasang (redundan/bentrok).
+        """
+
+        try:
+            from batikcraft_studio.ai.runtime_model_installer import (
+                find_installed_runtime_models,
+            )
+
+            installed = find_installed_runtime_models()
+        except Exception:  # noqa: BLE001 - jangan gagalkan pembukaan jendela
+            return
+        if installed is None:
+            return
+        if not self.base_path.get().strip():
+            self.base_path.set(str(installed.base_model))
+        if not self.controlnet_path.get().strip():
+            self.controlnet_path.set(str(installed.controlnet))
 
     def _refresh(self) -> None:
         for item in self.tree.get_children():

@@ -2519,8 +2519,18 @@ class ContextToolEditorWorkspaceView(_HotfixV14):
             )
 
     def save_selected_objects_to_library(self) -> None:
-        """Masukkan objek terpilih di canvas ke pustaka aset pribadi."""
+        """Masukkan objek terpilih ke salah satu pustaka aset buatan user.
 
+        Alur baru: wadah pustaka HARUS sudah dibuat (menu Asset → Buat Pustaka
+        Aset Baru) sebelum objek dapat disimpan.
+        """
+
+        from tkinter import messagebox
+
+        from batikcraft_studio.assets.personal_store import (
+            list_user_libraries,
+            parse_library_description,
+        )
         from batikcraft_studio.imaging.structured_batification import (
             renderable_source_content,
         )
@@ -2530,16 +2540,46 @@ class ContextToolEditorWorkspaceView(_HotfixV14):
         if project is None or not selected:
             self.set_status("Pilih objek di canvas untuk disimpan ke pustaka aset.")
             return
+
+        self.asset_library.refresh()
+        packs = list(list_user_libraries(self.asset_library))
+        if not packs:
+            messagebox.showinfo(
+                "Buat pustaka dulu",
+                "Belum ada pustaka aset. Buat wadah pustaka dulu lewat menu "
+                "Asset → Buat Pustaka Aset Baru… (nama, author, filosofi, tipe), "
+                "baru objek bisa dimasukkan.",
+                parent=self.winfo_toplevel(),
+            )
+            return
+        if len(packs) == 1:
+            target = packs[0]
+        else:
+            from .asset_pack_studio_dialog import LibraryPickerDialog
+
+            picker = LibraryPickerDialog(self, packs)
+            self.wait_window(picker)
+            if picker.result is None:
+                return
+            target = next(pack for pack in packs if pack.pack_id == picker.result)
+
+        library_type, _ = parse_library_description(target.description)
         store = PersonalAssetStore(self.asset_library)
         saved = 0
         for object_id in selected:
+            item = None
             try:
                 item = project.get_object(object_id)
                 content = renderable_source_content(item, self.session.assets)
-                category = item.properties.get("asset_category", "ornamen")
+                category = item.properties.get("asset_category", library_type)
                 if not isinstance(category, str):
-                    category = "ornamen"
-                store.import_image(f"{item.name}.png", content, category=category)
+                    category = library_type
+                store.import_image(
+                    f"{item.name}.png",
+                    content,
+                    category=category,
+                    pack_id=target.pack_id,
+                )
                 saved += 1
             except Exception as exc:  # noqa: BLE001
                 self.set_status(f"{getattr(item, 'name', object_id)}: {exc}")
@@ -2548,7 +2588,9 @@ class ContextToolEditorWorkspaceView(_HotfixV14):
                 self.refresh_library()
             except Exception:  # noqa: BLE001
                 pass
-            self.set_status(f"{saved} objek tersimpan ke pustaka aset pribadi.")
+            self.set_status(
+                f"{saved} objek tersimpan ke pustaka {target.name!r}."
+            )
 
     def open_gradient_dialog(self) -> None:
         """Terapkan gradasi warna (linear/radial) pada objek terpilih."""

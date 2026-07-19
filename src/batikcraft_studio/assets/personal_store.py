@@ -52,8 +52,14 @@ class PersonalAssetStore:
         content: bytes | bytearray | memoryview,
         *,
         category: str = "ornamen",
+        pack_id: str | None = None,
     ) -> AssetRecord:
-        """Normalize, de-duplicate, thumbnail, and persist one external image."""
+        """Normalize, de-duplicate, thumbnail, and persist one external image.
+
+        Bila *pack_id* diberikan, gambar masuk ke pustaka user tersebut —
+        pustakanya HARUS sudah dibuat lebih dulu (alur: buat wadah pustaka,
+        baru isi). Tanpa *pack_id*, perilaku lama (pustaka impor pribadi).
+        """
 
         if category not in ASSET_CATEGORIES:
             raise AssetLibraryError(f"Kategori asset tidak didukung: {category!r}.")
@@ -64,8 +70,14 @@ class PersonalAssetStore:
 
         digest = hashlib.sha256(raster.content).hexdigest()
         asset_id = f"image-{digest[:24]}"
-        pack_root = self.library.root / PERSONAL_PACK_ID
+        target_pack_id = pack_id or PERSONAL_PACK_ID
+        pack_root = self.library.root / target_pack_id
         manifest_path = pack_root / "manifest.json"
+        if pack_id is not None and not manifest_path.is_file():
+            raise AssetLibraryError(
+                "Pustaka aset belum dibuat. Buat pustaka dulu lewat menu "
+                "Asset → Buat Pustaka Aset Baru."
+            )
         asset_relative = f"assets/{asset_id}.png"
         thumbnail_relative = f"thumbnails/{asset_id}.png"
         original_name = Path(filename).name or f"{asset_id}.png"
@@ -114,7 +126,7 @@ class PersonalAssetStore:
                 self._atomic_write_json(manifest_path, manifest)
 
         self.library.refresh()
-        return self.library.get_asset(f"{PERSONAL_PACK_ID}:{asset_id}")
+        return self.library.get_asset(f"{target_pack_id}:{asset_id}")
 
     @staticmethod
     def _read_or_create_manifest(path: Path) -> dict[str, object]:
@@ -185,3 +197,87 @@ __all__ = [
     "SUPPORTED_IMAGE_EXTENSIONS",
     "PersonalAssetStore",
 ]
+
+
+# ---------------------------------------------------------------------------
+# Pustaka aset buatan user: wadah dibuat dulu (nama, author, filosofi, tipe),
+# baru diisi objek canvas / gambar impor, dan setelah itu dapat dijual.
+# ---------------------------------------------------------------------------
+
+USER_LIBRARY_PREFIX = "userlib-"
+LIBRARY_TYPES = ASSET_CATEGORIES
+
+
+def encode_library_description(philosophy: str, library_type: str) -> str:
+    """Simpan tipe + filosofi dalam field description manifest (schema ketat)."""
+
+    return f"Tipe: {library_type}\nFilosofi: {philosophy}".strip()[:2000]
+
+
+def parse_library_description(description: str) -> tuple[str, str]:
+    """Kembalikan (tipe, filosofi) dari description pustaka user."""
+
+    library_type, philosophy = "ornamen", description or ""
+    lines = (description or "").splitlines()
+    rest: list[str] = []
+    for line in lines:
+        if line.startswith("Tipe: "):
+            library_type = line[len("Tipe: "):].strip() or "ornamen"
+        elif line.startswith("Filosofi: "):
+            rest.append(line[len("Filosofi: "):])
+        else:
+            rest.append(line)
+    if lines:
+        philosophy = "\n".join(rest).strip()
+    return library_type, philosophy
+
+
+def create_user_library(
+    library: AssetLibrary,
+    *,
+    name: str,
+    author: str,
+    philosophy: str = "",
+    library_type: str = "ornamen",
+) -> str:
+    """Buat wadah pustaka aset baru dan kembalikan pack_id-nya."""
+
+    clean_name = (name or "").strip()
+    if not clean_name:
+        raise AssetLibraryError("Nama pustaka tidak boleh kosong.")
+    if library_type not in LIBRARY_TYPES:
+        raise AssetLibraryError(f"Tipe pustaka tidak didukung: {library_type!r}.")
+    slug = "".join(
+        ch if ch.isalnum() else "-" for ch in clean_name.casefold()
+    ).strip("-")[:40] or "pustaka"
+    digest = hashlib.sha256(
+        f"{clean_name}|{author}|{datetime.now(UTC).isoformat()}".encode()
+    ).hexdigest()[:8]
+    pack_id = f"{USER_LIBRARY_PREFIX}{slug}-{digest}"
+    pack_root = library.root / pack_id
+    manifest_path = pack_root / "manifest.json"
+    manifest = {
+        "format": ASSET_PACK_FORMAT,
+        "schema_version": ASSET_PACK_SCHEMA_VERSION,
+        "pack": {
+            "id": pack_id,
+            "name": clean_name[:160],
+            "version": "1.0",
+            "author": (author or "Local User").strip()[:160],
+            "description": encode_library_description(philosophy, library_type),
+        },
+        "assets": [],
+    }
+    with _WRITE_LOCK:
+        pack_root.mkdir(parents=True, exist_ok=True)
+        PersonalAssetStore._atomic_write_json(manifest_path, manifest)
+    library.refresh()
+    return pack_id
+
+
+def list_user_libraries(library: AssetLibrary) -> tuple[object, ...]:
+    """Semua pustaka buatan user (wadah yang dibuat lewat menu Asset)."""
+
+    return tuple(
+        pack for pack in library.packs if pack.pack_id.startswith(USER_LIBRARY_PREFIX)
+    )

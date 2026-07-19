@@ -109,8 +109,10 @@ def test_dependency_manager_explains_cloud_api_and_uses_large_status_table() -> 
 
     assert "OpenAI dan Gemini memakai API key" in source
     assert 'window.title("AI Lokal & Model")' in source
-    assert "width = min(1220" in source
-    assert "window.tree.configure(height=14)" in source
+    # Jendela kini memakai layout tab yang dapat digulir: lebar lebih ringkas
+    # dan tabel tidak lagi dipaksa 14 baris (bagian bawah sempat terpotong).
+    assert "width = min(1120" in source
+    assert "window.tree.configure(height=7)" in source
     assert 'text="Dependency AI Lokal"' in source
 
 
