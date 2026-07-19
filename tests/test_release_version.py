@@ -8,11 +8,11 @@ from batikcraft_studio.config import APP_VERSION
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_application_and_package_versions_are_0_1_3() -> None:
+def test_application_and_package_versions_are_0_2_0() -> None:
     with (ROOT / "pyproject.toml").open("rb") as stream:
         project_version = str(tomllib.load(stream)["project"]["version"])
 
-    assert APP_VERSION == "0.1.3"
+    assert APP_VERSION == "0.2.0"
     assert project_version == APP_VERSION
 
 
