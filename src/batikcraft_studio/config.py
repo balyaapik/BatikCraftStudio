@@ -9,6 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 APP_NAME = "BatikCraft Studio"
+# Keep aligned with pyproject.toml and public installer filenames.
 APP_VERSION = "0.3.2"
 DEFAULT_WINDOW_SIZE = "1280x800"
 MINIMUM_WINDOW_SIZE = (1024, 680)
