@@ -84,9 +84,12 @@ class _HotfixV1(_BaseContextToolEditor):
         # begitu selesai.
         try:
             self._begin_or_update_zoom_preview(scale, anchor_screen)
-        except Exception:  # noqa: BLE001 - fallback ke perilaku lama yang aman
+        except Exception:  # noqa: BLE001 - jangan pernah blank: tampilkan tile lama
             self._clear_zoom_preview()
-            self._delete_all_screen_tiles()
+            try:
+                self.canvas.itemconfigure("project-tile", state="normal")
+            except tk.TclError:
+                pass
         super()._set_fixed_zoom(scale, anchor_screen=anchor_screen)
 
     _ZOOM_PREVIEW_MAX_SIDE = 4096
@@ -142,7 +145,13 @@ class _HotfixV1(_BaseContextToolEditor):
                 anchor="nw",
                 tags="zoom-preview",
             )
-            self.canvas.tag_raise("zoom-preview", "project-background")
+            try:
+                if self.canvas.find_withtag("project-background"):
+                    self.canvas.tag_raise("zoom-preview", "project-background")
+                else:
+                    self.canvas.tag_raise("zoom-preview")
+            except tk.TclError:
+                pass
 
         # Skala inkremental: seluruh elemen scene bergeser bersama di sekitar
         # kursor, termasuk posisi item preview.
@@ -158,8 +167,9 @@ class _HotfixV1(_BaseContextToolEditor):
         # agar halus, bukan kotak-kotak NEAREST).
         total_ratio = new_scale / base_scale
         base_image = state["image"]
-        width = max(1, round(base_image.width * total_ratio))
-        height = max(1, round(base_image.height * total_ratio))
+        factor_x, factor_y = state.get("display_factor", (1.0, 1.0))
+        width = max(1, round(base_image.width * factor_x * total_ratio))
+        height = max(1, round(base_image.height * factor_y * total_ratio))
         cap = self._ZOOM_PREVIEW_MAX_SIDE
         if width > cap or height > cap:
             shrink = min(cap / width, cap / height)
@@ -192,14 +202,28 @@ class _HotfixV1(_BaseContextToolEditor):
         max_y = max(entry[1] + entry[2].height for entry in entries)
         width = int(max_x - min_x)
         height = int(max_y - min_y)
-        if width <= 0 or height <= 0 or width > self._ZOOM_PREVIEW_MAX_SIDE or height > self._ZOOM_PREVIEW_MAX_SIDE:
+        if width <= 0 or height <= 0:
             return None
         stitched = Image.new("RGBA", (width, height), (0, 0, 0, 0))
         for left, top, pil_image in entries:
             stitched.paste(pil_image, (int(left - min_x), int(top - min_y)))
+        cap = self._ZOOM_PREVIEW_MAX_SIDE
+        if width > cap or height > cap:
+            shrink = min(cap / width, cap / height)
+            stitched = stitched.resize(
+                (max(1, round(width * shrink)), max(1, round(height * shrink))),
+                Image.Resampling.BILINEAR,
+            )
+            stitched = stitched.resize((width, height), Image.Resampling.NEAREST)                 if False else stitched
+            # catatan: gambar dasar disusutkan; rasio tampilan tetap dihitung
+            # terhadap ukuran kanvas asli lewat faktor di bawah.
+        base_effective_width = stitched.width
+        base_effective_height = stitched.height
         scale = self._preview_scale if self._preview_scale > 0 else 1.0
         return {
             "image": stitched,
+            # faktor tampilan: ukuran layar penuh / ukuran stitch efektif
+            "display_factor": (width / base_effective_width, height / base_effective_height),
             "base_scale": scale,
             "origin_canvas": (min_x, min_y),
             "origin_project": (
@@ -329,18 +353,30 @@ class _HotfixV1(_BaseContextToolEditor):
 
         def worker() -> None:
             rendered: list[tuple[int, int, Image.Image]] = []
+            failures = 0
             for tile_x, tile_y in tile_coords:
                 if self._render_shutdown or generation != self._render_generation:
                     return
-                image = renderer.render_tile(
-                    project_snapshot,
-                    assets_snapshot,
-                    project_fingerprint=fingerprint,
-                    zoom_scale=zoom_scale,
-                    tile_x=tile_x,
-                    tile_y=tile_y,
-                )
+                try:
+                    image = renderer.render_tile(
+                        project_snapshot,
+                        assets_snapshot,
+                        project_fingerprint=fingerprint,
+                        zoom_scale=zoom_scale,
+                        tile_x=tile_x,
+                        tile_y=tile_y,
+                    )
+                except Exception:  # noqa: BLE001 - satu tile gagal jangan
+                    failures += 1  # membutakan seluruh viewport
+                    continue
                 rendered.append((tile_x, tile_y, image))
+            if failures and not rendered:
+                try:
+                    self.after(0, lambda: self.set_status(
+                        "Sebagian objek gagal dirender pada zoom ini."
+                    ))
+                except Exception:  # noqa: BLE001
+                    pass
             if not self._render_shutdown and generation == self._render_generation:
                 self._render_results.put(
                     (
@@ -531,18 +567,30 @@ class _HotfixV2(_HotfixV1):
 
         def worker() -> None:
             rendered: list[tuple[int, int, Image.Image]] = []
+            failures = 0
             for tile_x, tile_y in tile_coords:
                 if self._render_shutdown or generation != self._render_generation:
                     return
-                image = renderer.render_tile(
-                    project_snapshot,
-                    assets_snapshot,
-                    project_fingerprint=fingerprint,
-                    zoom_scale=zoom_scale,
-                    tile_x=tile_x,
-                    tile_y=tile_y,
-                )
+                try:
+                    image = renderer.render_tile(
+                        project_snapshot,
+                        assets_snapshot,
+                        project_fingerprint=fingerprint,
+                        zoom_scale=zoom_scale,
+                        tile_x=tile_x,
+                        tile_y=tile_y,
+                    )
+                except Exception:  # noqa: BLE001 - satu tile gagal jangan
+                    failures += 1  # membutakan seluruh viewport
+                    continue
                 rendered.append((tile_x, tile_y, image))
+            if failures and not rendered:
+                try:
+                    self.after(0, lambda: self.set_status(
+                        "Sebagian objek gagal dirender pada zoom ini."
+                    ))
+                except Exception:  # noqa: BLE001
+                    pass
             if not self._render_shutdown and generation == self._render_generation:
                 self._render_results.put(
                     (
