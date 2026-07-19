@@ -35,7 +35,7 @@ def test_windows_installer_defaults_to_program_files() -> None:
     assert "PrivilegesRequired=admin" in script
     assert "UsePreviousAppDir=no" in script
     assert "AppVerName=BatikCraft Studio v0.3.0" in script
-    assert "OutputBaseFilename=BatikCraftStudio-v0.3.0-Setup-Windows-x64" in script
+    assert "OutputBaseFilename=BatikCraftStudio-Setup-Windows-x64" in script
 
 
 def test_only_dependencies_directory_is_user_writable() -> None:
