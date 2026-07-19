@@ -74,10 +74,44 @@ def default_managed_dependency_root() -> Path:
     if configured:
         return Path(configured).expanduser().resolve()
 
-    if bool(getattr(sys, "frozen", False)) and os.name == "nt":
-        return Path(sys.executable).resolve().parent / "dependencies"
+    if _is_frozen_windows():
+        beside_executable = Path(sys.executable).resolve().parent / "dependencies"
+        # Instalasi per-mesin (C:\Program Files) TIDAK dapat ditulis tanpa
+        # admin: pip "berhasil" semu / dialihkan Windows, lalu import gagal
+        # dengan "Paket AI lokal belum aktif" meski unduhan tampak selesai.
+        # Gunakan folder samping exe hanya bila benar-benar dapat ditulis.
+        if _directory_is_writable(beside_executable):
+            return beside_executable
+        return _per_user_application_data_root() / "dependencies"
 
     return _per_user_application_data_root() / "dependencies"
+
+
+def _is_frozen_windows() -> bool:
+    """Seam kecil agar perilaku build Windows beku dapat diuji lintas OS."""
+
+    return bool(getattr(sys, "frozen", False)) and os.name == "nt"
+
+
+def _directory_is_writable(directory: Path) -> bool:
+    """Uji tulis sungguhan (os.access tidak andal di Windows/UAC)."""
+
+    try:
+        directory.mkdir(parents=True, exist_ok=True)
+        probe = directory / f".batikcraft-write-{os.getpid()}"
+        probe.write_bytes(b"")
+        probe.unlink()
+        return True
+    except OSError:
+        return False
+
+
+def legacy_frozen_dependency_root() -> Path | None:
+    """Folder dependensi samping exe untuk fallback BACA instalasi lama."""
+
+    if _is_frozen_windows():
+        return Path(sys.executable).resolve().parent / "dependencies"
+    return None
 
 
 def default_managed_ai_package_dir() -> Path:
@@ -269,10 +303,16 @@ def describe_ai_import_error(exc: BaseException) -> str:
     """
 
     if isinstance(exc, ModuleNotFoundError):
+        packages = default_managed_ai_package_dir()
+        torch_ready = (packages / "torch").is_dir()
+        status = "berisi torch" if torch_ready else (
+            "ada tetapi belum berisi torch" if packages.is_dir() else "belum ada"
+        )
         return (
-            "Paket AI lokal belum aktif di aplikasi. Buka menu Dependencies → "
-            "'Instal Semua AI + BatikBrew SDXL'. Jika instalasi baru saja "
-            "selesai, tutup dan buka kembali aplikasi."
+            f"Paket AI lokal belum aktif (modul hilang: {getattr(exc, 'name', '?')}).\n"
+            f"Folder paket: {packages} — {status}.\n"
+            "Buka menu Dependencies → 'Instal Semua AI + BatikBrew SDXL'. "
+            "Jika instalasi baru saja selesai, tutup dan buka kembali aplikasi."
         )
     return (
         f"Runtime AI gagal dimuat: {exc}. Buka menu Dependencies → "
@@ -291,6 +331,19 @@ def activate_managed_ai_packages(path: str | Path | None = None) -> Path:
     target_text = str(target)
     if target_text not in sys.path:
         sys.path.insert(0, target_text)
+
+    legacy_root = legacy_frozen_dependency_root()
+    if legacy_root is not None:
+        legacy_packages = legacy_root / "python" / "site-packages"
+        legacy_text = str(legacy_packages)
+        if (
+            legacy_packages.is_dir()
+            and legacy_text != target_text
+            and legacy_text not in sys.path
+        ):
+            # Paket hasil instalasi lama (mis. saat aplikasi pernah berjalan
+            # sebagai admin) tetap dapat dipakai walau folder kini read-only.
+            sys.path.append(legacy_text)
 
     importlib.invalidate_caches()
     if os.name == "nt" and target.is_dir():

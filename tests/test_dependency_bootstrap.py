@@ -181,3 +181,42 @@ def test_main_activates_managed_packages_before_application_import() -> None:
     assert source.index("activate_managed_ai_packages()") < source.index(
         "from .integrated_market_app import ContextToolApplication"
     )
+
+
+def test_frozen_windows_root_falls_back_when_program_files_not_writable(
+    monkeypatch, tmp_path
+) -> None:
+    """Instalasi per-mesin (Program Files) tidak dapat ditulis tanpa admin:
+    root dependensi harus jatuh ke folder per-user agar pip dan import
+    konsisten — bukan 'terinstal' semu lalu gagal import."""
+
+    from batikcraft_studio import dependency_bootstrap as bootstrap
+
+    monkeypatch.delenv(bootstrap.DEPENDENCIES_DIR_ENV, raising=False)
+    monkeypatch.setattr(bootstrap, "_is_frozen_windows", lambda: True)
+    exe = tmp_path / "app" / "BatikCraftStudio.exe"
+    exe.parent.mkdir(parents=True)
+    exe.write_bytes(b"")
+    monkeypatch.setattr(bootstrap.sys, "executable", str(exe))
+
+    per_user = tmp_path / "peruser"
+    monkeypatch.setattr(
+        bootstrap, "_per_user_application_data_root", lambda: per_user
+    )
+
+    # samping exe dapat ditulis -> pakai samping exe
+    assert bootstrap.default_managed_dependency_root() == exe.parent / "dependencies"
+
+    # samping exe TIDAK dapat ditulis -> jatuh ke per-user
+    monkeypatch.setattr(bootstrap, "_directory_is_writable", lambda _d: False)
+    assert bootstrap.default_managed_dependency_root() == per_user / "dependencies"
+
+
+def test_import_error_message_names_missing_module_and_folder() -> None:
+    from batikcraft_studio.dependency_bootstrap import describe_ai_import_error
+
+    message = describe_ai_import_error(ModuleNotFoundError("x", name="torch"))
+    assert "torch" in message
+    assert "Folder paket" in message
+    assert "Dependencies" in message
+    assert "pip install" not in message

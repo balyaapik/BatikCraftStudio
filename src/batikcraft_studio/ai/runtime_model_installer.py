@@ -222,9 +222,27 @@ class _SnapshotProgressTracker:
 
 
 def default_runtime_model_root() -> Path:
-    """Return the Stable Diffusion folder inside managed dependencies."""
+    """Return the Stable Diffusion folder inside managed dependencies.
 
-    return default_managed_dependency_root() / "models" / "runtime"
+    Bila root baru (per-user) belum berisi model tetapi instalasi lama di
+    samping exe (mis. C:\Program Files) punya, gunakan yang lama untuk BACA —
+    model hasil unduhan sesi ber-admin tetap terpakai tanpa unduh ulang.
+    """
+
+    preferred = default_managed_dependency_root() / "models" / "runtime"
+    if (preferred / _BASE_MODEL_FOLDER).is_dir() or (preferred / _SDXL_BASE_MODEL_FOLDER).is_dir():
+        return preferred
+    try:
+        from batikcraft_studio.dependency_bootstrap import legacy_frozen_dependency_root
+
+        legacy_root = legacy_frozen_dependency_root()
+    except Exception:  # noqa: BLE001
+        legacy_root = None
+    if legacy_root is not None:
+        legacy = legacy_root / "models" / "runtime"
+        if (legacy / _BASE_MODEL_FOLDER).is_dir() or (legacy / _SDXL_BASE_MODEL_FOLDER).is_dir():
+            return legacy
+    return preferred
 
 
 def runtime_model_paths(root: str | Path | None = None) -> RuntimeModelPaths:
