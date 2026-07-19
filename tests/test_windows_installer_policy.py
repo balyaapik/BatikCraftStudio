@@ -27,13 +27,15 @@ def test_windows_installer_defaults_to_program_files() -> None:
         source_executable=Path("C:/build/BatikCraftStudio.exe"),
         output_directory=Path("C:/release"),
         icon_path=Path("C:/build/logo.ico"),
-        version="0.1.3",
+        version="0.3.0",
     )
 
     assert "DefaultDirName={autopf}\\BatikCraft Studio" in script
     assert "DefaultDirName={localappdata}" not in script
     assert "PrivilegesRequired=admin" in script
     assert "UsePreviousAppDir=no" in script
+    assert "AppVerName=BatikCraft Studio v0.3.0" in script
+    assert "OutputBaseFilename=BatikCraftStudio-v0.3.0-Setup-Windows-x64" in script
 
 
 def test_only_dependencies_directory_is_user_writable() -> None:
@@ -46,7 +48,7 @@ def test_only_dependencies_directory_is_user_writable() -> None:
         source_executable=Path("C:/build/BatikCraftStudio.exe"),
         output_directory=Path("C:/release"),
         icon_path=Path("C:/build/logo.ico"),
-        version="0.1.3",
+        version="0.3.0",
     )
 
     assert '[Dirs]\nName: "{app}\\dependencies"; Permissions: users-modify' in script
