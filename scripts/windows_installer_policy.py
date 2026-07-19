@@ -33,6 +33,7 @@ def build_inno_setup_script(
         "[Setup]",
         f"AppId={app_id}",
         f"AppName={display_name}",
+        f"AppVerName={display_name} v{version}",
         "AppVersion={#MyAppVersion}",
         f"AppPublisher={display_name}",
         f"DefaultDirName={{autopf}}\\{display_name}",

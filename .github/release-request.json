@@ -1,5 +1,5 @@
 {
-  "release_tag": "v0.2.1",
-  "requested_at": "2026-07-19T05:30:00Z",
-  "reason": "Publish BatikCraft Studio 0.2.1 with complete BatikCraftWeb API integration, server capability discovery, full pagination, original NFT and asset-package uploads, secure package downloads, and SHA-256 integrity verification"
+  "release_tag": "v0.3.0",
+  "requested_at": "2026-07-19T12:13:51Z",
+  "reason": "Publish BatikCraft Studio 0.3.0 with smooth cursor-anchored canvas zoom, resilient high-zoom rendering, BatikBrew Python 3.11 compatibility, and versioned cross-platform installer filenames such as BatikCraftStudio-v0.3.0"
 }
