@@ -258,6 +258,12 @@ class ViewportEditorWorkspaceView(CanvasStructureEditorWorkspaceView):
         self._zoom_mode = "fixed"
         self._fixed_zoom_scale = new_scale
         self._preview_scale = new_scale
+        # Simpan jangkar untuk render final: titik proyek di bawah kursor harus
+        # tetap diam. Direkam SEKALI di awal gesture — saat pemetaan layar->
+        # proyek masih konsisten (sebelum skala berubah); tick berikutnya
+        # memakai jangkar yang sama sampai render mengonsumsinya.
+        if getattr(self, "_zoom_render_anchor", None) is None:
+            self._zoom_render_anchor = (anchor_proj, anchor_screen)
 
         # Update label immediately (non-blocking)
         self._update_zoom_label()
@@ -362,7 +368,12 @@ class ViewportEditorWorkspaceView(CanvasStructureEditorWorkspaceView):
         )
 
         self.canvas.configure(scrollregion=(0, 0, content_width, content_height))
-        self._restore_project_center(old_center, content_width, content_height)
+        anchor = getattr(self, "_zoom_render_anchor", None)
+        if anchor is not None and anchor[0] is not None:
+            self._zoom_render_anchor = None  # sekali pakai
+            self._restore_zoom_anchor(anchor, content_width, content_height)
+        else:
+            self._restore_project_center(old_center, content_width, content_height)
         self._update_zoom_label()
 
         # Draw structural chrome (shadow box, grid, selection, rulers)
@@ -981,6 +992,32 @@ class ViewportEditorWorkspaceView(CanvasStructureEditorWorkspaceView):
             max(1, self.canvas.winfo_width()) / 2,
             max(1, self.canvas.winfo_height()) / 2,
         )
+
+    def _restore_zoom_anchor(
+        self,
+        anchor: tuple[tuple[float, float] | None, tuple[int, int] | None],
+        content_width: float,
+        content_height: float,
+    ) -> None:
+        """Scroll sehingga titik proyek jangkar tetap di posisi layar semula."""
+
+        anchor_proj, anchor_screen = anchor
+        if anchor_proj is None:
+            return
+        viewport_width = max(1, self.canvas.winfo_width())
+        viewport_height = max(1, self.canvas.winfo_height())
+        if anchor_screen is not None:
+            screen_x, screen_y = float(anchor_screen[0]), float(anchor_screen[1])
+        else:
+            screen_x, screen_y = viewport_width / 2, viewport_height / 2
+        target_x = self._preview_left + anchor_proj[0] * self._preview_scale
+        target_y = self._preview_top + anchor_proj[1] * self._preview_scale
+        max_x = max(0.0, content_width - viewport_width)
+        max_y = max(0.0, content_height - viewport_height)
+        left = min(max(0.0, target_x - screen_x), max_x)
+        top = min(max(0.0, target_y - screen_y), max_y)
+        self.canvas.xview_moveto(0.0 if max_x <= 0 else left / content_width)
+        self.canvas.yview_moveto(0.0 if max_y <= 0 else top / content_height)
 
     def _restore_project_center(
         self,
