@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+from functools import lru_cache
 from io import BytesIO
 
 from PIL import Image, ImageChops, ImageColor, ImageDraw, ImageFilter
@@ -31,6 +32,7 @@ class MotifError(ValueError):
     """Raised when a motif-pokok request is invalid."""
 
 
+@lru_cache(maxsize=64)
 def render_motif_cap(
     motif_type: str,
     *,
@@ -96,7 +98,7 @@ def render_motif_cap(
     result.alpha_composite(outline)
 
     output = BytesIO()
-    result.save(output, format="PNG", optimize=True)
+    result.save(output, format="PNG")
     return output.getvalue()
 
 
@@ -301,10 +303,20 @@ def _rotated_ellipse(
     return layer.rotate(angle, resample=Image.Resampling.BICUBIC, center=(center_x, center_y))
 
 
+def _iterated_morphology(image: Image.Image, radius: int, factory: type) -> Image.Image:
+    """Terapkan Max/MinFilter(2r+1) sebagai r iterasi kernel 3x3.
+
+    Ekuivalen eksak untuk structuring element persegi, tetapi jauh lebih cepat
+    daripada satu rank filter besar (biaya per piksel turun dari O((2r+1)^2)
+    menjadi O(9r))."""
+    for _ in range(max(0, radius)):
+        image = image.filter(factory(3))
+    return image
+
+
 def _outline_from_mask(mask: Image.Image, width: int) -> Image.Image:
-    filter_size = width * 2 + 1
-    expanded = mask.filter(ImageFilter.MaxFilter(filter_size))
-    contracted = mask.filter(ImageFilter.MinFilter(filter_size))
+    expanded = _iterated_morphology(mask, width, ImageFilter.MaxFilter)
+    contracted = _iterated_morphology(mask, width, ImageFilter.MinFilter)
     return ImageChops.subtract(expanded, contracted)
 
 

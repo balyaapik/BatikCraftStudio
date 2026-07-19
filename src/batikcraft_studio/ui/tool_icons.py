@@ -16,10 +16,11 @@ from .fontawesome_tool_assets import (
 
 _MASTER_SIZE = 24
 _M4I_CUSTOM_ICONS = frozenset(
-    {"position_lock", "position_unlock", "gradient_linear", "gradient_radial", "object_opacity"}
+    {"position_lock", "position_unlock", "gradient_linear", "gradient_radial", "object_opacity", "hand_tool"}
 )
 _DEFAULT_COLORS = {
     "select_tool": "#4F46E5",
+    "hand_tool": "#0E7490",
     "fill_tool": "#16A34A",
     "canting_tool": "#7A3E2A",
     "brush_tool": "#B45309",
@@ -115,6 +116,23 @@ def _render_m4i_alpha(name: str) -> Image.Image:
     image = Image.new("L", (size, size), 0)
     draw = ImageDraw.Draw(image)
     margin = 14
+
+    if name == "hand_tool":
+        # Telapak + empat jari + ibu jari sederhana
+        palm_left, palm_right = 26, 70
+        palm_top, palm_bottom = 44, 80
+        draw.rounded_rectangle(
+            (palm_left, palm_top, palm_right, palm_bottom), radius=12, fill=255
+        )
+        finger_w = 9
+        for i, (fx, ftop) in enumerate(
+            ((28, 20), (40, 14), (52, 16), (64, 22))
+        ):
+            draw.rounded_rectangle(
+                (fx, ftop, fx + finger_w, palm_top + 10), radius=5, fill=255
+            )
+        draw.rounded_rectangle((14, 50, 30, 62), radius=6, fill=255)
+        return image.resize((_MASTER_SIZE, _MASTER_SIZE), Image.Resampling.LANCZOS)
 
     if name == "position_lock":
         # Padlock body + shackle

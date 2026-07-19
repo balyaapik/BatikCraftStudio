@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
+from functools import lru_cache
 from io import BytesIO
 
 from PIL import Image, ImageColor, ImageDraw
@@ -66,13 +67,18 @@ class CapPlacement:
     mirror_y: bool = False
 
 
+@lru_cache(maxsize=128)
 def render_isen_cap(
     isen_type: str,
     *,
     color: str,
     size: int = MASTER_CAP_SIZE,
 ) -> bytes:
-    """Render one transparent antialiased PNG tile for a batik isen preset."""
+    """Render one transparent antialiased PNG tile for a batik isen preset.
+
+    Hasil murni fungsi dari argumen dan dimemoisasi: pengecapan berulang dengan
+    jenis/warna/ukuran sama tidak merender ulang PNG-nya.
+    """
 
     kind = _validate_isen_type(isen_type)
     rgb = _validate_color(color)
@@ -103,7 +109,7 @@ def render_isen_cap(
     image = Image.new("RGBA", (size, size), (*rgb, 0))
     image.putalpha(alpha)
     output = BytesIO()
-    image.save(output, format="PNG", optimize=True)
+    image.save(output, format="PNG")
     return output.getvalue()
 
 

@@ -251,7 +251,7 @@ class DirectStyleEditorWorkspaceView(ViewportEditorWorkspaceView):
             return
         self._direct_session.select_object_for_editing(item.object_id)
         try:
-            self._direct_session.fill_closed_object(
+            filled_objects = self._direct_session.fill_closed_object(
                 item.object_id,
                 self.foreground_color_value.get(),
             )
@@ -259,6 +259,10 @@ class DirectStyleEditorWorkspaceView(ViewportEditorWorkspaceView):
             self.set_status(str(exc))
             self._refresh_multi_selection()
             return
+        announce = getattr(self, "_announce_bounded_change", None)
+        dirty = getattr(self, "_objects_dirty_bounds", None)
+        if announce is not None and dirty is not None:
+            announce(dirty(filled_objects))
         self.refresh_context()
         self.set_status(
             tr("direct.fill.applied", color=self.foreground_color_value.get().upper())

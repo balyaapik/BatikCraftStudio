@@ -149,7 +149,7 @@ def test_public_session_routes_brush_to_active_generic_layer() -> None:
     assert project.object_layer_id(stroke.object_id) == layer.layer_id
 
 
-def test_reapplying_fill_reuses_object_id_in_source_layer() -> None:
+def test_reapplying_fill_updates_the_same_object_in_place() -> None:
     session = FinalHotfixProjectSession()
     project = session.new_project(title="Fill", creator="Test", width=100, height=100)
     layer = Layer(
@@ -171,13 +171,20 @@ def test_reapplying_fill_reuses_object_id_in_source_layer() -> None:
     )
     project.add_object(layer.layer_id, stroke, select=True)
 
-    first_fill, _source = session.fill_closed_object(stroke.object_id, "#AA3300")
-    second_fill, _source = session.fill_closed_object(stroke.object_id, "#0033AA")
+    (first_fill,) = session.fill_closed_object(stroke.object_id, "#AA3300")
+    (second_fill,) = session.fill_closed_object(stroke.object_id, "#0033AA")
 
-    assert first_fill.object_id == second_fill.object_id
-    assert project.object_layer_id(second_fill.object_id) == layer.layer_id
-    assert len(project.get_layer(layer.layer_id).objects) == 2
-    objects = project.get_layer(layer.layer_id).objects
-    fill_index = next(i for i, item in enumerate(objects) if item.object_id == second_fill.object_id)
-    stroke_index = next(i for i, item in enumerate(objects) if item.object_id == stroke.object_id)
-    assert fill_index + 1 == stroke_index
+    # Fill terpadu: tidak ada objek "Isi" terpisah — goresan itu sendiri yang
+    # berubah asset-nya, dan fill ulang tetap memakai mask goresan asli.
+    assert first_fill.object_id == stroke.object_id
+    assert second_fill.object_id == stroke.object_id
+    assert len(project.get_layer(layer.layer_id).objects) == 1
+    assert second_fill.properties["source_stroke_ref"] == source_ref
+    assert second_fill.properties["fill_color"] == "#0033AA"
+    assert second_fill.asset_ref != source_ref
+    with Image.open(BytesIO(session.assets[second_fill.asset_ref or ""])) as combined:
+        combined.load()
+        rgba = combined.convert("RGBA")
+    # Interior terisi warna baru dan goresan tetap tampak di atasnya.
+    assert rgba.getpixel((20, 20))[3] >= 240
+    assert rgba.getpixel((0, 0))[3] == 0

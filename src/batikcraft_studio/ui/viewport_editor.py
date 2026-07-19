@@ -735,6 +735,11 @@ class ViewportEditorWorkspaceView(CanvasStructureEditorWorkspaceView):
     # ------------------------------------------------------------------
 
     def _on_canvas_press(self, event: tk.Event[tk.Canvas]) -> None:
+        if self._active_tool == "hand":
+            self.canvas.scan_mark(event.x, event.y)
+            self._hand_panning = True
+            self.canvas.configure(cursor="fleur")
+            return
         if self._ai_selection_active:
             point = self._project_point(event.x, event.y)
             if point is None:
@@ -752,6 +757,11 @@ class ViewportEditorWorkspaceView(CanvasStructureEditorWorkspaceView):
         super()._on_canvas_press(event)
 
     def _on_canvas_drag(self, event: tk.Event[tk.Canvas]) -> None:
+        if self._active_tool == "hand":
+            if getattr(self, "_hand_panning", False):
+                self.canvas.scan_dragto(event.x, event.y, gain=1)
+                self._draw_rulers()
+            return
         if self._marquee_drag is not None and self._marquee_rectangle is not None:
             start = self._marquee_drag.start_screen
             self.canvas.coords(
@@ -772,6 +782,14 @@ class ViewportEditorWorkspaceView(CanvasStructureEditorWorkspaceView):
                 )
             return
         super()._on_canvas_drag(event)
+
+    def _on_canvas_release(self, event: tk.Event[tk.Canvas]) -> None:
+        if self._active_tool == "hand":
+            self._hand_panning = False
+            self._draw_rulers()
+            self._schedule_tile_update()
+            return
+        super()._on_canvas_release(event)
 
     def _draw_preview_dot(self, x: float, y: float) -> None:
         super()._draw_preview_dot(self.canvas.canvasx(x), self.canvas.canvasy(y))
@@ -796,6 +814,48 @@ class ViewportEditorWorkspaceView(CanvasStructureEditorWorkspaceView):
         self.canvas.yview(*args)
         self._draw_rulers()
         self._schedule_tile_update()
+
+    def _announce_bounded_change(self, bounds: tuple[float, float, float, float] | None) -> None:
+        """Umumkan area kotor terbatas ke renderer sebelum re-render.
+
+        Dengan ini hanya tile yang bersinggungan dengan *bounds* yang dirender
+        ulang (mis. setelah cap isen/motif atau fill), bukan seluruh scene.
+        """
+        if bounds is None:
+            return
+        renderer = getattr(self, "_cached_renderer", None)
+        invalidate = getattr(renderer, "invalidate_project_bounds", None)
+        if invalidate is None:
+            return
+        try:
+            invalidate(bounds)
+        except Exception:  # noqa: BLE001
+            pass
+
+    @staticmethod
+    def _objects_dirty_bounds(objects: object, pad: float = 4.0) -> tuple[float, float, float, float] | None:
+        """Union axis-aligned bounds dari kumpulan LayerObject hasil operasi."""
+        from batikcraft_studio.imaging.affine_object import object_axis_aligned_bounds
+
+        boxes = []
+        try:
+            iterator = iter(objects)  # type: ignore[arg-type]
+        except TypeError:
+            return None
+        for item in iterator:
+            if hasattr(item, "transform") and hasattr(item, "bounds"):
+                try:
+                    boxes.append(object_axis_aligned_bounds(item))
+                except Exception:  # noqa: BLE001
+                    continue
+        if not boxes:
+            return None
+        return (
+            min(b[0] for b in boxes) - pad,
+            min(b[1] for b in boxes) - pad,
+            max(b[2] for b in boxes) + pad,
+            max(b[3] for b in boxes) + pad,
+        )
 
     def _schedule_tile_update(self) -> None:
         """Schedule a tile update (does not re-render cached tiles)."""

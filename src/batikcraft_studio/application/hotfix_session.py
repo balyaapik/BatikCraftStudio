@@ -6,7 +6,7 @@ from collections.abc import Sequence
 from io import BytesIO
 from uuid import uuid4
 
-from PIL import Image, ImageColor, ImageDraw, ImageFilter, UnidentifiedImageError
+from PIL import ImageChops, Image, ImageColor, ImageDraw, ImageFilter, UnidentifiedImageError
 
 from batikcraft_studio.domain import (
     Layer,
@@ -237,28 +237,27 @@ def _fill_enclosed_png_complete(content: bytes, color: str) -> bytes:
         raise ProjectSessionError("The stroke cannot be decoded for Fill.") from exc
 
     width, height = image.size
-    scale = _SUPERSAMPLE
-    alpha = image.getchannel("A").resize(
-        (max(1, width * scale), max(1, height * scale)),
-        Image.Resampling.LANCZOS,
-    )
+    # Supersample memberi tepi mask lebih halus; untuk gambar besar biayanya
+    # kuadratik, jadi gunakan 1x di atas ~0.6 MP (tepi 1 px tidak terlihat).
+    scale = 1 if width * height >= 640_000 else _SUPERSAMPLE
+    alpha = image.getchannel("A")
+    if scale > 1:
+        alpha = alpha.resize(
+            (max(1, width * scale), max(1, height * scale)),
+            Image.Resampling.LANCZOS,
+        )
     barrier = alpha.point(lambda value: 255 if value >= _ALPHA_THRESHOLD else 0)
 
     # Expand just enough to close small accidental endpoint/sampling gaps.  The
     # threshold is in project pixels and therefore independent of viewport zoom.
     close_radius = _GAP_CLOSE_PROJECT_PIXELS * scale
-    dilate_size = close_radius * 2 + 1
-    barrier = barrier.filter(ImageFilter.MaxFilter(dilate_size))
+    barrier = _iterated_morphology(barrier, close_radius, ImageFilter.MaxFilter)
     # Recover part of the original stroke thickness after closing the gap.
     erode_radius = max(1, scale - 1)
-    barrier = barrier.filter(ImageFilter.MinFilter(erode_radius * 2 + 1))
+    barrier = _iterated_morphology(barrier, erode_radius, ImageFilter.MinFilter)
 
     free_space = barrier.point(lambda value: 0 if value else 255)
-    padded = Image.new("L", (free_space.width + 2, free_space.height + 2), 255)
-    padded.paste(free_space, (1, 1))
-    ImageDraw.floodfill(padded, (0, 0), 128, thresh=0)
-    regions = padded.crop((1, 1, free_space.width + 1, free_space.height + 1))
-    interior = regions.point(lambda value: 255 if value == 255 else 0)
+    interior = _interior_from_free_space(free_space)
 
     bbox = interior.getbbox()
     if bbox is None:
@@ -274,15 +273,104 @@ def _fill_enclosed_png_complete(content: bytes, color: str) -> bytes:
         )
 
     # One project-pixel underlap removes the transparent fringe beneath the line.
-    overlap_size = scale * 2 + 1
-    interior = interior.filter(ImageFilter.MaxFilter(overlap_size))
-    interior = interior.resize((width, height), Image.Resampling.LANCZOS)
+    interior = _iterated_morphology(interior, scale, ImageFilter.MaxFilter)
+    if interior.size != (width, height):
+        interior = interior.resize((width, height), Image.Resampling.LANCZOS)
 
     rgb = ImageColor.getrgb(color)[:3]
     filled = Image.new("RGBA", image.size, (*rgb, 0))
     filled.putalpha(interior)
     output = BytesIO()
-    filled.save(output, format="PNG", optimize=True)
+    filled.save(output, format="PNG")
+    return output.getvalue()
+
+
+def _iterated_morphology(image: Image.Image, radius: int, factory: type) -> Image.Image:
+    """Max/MinFilter(2r+1) sebagai r iterasi kernel 3x3 (jauh lebih cepat)."""
+    for _ in range(max(0, radius)):
+        image = image.filter(factory(3))
+    return image
+
+
+def _interior_from_free_space(free_space: Image.Image) -> Image.Image:
+    """Return the enclosed-interior mask (255) of *free_space* (255 = passable).
+
+    Scanline flood fill dari seluruh piksel tepi menandai eksterior; sisanya
+    yang passable adalah interior. Jauh lebih cepat daripada
+    ``ImageDraw.floodfill`` yang bekerja per piksel dengan set Python.
+    """
+
+    width, height = free_space.size
+    src = free_space.tobytes()
+    visited = bytearray(width * height)
+    stack: list[tuple[int, int]] = []
+    last_row = (height - 1) * width
+    for x in range(width):
+        if src[x]:
+            stack.append((x, 0))
+        if src[last_row + x]:
+            stack.append((x, height - 1))
+    for y in range(height):
+        row = y * width
+        if src[row]:
+            stack.append((0, y))
+        if src[row + width - 1]:
+            stack.append((width - 1, y))
+
+    while stack:
+        x, y = stack.pop()
+        row = y * width
+        if visited[row + x] or not src[row + x]:
+            continue
+        x0 = x
+        while x0 > 0 and src[row + x0 - 1] and not visited[row + x0 - 1]:
+            x0 -= 1
+        x1 = x
+        while x1 < width - 1 and src[row + x1 + 1] and not visited[row + x1 + 1]:
+            x1 += 1
+        for cx in range(x0, x1 + 1):
+            visited[row + cx] = 1
+        for ny in (y - 1, y + 1):
+            if 0 <= ny < height:
+                nrow = ny * width
+                cx = x0
+                while cx <= x1:
+                    if src[nrow + cx] and not visited[nrow + cx]:
+                        stack.append((cx, ny))
+                        cx += 1
+                        while cx <= x1 and src[nrow + cx] and not visited[nrow + cx]:
+                            cx += 1
+                    else:
+                        cx += 1
+
+    exterior = Image.frombytes("L", (width, height), bytes(visited)).point(
+        lambda value: 255 if value else 0
+    )
+    # interior = passable dan bukan eksterior
+    return ImageChops.subtract(free_space, exterior)
+
+
+def _fill_enclosed_png_unified(content: bytes, color: str) -> bytes:
+    """Interior fill digabung DI BAWAH goresan asli menjadi satu gambar utuh.
+
+    Dipakai oleh fill terpadu: hasilnya menggantikan asset objek goresan yang
+    sama, bukan membuat objek "Isi" terpisah.
+    """
+
+    try:
+        with Image.open(BytesIO(content)) as source:
+            source.load()
+            image = source.convert("RGBA")
+    except (UnidentifiedImageError, OSError, ValueError) as exc:
+        raise ProjectSessionError("The stroke cannot be decoded for Fill.") from exc
+
+    filled_bytes = _fill_enclosed_png_complete(content, color)
+    with Image.open(BytesIO(filled_bytes)) as fill_layer:
+        fill_layer.load()
+        combined = fill_layer.convert("RGBA")
+    combined.alpha_composite(image)
+    output = BytesIO()
+    combined.save(output, format="PNG")
     return output.getvalue()
 
 

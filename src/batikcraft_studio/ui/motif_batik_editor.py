@@ -249,6 +249,10 @@ class MotifBatikEditorWorkspaceView(SelectableBatikEditorWorkspaceView):
         except (MotifCapError, MotifError, IsenError, ValueError) as exc:
             self.set_status(str(exc))
             return
+        announce = getattr(self, "_announce_bounded_change", None)
+        dirty = getattr(self, "_objects_dirty_bounds", None)
+        if announce is not None and dirty is not None:
+            announce(dirty(layers))
         self.refresh_context()
         motif_label = MOTIF_LABELS[self._motif_type()]
         self.set_status(f"Motif {motif_label} selesai dibuat dalam {len(layers)} lapis.")

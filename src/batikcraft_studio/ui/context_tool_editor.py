@@ -166,13 +166,53 @@ class ContextToolEditorWorkspaceView(DirectStyleEditorWorkspaceView):
 
     def _build_batik_toolbox(self, parent: ttk.Frame) -> None:
         parent.columnconfigure(0, weight=1)
-        grid = ttk.Frame(parent, style="Dock.TFrame")
-        grid.grid(row=0, column=0, sticky="ew")
-        grid.columnconfigure(0, weight=1)
-        grid.columnconfigure(1, weight=1)
+        parent.rowconfigure(0, weight=1)
+        # Sidebar ringkas: host lebih sempit, isi 3 kolom ikon, dan dapat
+        # digulir bila tinggi jendela terbatas.
+        try:
+            self.tools_host.configure(width=150)
+        except tk.TclError:
+            pass
+        outer = tk.Canvas(
+            parent,
+            highlightthickness=0,
+            borderwidth=0,
+            width=138,
+            background=COLORS.get("dock", COLORS.get("surface", "#EEE9E1")),
+        )
+        outer.grid(row=0, column=0, sticky="nsew")
+        scrollbar = ttk.Scrollbar(parent, orient="vertical", command=outer.yview)
+        scrollbar.grid(row=0, column=1, sticky="ns")
+        outer.configure(yscrollcommand=scrollbar.set)
+        grid = ttk.Frame(outer, style="Dock.TFrame")
+        window_id = outer.create_window((0, 0), window=grid, anchor="nw")
+
+        def _sync_scrollregion(_event: object = None) -> None:
+            try:
+                outer.configure(scrollregion=outer.bbox("all"))
+                outer.itemconfigure(window_id, width=outer.winfo_width())
+            except tk.TclError:
+                pass
+
+        grid.bind("<Configure>", _sync_scrollregion)
+        outer.bind("<Configure>", _sync_scrollregion)
+
+        def _wheel(event: tk.Event) -> str:
+            outer.yview_scroll(-1 if getattr(event, "delta", 0) > 0 else 1, "units")
+            return "break"
+
+        for sequence in ("<MouseWheel>",):
+            outer.bind(sequence, _wheel)
+            grid.bind(sequence, _wheel)
+        outer.bind("<Button-4>", lambda _e: (outer.yview_scroll(-1, "units"), "break")[1])
+        outer.bind("<Button-5>", lambda _e: (outer.yview_scroll(1, "units"), "break")[1])
+
+        for column in range(3):
+            grid.columnconfigure(column, weight=1)
         self._batik_tool_buttons = {}
         tools: tuple[tuple[str, str, str, Callable[[], object]], ...] = (
             ("select", "select_tool", "toolbox.select", self.activate_select_tool),
+            ("hand", "hand_tool", "toolbox.hand", self.activate_hand_tool),
             ("fill", "fill_tool", "toolbox.fill", self.activate_fill_tool),
             ("canting", "canting_tool", "toolbox.canting", self.activate_canting_tool),
             ("brush", "brush_tool", "toolbox.brush", self.activate_soft_brush_tool),
@@ -201,19 +241,20 @@ class ContextToolEditorWorkspaceView(DirectStyleEditorWorkspaceView):
             ("isen", "isen_tool", "toolbox.isen", self.activate_cap_isen_tool),
         )
         for index, (key, icon_name, label_key, action) in enumerate(tools):
-            row, column = divmod(index, 2)
+            row, column = divmod(index, 3)
             button = self._tool_icon_button(
                 grid,
                 icon_name,
                 tr(label_key),
                 lambda tool=key, command=action: self._activate_context_tool(tool, command),
+                size=19,
             )
-            button.grid(row=row, column=column, sticky="nsew", padx=2, pady=2, ipady=5)
+            button.grid(row=row, column=column, sticky="nsew", padx=1, pady=1, ipady=2)
             self._batik_tool_buttons[key] = button
 
-        self._tool_options_host = ttk.Frame(parent, style="Dock.TFrame")
-        self._tool_options_host.grid(row=1, column=0, sticky="ew", pady=(8, 0))
-        self._tool_options_host.grid_remove()
+        # Opsi tool kini tampil sebagai jendela terpisah, bukan menempel di sidebar.
+        self._tool_options_host = None
+        self._tool_options_window: tk.Toplevel | None = None
         self._update_tool_button_styles()
 
     def _tool_icon_button(
@@ -244,14 +285,26 @@ class ContextToolEditorWorkspaceView(DirectStyleEditorWorkspaceView):
             self._show_tool_options(key)
 
     def _show_tool_options(self, key: str) -> None:
-        host = self._tool_options_host
-        if host is None or not host.winfo_exists():
-            return
-        for child in host.winfo_children():
-            child.destroy()
-        host.columnconfigure(0, weight=1)
+        window = getattr(self, "_tool_options_window", None)
+        if window is not None and window.winfo_exists():
+            window.destroy()
+        window = tk.Toplevel(self)
+        window.title(tr("context.options", tool=tr(f"toolbox.{key}")))
+        window.transient(self.winfo_toplevel())
+        window.resizable(False, False)
+        window.protocol("WM_DELETE_WINDOW", self._hide_tool_options)
+        try:
+            root = self.winfo_toplevel()
+            x = root.winfo_rootx() + 160
+            y = root.winfo_rooty() + 90
+            window.geometry(f"+{x}+{y}")
+        except tk.TclError:
+            pass
+        body = ttk.Frame(window, padding=(10, 8))
+        body.grid(row=0, column=0, sticky="nsew")
+        body.columnconfigure(0, weight=1)
         panel = ttk.LabelFrame(
-            host,
+            body,
             text=tr("context.options", tool=tr(f"toolbox.{key}")),
             padding=(7, 6),
         )
@@ -265,13 +318,15 @@ class ContextToolEditorWorkspaceView(DirectStyleEditorWorkspaceView):
             self._build_shape_options(panel)
         else:
             self._build_dialog_options(panel)
-        host.grid()
+        self._tool_options_window = window
         self._tool_options_key = key
         self._tool_options_expanded = True
 
     def _hide_tool_options(self) -> None:
-        if self._tool_options_host is not None:
-            self._tool_options_host.grid_remove()
+        window = getattr(self, "_tool_options_window", None)
+        if window is not None and window.winfo_exists():
+            window.destroy()
+        self._tool_options_window = None
         self._tool_options_expanded = False
 
     def _build_fill_options(self, parent: ttk.Frame) -> None:

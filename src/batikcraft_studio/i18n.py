@@ -1093,3 +1093,13 @@ _FEATURE_TRANSLATIONS = {
 
 for _language, _catalog in _FEATURE_TRANSLATIONS.items():
     _TRANSLATIONS.setdefault(_language, {}).update(_catalog)
+
+
+_TRANSLATIONS["id"].update({
+    "toolbox.hand": "Hand (Geser Tampilan)",
+    "toolbox.hand_status": "Hand tool aktif — seret canvas untuk menggeser tampilan.",
+})
+_TRANSLATIONS["en"].update({
+    "toolbox.hand": "Hand (Pan View)",
+    "toolbox.hand_status": "Hand tool active — drag the canvas to pan the view.",
+})

@@ -526,6 +526,11 @@ class CompactAssetEditorWorkspaceView(ProfessionalObjectTreeEditorWorkspaceView)
         for panel in self._dock_panels.values():
             panel.dock()
 
+    def activate_hand_tool(self) -> None:
+        self._set_active_tool("hand", tr("toolbox.hand_status"))
+        if hasattr(self, "canvas"):
+            self.canvas.configure(cursor="fleur")
+
     def activate_select_tool(self) -> None:
         self._batik_tool_variant = "select"
         super().activate_select_tool()
@@ -574,7 +579,9 @@ class CompactAssetEditorWorkspaceView(ProfessionalObjectTreeEditorWorkspaceView)
         super().activate_cap_isen_tool()
 
     def _set_active_tool(self, tool: str, status: str) -> None:
-        if tool == "select":
+        if tool == "hand":
+            self._batik_tool_variant = "hand"
+        elif tool == "select":
             self._batik_tool_variant = "select"
         elif tool == "eraser":
             self._batik_tool_variant = "eraser"

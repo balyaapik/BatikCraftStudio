@@ -315,6 +315,10 @@ class BatikEditorWorkspaceView(ShapeEditorWorkspaceView):
         except (CapIsenError, IsenError, ValueError) as exc:
             self.set_status(str(exc))
             return
+        announce = getattr(self, "_announce_bounded_change", None)
+        dirty = getattr(self, "_objects_dirty_bounds", None)
+        if announce is not None and dirty is not None:
+            announce(dirty(layers))
         self.refresh_context()
         self.set_status(f"Pengecapan selesai: {len(layers)} lapis {ISEN_LABELS[self._isen_type()]}")
 
