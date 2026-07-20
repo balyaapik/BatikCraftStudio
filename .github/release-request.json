@@ -1,5 +1,5 @@
 {
-  "release_tag": "v0.3.4",
-  "requested_at": "2026-07-20T11:30:00Z",
-  "reason": "Publish BatikCraft Studio 0.3.4: universal GPU detection with graceful fallback (CUDA/Intel XPU/Apple MPS/CPU) so generation never fails on missing CUDA; includes the 0.3.3 frozen-stdlib fix for runtime AI packages."
+  "release_tag": "v0.3.5",
+  "requested_at": "2026-07-20T13:00:00Z",
+  "reason": "Publish BatikCraft Studio 0.3.5: application log files in log/ (rotating log, native crash capture via faulthandler, uncaught exception hooks for threads and Tk callbacks), Dependencies menu shortcut to the log folder, and automatic memory slicing when SDXL generation falls back to CPU."
 }
