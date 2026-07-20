@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import sys
 from collections.abc import Iterable
 
 from batikcraft_studio.ai.torch_runtime_integrity import (
@@ -24,11 +25,11 @@ def preferred_torch_key() -> str:
 
 
 def normalise_checked_keys(keys: Iterable[str]) -> set[str]:
-    """Never allow the CPU and CUDA wheel rows to be selected together."""
+    """Resolve only an invalid dual selection; preserve an explicit single choice."""
 
     checked = {str(key) for key in keys}
     selected_torch = checked & _TORCH_KEYS
-    if selected_torch:
+    if selected_torch == _TORCH_KEYS:
         checked.difference_update(_TORCH_KEYS)
         checked.add(preferred_torch_key())
     return checked
@@ -80,13 +81,22 @@ def install_dependency_cuda_selection_patch() -> None:
     def install_packages(self, item) -> None:  # type: ignore[no-untyped-def]
         target = default_managed_ai_package_dir()
         before_variant = installed_torch_variant(target)
-        if item.variant:
+        frozen = bool(getattr(sys, "frozen", False))
+        if item.variant and not frozen:
             removed = purge_managed_torch_installation(target)
             self._messages.put(
                 (
                     "log",
                     f"Runtime Torch lama dibersihkan sebelum pemasangan "
                     f"{item.variant.upper()}: {removed} path dihapus.",
+                )
+            )
+        elif item.variant:
+            self._messages.put(
+                (
+                    "log",
+                    "Runtime Torch lama akan dibersihkan oleh proses installer terpisah "
+                    "agar DLL yang sedang dipakai aplikasi tidak terkunci.",
                 )
             )
 
