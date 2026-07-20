@@ -25,6 +25,20 @@ def test_frozen_installer_forwards_explicit_cuda_variant(tmp_path: Path) -> None
     assert command[-1] == "torch>=2.4"
 
 
+def test_frozen_entry_installs_v042_patch_before_capturing_installer() -> None:
+    source = (ROOT / "packaging" / "desktop_entry.py").read_text(encoding="utf-8")
+
+    patch_call = "install_dependency_bootstrap_v042()"
+    legacy_import = (
+        "from batikcraft_studio.dependency_bootstrap import "
+        "maybe_run_dependency_installer"
+    )
+    installer_call = "maybe_run_dependency_installer(sys.argv[1:])"
+
+    assert source.index(patch_call) < source.index(legacy_import)
+    assert source.index(legacy_import) < source.index(installer_call)
+
+
 def test_torch_install_uses_exclusive_official_index(tmp_path: Path) -> None:
     command = dependency_bootstrap_v042.managed_ai_install_command(
         ["torch>=2.4"],
@@ -104,7 +118,6 @@ def test_cuda_guard_runs_before_final_sdxl_factory_call() -> None:
 
     source = inspect.getsource(cuda_runtime_guard_v042.install_cuda_runtime_guard_v042)
     assert "nvidia_gpu_present" in source
-    assert "guard_cpu_generation" in source
     assert source.rindex("guard_cpu_generation") < source.rindex(
         "return original_factory(settings)"
     )

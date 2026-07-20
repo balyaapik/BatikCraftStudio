@@ -115,7 +115,7 @@ def test_app_and_package_versions_are_aligned() -> None:
     with (ROOT / "pyproject.toml").open("rb") as stream:
         project_version = str(tomllib.load(stream)["project"]["version"])
 
-    assert APP_VERSION == "0.4.2"
+    assert APP_VERSION == "0.4.3"
     assert project_version == APP_VERSION
 
 
