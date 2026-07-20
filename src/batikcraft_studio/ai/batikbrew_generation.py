@@ -602,23 +602,9 @@ def _default_sdxl_pipeline_factory(
 
 
 def _resolve_device(torch: Any, requested: str) -> str:
-    if requested == "cuda":
-        if not torch.cuda.is_available():
-            raise BatificationError("CUDA dipilih tetapi GPU CUDA tidak tersedia.")
-        return "cuda"
-    if requested == "mps":
-        backend = getattr(torch.backends, "mps", None)
-        if backend is None or not backend.is_available():
-            raise BatificationError("MPS dipilih tetapi backend MPS tidak tersedia.")
-        return "mps"
-    if requested == "cpu":
-        return "cpu"
-    if torch.cuda.is_available():
-        return "cuda"
-    backend = getattr(torch.backends, "mps", None)
-    if backend is not None and backend.is_available():
-        return "mps"
-    return "cpu"
+    from batikcraft_studio.ai.device_resolution import resolve_torch_device
+
+    return resolve_torch_device(torch, requested)
 
 
 def _resolve_dtype(torch: Any, device: str, precision: str) -> Any:

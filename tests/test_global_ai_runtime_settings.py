@@ -119,16 +119,20 @@ def test_settings_store_round_trip_and_corrupt_file_fallback(tmp_path: Path) -> 
     assert store.last_error is not None
 
 
-def test_manual_cuda_never_silently_falls_back_to_cpu(tmp_path: Path) -> None:
+def test_manual_cuda_falls_back_loudly_to_best_available_device(tmp_path: Path) -> None:
+    """Kebijakan baru: pilihan GPU yang tidak tersedia tidak lagi menggagalkan
+    generasi — jatuh ke perangkat terbaik yang ada DENGAN peringatan jelas
+    (bukan diam-diam), sehingga semua tipe GPU/CPU tetap bisa dipakai."""
+
     report = diagnose_ai_runtime(
         _settings(tmp_path, device="cuda"),
         run_tensor_test=False,
         torch_module=_FakeTorch(cuda=False),
     )
 
-    assert report.effective_device is None
-    assert report.error is not None
-    assert "CUDA dipilih" in report.error
+    assert report.effective_device == "cpu"
+    assert report.error is None
+    assert any("CUDA" in warning and "tidak tersedia" in warning for warning in report.warnings)
 
 
 def test_auto_runtime_detects_cuda_and_recommends_float16(tmp_path: Path) -> None:

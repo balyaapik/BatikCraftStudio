@@ -249,17 +249,9 @@ def _existing_local_directory(value: Path | str, label: str) -> Path:
 
 
 def _resolve_device(torch: Any, config: OfflineRuntimeConfig) -> str:
-    if config.device != "auto":
-        if config.device == "cuda" and not torch.cuda.is_available():
-            raise BatificationError("CUDA dipilih tetapi GPU CUDA tidak tersedia.")
-        if config.device == "mps" and not getattr(torch.backends, "mps", None):
-            raise BatificationError("MPS dipilih tetapi backend MPS tidak tersedia.")
-        return config.device
-    if torch.cuda.is_available():
-        return "cuda"
-    if getattr(torch.backends, "mps", None) and torch.backends.mps.is_available():
-        return "mps"
-    return "cpu"
+    from batikcraft_studio.ai.device_resolution import resolve_torch_device
+
+    return resolve_torch_device(torch, config.device)
 
 
 def _resolve_dtype(torch: Any, device: str, precision: str) -> Any:

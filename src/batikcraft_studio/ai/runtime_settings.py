@@ -296,11 +296,10 @@ def diagnose_ai_runtime(
     warnings: list[str] = []
     error: str | None = None
     effective_device = _effective_device(settings.device, cuda_available, mps_available)
-    if effective_device is None:
-        error = (
-            "CUDA dipilih tetapi GPU/PyTorch CUDA tidak tersedia."
-            if settings.device == "cuda"
-            else "MPS dipilih tetapi backend Apple MPS tidak tersedia."
+    if settings.device in ("cuda", "mps") and effective_device != settings.device:
+        warnings.append(
+            f"Perangkat {settings.device.upper()} dipilih tetapi tidak tersedia; "
+            f"memakai {effective_device.upper()} sebagai gantinya."
         )
     effective_precision = (
         None
@@ -350,12 +349,15 @@ def diagnose_ai_runtime(
 
 
 def _effective_device(requested: str, cuda_available: bool, mps_available: bool) -> str | None:
-    if requested == "cuda":
-        return "cuda" if cuda_available else None
-    if requested == "mps":
-        return "mps" if mps_available else None
+    """Perangkat efektif dengan fallback anggun — tidak pernah None untuk
+    pilihan GPU yang tidak tersedia; jatuh ke perangkat terbaik yang ada."""
+
     if requested == "cpu":
         return "cpu"
+    if requested == "cuda" and cuda_available:
+        return "cuda"
+    if requested == "mps" and mps_available:
+        return "mps"
     if cuda_available:
         return "cuda"
     if mps_available:

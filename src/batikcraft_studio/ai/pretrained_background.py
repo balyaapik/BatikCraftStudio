@@ -384,19 +384,9 @@ def _make_tileable(image: Image.Image) -> Image.Image:
 
 
 def _resolve_device(torch: Any, requested: str) -> str:
-    if requested != "auto":
-        if requested == "cuda" and not torch.cuda.is_available():
-            raise BatificationError("CUDA dipilih tetapi GPU CUDA tidak tersedia.")
-        if requested == "mps" and not (
-            getattr(torch.backends, "mps", None) and torch.backends.mps.is_available()
-        ):
-            raise BatificationError("MPS dipilih tetapi perangkat Apple MPS tidak tersedia.")
-        return requested
-    if torch.cuda.is_available():
-        return "cuda"
-    if getattr(torch.backends, "mps", None) and torch.backends.mps.is_available():
-        return "mps"
-    return "cpu"
+    from batikcraft_studio.ai.device_resolution import resolve_torch_device
+
+    return resolve_torch_device(torch, requested)
 
 
 def _resolve_dtype(torch: Any, device: str, precision: str) -> Any:
