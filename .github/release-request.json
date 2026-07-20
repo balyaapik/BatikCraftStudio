@@ -1,5 +1,5 @@
 {
-  "release_tag": "v0.3.8",
-  "requested_at": "2026-07-20T19:00:00Z",
-  "reason": "Publish BatikCraft Studio 0.3.8: the Offline AI Model & LoRA tab is now populated with the active runtime and LoRA manager (redundant install buttons removed), dependency table progress animates during every install phase, and PyTorch is offered as separate CPU and CUDA rows with per-variant eligibility."
+  "release_tag": "v0.3.9",
+  "requested_at": "2026-07-20T21:00:00Z",
+  "reason": "Publish BatikCraft Studio 0.3.9: explicit PyTorch variants now install through --index-url so the chosen CUDA build is really installed, installed-variant detection reads the real version string, and both pattern and canvas image generation use bfloat16 plus memory slicing and RAM checks on CPU to prevent out-of-memory shutdowns."
 }
