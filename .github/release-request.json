@@ -1,5 +1,5 @@
 {
-  "release_tag": "v0.4.0",
-  "requested_at": "2026-07-20T23:00:00Z",
-  "reason": "Publish BatikCraft Studio 0.4.0: fix model downloads in the Dependency Center (progress callback now matches the installer signature) and detect NVIDIA GPUs through the CUDA driver library instead of launching nvidia-smi, which failed with a 0xc0000142 dialog in frozen builds."
+  "release_tag": "v0.4.1",
+  "requested_at": "2026-07-21T01:00:00Z",
+  "reason": "Publish BatikCraft Studio 0.4.1: the Dependency Center installation log now captures the complete pip output (including the frozen-build child log file), rich per-component headers, exit codes, model download byte details, mirroring to batikcraft.log, and Save/Clear log actions."
 }
