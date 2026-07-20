@@ -661,11 +661,20 @@ class DependencyCenterWindow(tk.Toplevel):
             install_default_runtime_models,
         )
 
-        def progress(stage: str, message: str, completed: float, total: float) -> None:
-            del stage
-            fraction = (completed / total) if total else 0.0
+        def progress(update: object) -> None:
+            """Installer mengirim satu objek RuntimeModelInstallProgress."""
+
+            percent = getattr(update, "download_percent", None)
+            if percent is None:
+                completed = float(getattr(update, "completed", 0) or 0)
+                total = float(getattr(update, "total", 0) or 0)
+                fraction = (completed / total) if total else 0.0
+            else:
+                fraction = float(percent) / 100.0
             self._messages.put(("progress", (item.key, fraction)))
-            self._messages.put(("status", f"{item.name}: {message}"))
+            message = str(getattr(update, "message", "") or "")
+            if message:
+                self._messages.put(("status", f"{item.name}: {message}"))
 
         root = managed_runtime_root()
         root.mkdir(parents=True, exist_ok=True)

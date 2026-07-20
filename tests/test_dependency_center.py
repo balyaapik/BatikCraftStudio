@@ -102,3 +102,44 @@ def test_model_tab_has_no_dependency_install_buttons() -> None:
     assert "LoRA Terpasang" in source
     assert "Aktifkan Model" in source
     assert "Pakai Renderer Fondasi" in source
+
+
+def test_model_progress_callback_matches_installer_signature() -> None:
+    """Regresi: installer memanggil callback dengan SATU objek progres.
+    Versi lama memakai empat argumen sehingga unduhan model selalu gagal
+    dengan 'missing 3 required positional arguments'."""
+
+    import inspect
+
+    from batikcraft_studio.ai.runtime_model_installer import RuntimeModelInstallProgress
+    from batikcraft_studio.ui.dependency_center import DependencyCenterWindow
+
+    source = inspect.getsource(DependencyCenterWindow._install_model)
+    assert "def progress(update: object) -> None:" in source
+    assert "download_percent" in source
+
+    # Objek progres nyata memberi persentase byte yang benar.
+    update = RuntimeModelInstallProgress(
+        stage="sdxl",
+        message="Mengunduh unet",
+        completed=1,
+        total=4,
+        downloaded_bytes=3_000_000,
+        total_bytes=12_000_000,
+    )
+    assert update.download_percent == 25.0
+
+
+def test_gpu_detection_avoids_launching_nvidia_smi_first() -> None:
+    """nvidia-smi.exe sempat gagal start (0xc0000142) di aplikasi beku dan
+    memunculkan dialog Windows. Deteksi utama kini lewat pustaka driver."""
+
+    import inspect
+
+    from batikcraft_studio.ai import torch_wheel_index
+
+    source = inspect.getsource(torch_wheel_index.nvidia_gpu_present)
+    assert "nvcuda.dll" in source
+    assert "cuInit" in source
+    fallback = inspect.getsource(torch_wheel_index._nvidia_smi_reports_gpu)
+    assert "CREATE_NO_WINDOW" in fallback
