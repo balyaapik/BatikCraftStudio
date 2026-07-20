@@ -60,3 +60,57 @@ def test_generation_applies_guard_and_logs_device() -> None:
     assert "guard_cpu_generation" in source
     assert "width=render_resolution" in source
     assert "Pipeline SDXL siap" in source
+
+
+def test_torch_variant_detection_reads_version_string(tmp_path, monkeypatch) -> None:
+    """Regresi: build CPU sempat terbaca sebagai CUDA karena teks terpotong,
+    sehingga tabel menandai 'PyTorch GPU Terpasang' padahal torch +cpu."""
+
+    from batikcraft_studio.ui import dependency_catalog
+
+    packages = tmp_path / "site-packages"
+    (packages / "torch").mkdir(parents=True)
+    monkeypatch.setattr(
+        dependency_catalog, "default_managed_ai_package_dir", lambda: packages
+    )
+
+    (packages / "torch" / "version.py").write_text(
+        "__version__ = '2.13.0+cpu'\ndebug = False\ncuda: Optional[str] = None\n",
+        encoding="utf-8",
+    )
+    assert dependency_catalog.installed_torch_variant() == "cpu"
+
+    (packages / "torch" / "version.py").write_text(
+        "__version__ = '2.5.1+cu121'\ndebug = False\ncuda: Optional[str] = '12.1'\n",
+        encoding="utf-8",
+    )
+    assert dependency_catalog.installed_torch_variant() == "cuda"
+
+
+def test_explicit_variant_uses_index_url_not_extra_index() -> None:
+    """--extra-index-url membuat pip memilih versi tertinggi lintas index,
+    sehingga wheel CPU PyPI mengalahkan wheel CUDA. Varian eksplisit wajib
+    memakai --index-url."""
+
+    from batikcraft_studio.ai.torch_wheel_index import CPU_WHEEL_INDEX, CUDA_WHEEL_INDEX
+    from batikcraft_studio.dependency_bootstrap import managed_ai_install_command
+
+    cuda = managed_ai_install_command(["torch>=2.4"], frozen=False, torch_variant="cuda")
+    assert "--index-url" in cuda and CUDA_WHEEL_INDEX in cuda
+    assert "--extra-index-url" not in cuda
+
+    cpu = managed_ai_install_command(["torch>=2.4"], frozen=False, torch_variant="cpu")
+    assert "--index-url" in cpu and CPU_WHEEL_INDEX in cpu
+
+
+def test_cpu_paths_halve_memory_and_guard_both_providers() -> None:
+    import inspect
+
+    from batikcraft_studio.ai import batikbrew_generation, pretrained_batification
+
+    pattern_source = inspect.getsource(batikbrew_generation)
+    canvas_source = inspect.getsource(pretrained_batification)
+    for source in (pattern_source, canvas_source):
+        assert "_cpu_friendly_dtype" in source
+        assert "guard_cpu_generation" in source
+    assert "enable_vae_tiling" in canvas_source

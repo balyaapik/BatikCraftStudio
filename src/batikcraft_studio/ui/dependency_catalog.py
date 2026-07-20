@@ -134,21 +134,44 @@ def managed_runtime_root() -> Path:
 
 
 def installed_torch_variant() -> str | None:
-    """'cuda' / 'cpu' / None — varian torch yang benar-benar terpasang."""
+    """'cuda' / 'cpu' / None — varian torch yang benar-benar terpasang.
+
+    Sumber kebenaran utama adalah string versi (``2.5.1+cu121`` vs
+    ``2.13.0+cpu``). Pemeriksaan lama memotong teks sehingga ``None`` terbaca
+    ``No`` dan build CPU salah dilaporkan sebagai CUDA.
+    """
+
+    import re
 
     packages = default_managed_ai_package_dir()
     if not (packages / "torch").is_dir():
         return None
-    for info in packages.glob("torch-*.dist-info"):
-        name = info.name.casefold()
-        if "+cu" in name or "cu12" in name or "cu11" in name:
-            return "cuda"
+
+    version_text = ""
     version_file = packages / "torch" / "version.py"
     try:
-        content = version_file.read_text(encoding="utf-8", errors="ignore")
+        version_text = version_file.read_text(encoding="utf-8", errors="ignore")
     except OSError:
-        return "cpu"
-    if "cuda" in content and "None" not in content.split("cuda")[1][:20]:
+        version_text = ""
+
+    match = re.search(r"__version__\s*=\s*['\"]([^'\"]+)['\"]", version_text)
+    if match:
+        version = match.group(1).casefold()
+        if "+cu" in version or "+rocm" in version:
+            return "cuda"
+        if "+cpu" in version:
+            return "cpu"
+
+    for info in packages.glob("torch-*.dist-info"):
+        name = info.name.casefold()
+        if "+cu" in name:
+            return "cuda"
+        if "+cpu" in name:
+            return "cpu"
+
+    # Fallback: baris "cuda: Optional[str] = '12.1'" vs "... = None".
+    cuda_line = re.search(r"^cuda\s*[:=][^\n]*", version_text, re.MULTILINE)
+    if cuda_line and "none" not in cuda_line.group(0).casefold():
         return "cuda"
     return "cpu"
 

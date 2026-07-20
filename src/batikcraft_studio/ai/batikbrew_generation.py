@@ -590,6 +590,8 @@ def _default_sdxl_pipeline_factory(
 
     device = _resolve_device(torch, settings.device)
     dtype = _resolve_dtype(torch, device, settings.precision)
+    if device == "cpu" and settings.precision in ("auto", "float32"):
+        dtype = _cpu_friendly_dtype(torch, dtype)
     source = settings.model_id_or_path
     local = Path(source).expanduser()
     model_source = str(local.resolve()) if local.exists() else source
@@ -645,6 +647,26 @@ def _resolve_device(torch: Any, requested: str) -> str:
     from batikcraft_studio.ai.device_resolution import resolve_torch_device
 
     return resolve_torch_device(torch, requested)
+
+
+def _cpu_friendly_dtype(torch: Any, requested: Any) -> Any:
+    """Pilih dtype hemat memori untuk CPU.
+
+    SDXL fp32 menahan ±14 GB bobot saja — di laptop 16 GB proses langsung
+    dibunuh OS. bfloat16 memangkas separuhnya dan didukung PyTorch di CPU.
+    """
+
+    bfloat16 = getattr(torch, "bfloat16", None)
+    if bfloat16 is None or requested is bfloat16:
+        return requested
+    try:
+        torch.zeros(1, dtype=bfloat16) + torch.zeros(1, dtype=bfloat16)
+    except Exception:  # noqa: BLE001 - CPU lama tanpa dukungan bf16
+        return requested
+    logging.getLogger(__name__).info(
+        "Generasi CPU memakai bfloat16 (hemat ±50%% memori dibanding float32)."
+    )
+    return bfloat16
 
 
 def _resolve_dtype(torch: Any, device: str, precision: str) -> Any:

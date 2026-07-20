@@ -432,14 +432,21 @@ def _torch_index_arguments(variant: str | None = None) -> list[str]:
     """Index wheel PyTorch sesuai perangkat keras (CUDA bila GPU NVIDIA ada)."""
 
     try:
-        from batikcraft_studio.ai.torch_wheel_index import torch_index_arguments
+        from batikcraft_studio.ai.torch_wheel_index import (
+            CPU_WHEEL_INDEX,
+            CUDA_WHEEL_INDEX,
+            torch_index_arguments,
+        )
 
+        # PENTING: untuk varian eksplisit dipakai --index-url (bukan
+        # --extra-index-url). Dengan extra-index, pip membandingkan versi
+        # antar-index dan memilih yang TERTINGGI — PyPI (build CPU, versi
+        # lebih baru) selalu menang atas index CUDA, sehingga pengguna yang
+        # memilih GPU tetap mendapat torch CPU.
         if variant == "cuda":
-            return torch_index_arguments(force_cuda=True)
+            return ["--index-url", CUDA_WHEEL_INDEX]
         if variant == "cpu":
-            from batikcraft_studio.ai.torch_wheel_index import CPU_WHEEL_INDEX
-
-            return ["--extra-index-url", CPU_WHEEL_INDEX]
+            return ["--index-url", CPU_WHEEL_INDEX]
         return torch_index_arguments()
     except Exception:  # noqa: BLE001 - instalasi tidak boleh gagal karena ini
         return []

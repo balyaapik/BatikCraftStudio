@@ -215,6 +215,14 @@ class PretrainedImg2ImgBatificationProvider:
         generator_device = device if device in {"cpu", "cuda"} else "cpu"
         generator = torch.Generator(device=generator_device).manual_seed(settings.seed)
 
+        if device == "cpu" and type(pipeline).__module__.split(".")[0] == "diffusers":
+            from batikcraft_studio.ai.memory_guard import guard_cpu_generation
+
+            try:
+                guard_cpu_generation(settings.resolution)
+            except MemoryError as exc:
+                raise BatificationError(str(exc)) from exc
+
         with self._inference_lock:
             try:
                 response = pipeline(
@@ -311,6 +319,10 @@ def _default_pipeline_factory(
 
     device = _resolve_device(torch, settings.device)
     dtype = _resolve_dtype(torch, device, settings.precision)
+    if device == "cpu" and settings.precision in ("auto", "float32"):
+        from batikcraft_studio.ai.batikbrew_generation import _cpu_friendly_dtype
+
+        dtype = _cpu_friendly_dtype(torch, dtype)
     source = settings.model_id_or_path
     local_path = Path(source).expanduser()
     model_source = str(local_path.resolve()) if local_path.exists() else source
@@ -328,6 +340,18 @@ def _default_pipeline_factory(
             pipeline.enable_model_cpu_offload()
         else:
             pipeline.to(device)
+        if device == "cpu":
+            # Tanpa slicing, img2img SDXL/SD1.5 di CPU memuncakkan RAM sampai
+            # proses dibunuh OS (aplikasi tertutup sendiri).
+            for memory_feature in (
+                "enable_attention_slicing",
+                "enable_vae_slicing",
+                "enable_vae_tiling",
+            ):
+                try:
+                    getattr(pipeline, memory_feature)()
+                except Exception:  # noqa: BLE001
+                    continue
         if hasattr(pipeline, "enable_attention_slicing"):
             pipeline.enable_attention_slicing()
         if hasattr(pipeline, "enable_vae_slicing"):

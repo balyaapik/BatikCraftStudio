@@ -14,8 +14,10 @@ _LOGGER = logging.getLogger(__name__)
 
 # Perkiraan konservatif kebutuhan RAM puncak generasi SDXL di CPU (fp32 +
 # aktivasi + VAE decode), dengan slicing aktif.
-_CPU_MINIMUM_FREE_GB = 9.0
-_CPU_COMFORTABLE_FREE_GB = 14.0
+# SDXL bfloat16 di CPU: ±7 GB bobot + aktivasi. Angka ini sudah memperhitungkan
+# slicing/tiling yang selalu diaktifkan pada jalur CPU.
+_CPU_MINIMUM_FREE_GB = 8.0
+_CPU_COMFORTABLE_FREE_GB = 12.0
 _CPU_SAFE_RESOLUTION = 768
 
 
