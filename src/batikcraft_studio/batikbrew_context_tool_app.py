@@ -120,6 +120,10 @@ class ContextToolApplication(_ProgressApplication):
             label="Buka Folder Unduhan AI",
             command=lambda: self.open_folder(default_ai_cache_dir()),
         )
+        dependencies_menu.add_command(
+            label="Buka Folder Log Aplikasi",
+            command=self.open_log_folder,
+        )
         _insert_before_help(menu_bar, "Dependencies", dependencies_menu)
 
         self._extend_asset_menu(menu_bar)
@@ -231,6 +235,16 @@ class ContextToolApplication(_ProgressApplication):
         window = EnhancedHumanizeWindow(self.root, self.main_window._editor())
         window.randomize_seed()
         window.focus_set()
+
+    def open_log_folder(self) -> None:
+        """Buka folder log (batikcraft.log + crash-native.log) di file manager."""
+
+        from .logging_setup import default_log_dir, install_file_logging
+
+        try:
+            self.open_folder(install_file_logging())
+        except Exception:  # noqa: BLE001
+            self.open_folder(default_log_dir())
 
     def open_dependency_manager(self) -> None:
         editor = self.main_window._editor()

@@ -11,6 +11,7 @@ import hashlib
 import math
 import threading
 from dataclasses import dataclass, replace
+import logging
 from io import BytesIO
 from pathlib import Path
 from typing import Any
@@ -598,6 +599,21 @@ def _default_sdxl_pipeline_factory(
             "Model SDXL BatikBrew gagal dimuat. Pastikan runtime SDXL sudah diunduh dan "
             f"LoRA memang dilatih untuk SDXL. Detail: {exc}"
         ) from exc
+    if device == "cpu":
+        # Generasi CPU memuat SDXL fp32 (±13 GB) — tanpa slicing puncak RAM
+        # bisa membunuh proses (force close). Aktifkan fitur hemat memori.
+        logging.getLogger(__name__).warning(
+            "Generasi SDXL berjalan di CPU; mengaktifkan attention/vae slicing."
+        )
+        for memory_feature in (
+            "enable_attention_slicing",
+            "enable_vae_slicing",
+            "enable_vae_tiling",
+        ):
+            try:
+                getattr(pipeline, memory_feature)()
+            except Exception:  # noqa: BLE001
+                continue
     return pipeline, torch, device
 
 

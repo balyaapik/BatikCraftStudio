@@ -11,6 +11,14 @@ def _configure_logging() -> None:
         level=logging.INFO,
         format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
     )
+    # Fitur log: file berputar + penangkap crash native + hook exception,
+    # supaya "force close" meninggalkan jejak yang bisa diperiksa di folder log/.
+    try:
+        from .logging_setup import install_file_logging
+
+        install_file_logging()
+    except Exception:  # noqa: BLE001 - logging tidak boleh menggagalkan startup
+        logging.getLogger(__name__).exception("Log file gagal diaktifkan")
 
 
 def _run_private_worker_if_requested() -> int | None:

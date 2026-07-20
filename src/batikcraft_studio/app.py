@@ -27,6 +27,12 @@ class BatikCraftApplication:
 
     def __init__(self) -> None:
         self.root = tk.Tk()
+        try:
+            from .logging_setup import install_tk_exception_logging
+
+            install_tk_exception_logging(self.root)
+        except Exception:  # noqa: BLE001
+            pass
         self.root.title(APP_NAME)
         self.root.geometry(DEFAULT_WINDOW_SIZE)
         self.root.minsize(*MINIMUM_WINDOW_SIZE)
