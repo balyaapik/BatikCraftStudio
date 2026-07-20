@@ -152,12 +152,32 @@ def maybe_run_dependency_installer(argv: Sequence[str] | None = None) -> int | N
                 torch_variant=namespace.torch_variant,
                 stream=stream,
             )
-    return run_bundled_pip_install(
+    return _dispatch_bundled_install(
         requirements,
         target=target,
         cache_dir=cache_dir,
         torch_variant=namespace.torch_variant,
     )
+
+
+def _dispatch_bundled_install(
+    requirements: Sequence[str],
+    *,
+    target: Path,
+    cache_dir: Path,
+    torch_variant: str | None,
+) -> int:
+    """Dispatch through the established bootstrap seam used by tests and plugins.
+
+    In the real application ``install_dependency_bootstrap_v042`` points that seam
+    back to the corrected installer below. Existing tests may replace it with a
+    three-argument fake, so the new keyword is supplied only when it is meaningful.
+    """
+
+    kwargs: dict[str, object] = {"target": target, "cache_dir": cache_dir}
+    if torch_variant is not None:
+        kwargs["torch_variant"] = torch_variant
+    return int(_legacy.run_bundled_pip_install(requirements, **kwargs))
 
 
 def _run_with_redirected_output(
@@ -169,7 +189,7 @@ def _run_with_redirected_output(
     stream: TextIO,
 ) -> int:
     with contextlib.redirect_stdout(stream), contextlib.redirect_stderr(stream):
-        return run_bundled_pip_install(
+        return _dispatch_bundled_install(
             requirements,
             target=target,
             cache_dir=cache_dir,
