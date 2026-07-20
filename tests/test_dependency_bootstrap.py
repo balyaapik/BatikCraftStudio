@@ -220,3 +220,14 @@ def test_import_error_message_names_missing_module_and_folder() -> None:
     assert "Folder paket" in message
     assert "Dependencies" in message
     assert "pip install" not in message
+
+
+def test_frozen_build_bundles_entire_standard_library() -> None:
+    """Regresi: torch yang dipasang runtime gagal import karena stdlib beku
+    tidak lengkap (ModuleNotFoundError: timeit). Build harus membundel
+    seluruh standard library."""
+
+    source = (ROOT / "scripts" / "build_desktop.py").read_text(encoding="utf-8")
+    assert "_stdlib_bundle_arguments" in source
+    assert "stdlib_module_names" in source
+    assert "*_stdlib_bundle_arguments()," in source

@@ -41,6 +41,47 @@ WINDOWS_ICON_SIZES = (
 )
 
 
+def _stdlib_bundle_arguments() -> list[str]:
+    """Bundel SELURUH standard library ke build beku.
+
+    Paket AI (torch, diffusers, transformers) sengaja di-exclude dan dipasang
+    saat runtime lewat Dependency Manager — tetapi mereka mengimpor modul
+    stdlib sembarang (contoh nyata: torch butuh ``timeit``). PyInstaller hanya
+    menyertakan stdlib yang dipakai aplikasi, sehingga tanpa daftar ini import
+    paket runtime gagal dengan ModuleNotFoundError modul standar.
+    """
+
+    import importlib.util
+
+    excluded = {
+        "antigravity",
+        "this",
+        "idlelib",
+        "turtle",
+        "turtledemo",
+        "test",
+        "tkinter",  # sudah ditangani PyInstaller + hook bawaannya
+        "pydoc_data",
+        "lib2to3",
+        "ensurepip",
+    }
+    arguments: list[str] = []
+    for name in sorted(getattr(sys, "stdlib_module_names", ())):
+        if name.startswith("_") or name in excluded:
+            continue
+        try:
+            spec = importlib.util.find_spec(name)
+        except (ImportError, ValueError):
+            continue
+        if spec is None:
+            continue
+        if spec.submodule_search_locations:
+            arguments.extend(["--collect-submodules", name])
+        else:
+            arguments.extend(["--hidden-import", name])
+    return arguments
+
+
 def _run(command: list[str]) -> None:
     print("$", " ".join(command), flush=True)
     subprocess.run(command, cwd=ROOT, check=True)
@@ -209,6 +250,7 @@ def _pyinstaller_command(icon_path: Path | None) -> list[str]:
             "google.genai",
             "--hidden-import",
             "PIL._tkinter_finder",
+            *_stdlib_bundle_arguments(),
             "--exclude-module",
             "torch",
             "--exclude-module",
