@@ -40,6 +40,10 @@ from .dependency_catalog import (
     requirements_for,
 )
 
+import logging
+
+_LOGGER = logging.getLogger(__name__)
+
 _CHECKED = "☑"
 _UNCHECKED = "☐"
 _BAR_SEGMENTS = 12
@@ -468,9 +472,22 @@ class DependencyCenterWindow(tk.Toplevel):
         scrollbar = ttk.Scrollbar(parent, orient="vertical", command=self.log.yview)
         scrollbar.grid(row=0, column=1, sticky="ns")
         self.log.configure(yscrollcommand=scrollbar.set)
+        log_actions = ttk.Frame(parent)
+        log_actions.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(8, 0))
         ttk.Button(
-            parent, text="Buka Folder Log", command=self._open_log_folder
-        ).grid(row=1, column=0, sticky="w", pady=(8, 0))
+            log_actions, text="Buka Folder Log", command=self._open_log_folder
+        ).pack(side="left")
+        ttk.Button(
+            log_actions, text="Simpan Log…", command=self.save_log_as
+        ).pack(side="left", padx=(6, 0))
+        ttk.Button(
+            log_actions, text="Bersihkan", command=self._clear_log
+        ).pack(side="left", padx=(6, 0))
+
+    def _clear_log(self) -> None:
+        self.log.configure(state="normal")
+        self.log.delete("1.0", "end")
+        self.log.configure(state="disabled")
 
     # ------------------------------------------------------------------
     # Data & tampilan
@@ -614,6 +631,7 @@ class DependencyCenterWindow(tk.Toplevel):
         cache_dir.mkdir(parents=True, exist_ok=True)
         frozen = bool(getattr(sys, "frozen", False))
         log_path = default_managed_dependency_log()
+        log_path.parent.mkdir(parents=True, exist_ok=True)
         command = managed_ai_install_command(
             requirements_for(item),
             target=target,
@@ -622,38 +640,137 @@ class DependencyCenterWindow(tk.Toplevel):
             log_file=log_path if frozen else None,
             torch_variant=item.variant or None,
         )
-        self._messages.put(("log", "$ " + " ".join(command)))
+
+        self._log_header(item, command, target, cache_dir, log_path if frozen else None)
+
+        # Pada build beku, proses anak mengalihkan SELURUH keluaran pip ke file
+        # log; pipa stdout hanya menerima sedikit. Baca file itu paralel supaya
+        # log di jendela ini selengkap terminal.
+        tail_stop = threading.Event()
+        tail_thread: threading.Thread | None = None
+        if frozen:
+            if log_path.exists():
+                try:
+                    log_path.unlink()
+                except OSError:
+                    pass
+            tail_thread = threading.Thread(
+                target=self._tail_log_file,
+                args=(log_path, tail_stop),
+                daemon=True,
+                name="batikcraft-install-tail",
+            )
+            tail_thread.start()
+
         creation = 0
         if sys.platform == "win32":
             creation = getattr(subprocess, "CREATE_NO_WINDOW", 0)
-        process = subprocess.Popen(  # noqa: S603 - perintah dibentuk internal
-            command,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            bufsize=1,
-            creationflags=creation,
-        )
-        assert process.stdout is not None
-        # pip --progress-bar raw menulis "Progress <selesai> of <total>" per file;
-        # angka itu dipakai untuk menggerakkan bar pada baris tabel.
         progress_pattern = re.compile(r"Progress (\d+) of (\d+)")
-        for line in process.stdout:
-            stripped = line.rstrip()
-            if not stripped:
-                continue
-            match = progress_pattern.search(stripped)
-            if match:
-                done, total = int(match.group(1)), int(match.group(2))
-                if total > 0:
-                    self._messages.put(("progress", (item.key, done / total)))
-                continue
-            if stripped.startswith(("Downloading", "Collecting", "Installing")):
-                self._messages.put(("status", f"{item.name}: {stripped[:70]}"))
-            self._messages.put(("log", stripped))
-        code = process.wait()
+        try:
+            process = subprocess.Popen(  # noqa: S603 - perintah dibentuk internal
+                command,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                bufsize=1,
+                creationflags=creation,
+            )
+            assert process.stdout is not None
+            for line in process.stdout:
+                stripped = line.rstrip()
+                if not stripped:
+                    continue
+                # SEMUA baris masuk log (termasuk baris progres), sama seperti
+                # yang terlihat di terminal.
+                self._messages.put(("log", stripped))
+                match = progress_pattern.search(stripped)
+                if match:
+                    done, total = int(match.group(1)), int(match.group(2))
+                    if total > 0:
+                        self._messages.put(("progress", (item.key, done / total)))
+                elif stripped.startswith(("Downloading", "Collecting", "Installing")):
+                    self._messages.put(("status", f"{item.name}: {stripped[:70]}"))
+            code = process.wait()
+        finally:
+            tail_stop.set()
+            if tail_thread is not None:
+                tail_thread.join(timeout=3)
+                # Ambil sisa isi file setelah proses selesai.
+                self._flush_log_file(log_path)
+
+        self._messages.put(("log", f"[exit code] {code}"))
         if code != 0:
-            raise RuntimeError(f"pip keluar dengan kode {code}")
+            raise RuntimeError(
+                f"pip keluar dengan kode {code}. Lihat detail lengkap di atas."
+            )
+
+    def _log_header(
+        self,
+        item: DependencyItem,
+        command: list[str],
+        target: Path,
+        cache_dir: Path,
+        log_file: Path | None,
+    ) -> None:
+        """Konteks lengkap sebelum keluaran pip, agar log dapat dibaca ulang."""
+
+        import platform
+        from datetime import datetime
+
+        variant = item.variant or "otomatis"
+        lines = [
+            "",
+            "=" * 78,
+            f"[{datetime.now():%Y-%m-%d %H:%M:%S}] {item.name}",
+            f"Paket        : {', '.join(requirements_for(item))}",
+            f"Varian torch : {variant}",
+            f"Target       : {target}",
+            f"Cache pip    : {cache_dir}",
+            f"Python       : {platform.python_version()} · {platform.platform()}",
+            f"Mode         : {'aplikasi beku (pip internal)' if getattr(sys, 'frozen', False) else 'pip sistem'}",
+        ]
+        if log_file is not None:
+            lines.append(f"Log pip      : {log_file}")
+        lines.append("$ " + " ".join(command))
+        lines.append("-" * 78)
+        for line in lines:
+            self._messages.put(("log", line))
+
+    def _tail_log_file(self, path: Path, stop: threading.Event) -> None:
+        """Ikuti file log proses anak dan teruskan setiap baris ke jendela."""
+
+        pending = ""
+        offset = 0
+        while not stop.is_set():
+            offset, pending = self._read_log_chunk(path, offset, pending)
+            stop.wait(0.25)
+
+    def _read_log_chunk(self, path: Path, offset: int, pending: str) -> tuple[int, str]:
+        try:
+            if not path.exists():
+                return offset, pending
+            with path.open("r", encoding="utf-8", errors="replace") as stream:
+                stream.seek(offset)
+                chunk = stream.read()
+                offset = stream.tell()
+        except OSError:
+            return offset, pending
+        if not chunk:
+            return offset, pending
+        pending += chunk
+        *lines, pending = pending.split("\n")
+        for line in lines:
+            text = line.rstrip()
+            if text:
+                self._messages.put(("log", text))
+        return offset, pending
+
+    def _flush_log_file(self, path: Path) -> None:
+        offset = getattr(self, "_log_tail_offset", 0)
+        offset, remainder = self._read_log_chunk(path, offset, "")
+        self._log_tail_offset = offset
+        if remainder.strip():
+            self._messages.put(("log", remainder.rstrip()))
 
     def _install_model(self, item: DependencyItem) -> None:
         from batikcraft_studio.ai.runtime_model_installer import (
@@ -675,9 +792,35 @@ class DependencyCenterWindow(tk.Toplevel):
             message = str(getattr(update, "message", "") or "")
             if message:
                 self._messages.put(("status", f"{item.name}: {message}"))
+            # Catat rincian byte/file agar log seinformatif terminal.
+            downloaded = int(getattr(update, "downloaded_bytes", 0) or 0)
+            total_bytes = int(getattr(update, "total_bytes", 0) or 0)
+            current_file = str(getattr(update, "current_file", "") or "")
+            detail = f"[{getattr(update, 'stage', '?')}] {message}"
+            if current_file:
+                detail += f" · file: {current_file}"
+            if total_bytes:
+                detail += (
+                    f" · {downloaded / 1024**2:.1f}/{total_bytes / 1024**2:.1f} MB"
+                    f" ({fraction * 100:.1f}%)"
+                )
+            if detail != getattr(self, "_last_model_detail", None):
+                self._last_model_detail = detail
+                self._messages.put(("log", detail))
 
         root = managed_runtime_root()
         root.mkdir(parents=True, exist_ok=True)
+        from datetime import datetime
+
+        for line in (
+            "",
+            "=" * 78,
+            f"[{datetime.now():%Y-%m-%d %H:%M:%S}] {item.name}",
+            f"Tujuan       : {root}",
+            f"Perkiraan    : {item.size_text}",
+            "-" * 78,
+        ):
+            self._messages.put(("log", line))
         if item.key == "sdxl":
             install_batikbrew_runtime(root, progress=progress)
         else:
@@ -813,8 +956,38 @@ class DependencyCenterWindow(tk.Toplevel):
     def _append_log(self, message: str) -> None:
         self.log.configure(state="normal")
         self.log.insert("end", message + "\n")
+        # Batasi agar widget tetap ringan pada instalasi panjang.
+        try:
+            lines = int(self.log.index("end-1c").split(".")[0])
+            if lines > 5000:
+                self.log.delete("1.0", f"{lines - 5000}.0")
+        except (tk.TclError, ValueError):
+            pass
         self.log.see("end")
         self.log.configure(state="disabled")
+        # Salin ke batikcraft.log supaya riwayat tetap ada setelah jendela tutup.
+        _LOGGER.info("%s", message)
+
+    def save_log_as(self) -> None:
+        from tkinter import filedialog
+
+        destination = filedialog.asksaveasfilename(
+            parent=self,
+            title="Simpan log instalasi",
+            defaultextension=".log",
+            initialfile="batikcraft-instalasi.log",
+            filetypes=[("Berkas log", "*.log"), ("Semua file", "*.*")],
+        )
+        if not destination:
+            return
+        try:
+            Path(destination).write_text(
+                self.log.get("1.0", "end"), encoding="utf-8"
+            )
+        except OSError as exc:
+            messagebox.showerror(self.title(), str(exc), parent=self)
+            return
+        self.status_value.set(f"Log disimpan: {destination}")
 
     def _open_log_folder(self) -> None:
         from batikcraft_studio.logging_setup import install_file_logging

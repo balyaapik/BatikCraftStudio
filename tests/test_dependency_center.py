@@ -143,3 +143,61 @@ def test_gpu_detection_avoids_launching_nvidia_smi_first() -> None:
     assert "cuInit" in source
     fallback = inspect.getsource(torch_wheel_index._nvidia_smi_reports_gpu)
     assert "CREATE_NO_WINDOW" in fallback
+
+
+def test_installation_log_captures_everything_the_terminal_shows() -> None:
+    """Pada build beku, pip menulis SELURUH keluarannya ke file log anak dan
+    pipa stdout hanya menerima sedikit — jendela harus ikut membaca file itu."""
+
+    import inspect
+
+    from batikcraft_studio.ui.dependency_center import DependencyCenterWindow
+
+    packages = inspect.getsource(DependencyCenterWindow._install_packages)
+    # Semua baris stdout dicatat, termasuk baris progres.
+    assert 'self._messages.put(("log", stripped))' in packages
+    assert "_tail_log_file" in packages
+    assert "[exit code]" in packages
+
+    header = inspect.getsource(DependencyCenterWindow._log_header)
+    for field in ("Paket", "Varian torch", "Target", "Cache pip", "Python", "Mode"):
+        assert field in header
+
+    model = inspect.getsource(DependencyCenterWindow._install_model)
+    assert "current_file" in model and "MB" in model
+
+
+def test_log_tail_reads_incremental_lines(tmp_path) -> None:
+    """Pembacaan bertahap tidak mengulang baris lama dan menahan baris
+    yang belum lengkap sampai newline tiba."""
+
+    import queue
+
+    from batikcraft_studio.ui.dependency_center import DependencyCenterWindow
+
+    window = DependencyCenterWindow.__new__(DependencyCenterWindow)
+    window._messages = queue.Queue()
+
+    path = tmp_path / "dependency-install.log"
+    path.write_text("Collecting torch\nDownloading torch.whl\n", encoding="utf-8")
+    offset, pending = window._read_log_chunk(path, 0, "")
+    lines = [payload for kind, payload in list(window._messages.queue) if kind == "log"]
+    assert lines == ["Collecting torch", "Downloading torch.whl"]
+
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write("Successfully installed torch\n")
+    window._messages = queue.Queue()
+    offset, pending = window._read_log_chunk(path, offset, pending)
+    lines = [payload for kind, payload in list(window._messages.queue) if kind == "log"]
+    assert lines == ["Successfully installed torch"]
+
+
+def test_log_tab_offers_save_and_clear() -> None:
+    import inspect
+
+    from batikcraft_studio.ui import dependency_center
+
+    source = inspect.getsource(dependency_center.DependencyCenterWindow._build_log_tab)
+    assert "Simpan Log…" in source
+    assert "Bersihkan" in source
+    assert "Buka Folder Log" in source
