@@ -257,6 +257,24 @@ class BatikBrewSDXLGenerationProvider:
         )
         base_seed = (int(options.seed) ^ prompt_hash) & 0x7FFFFFFF
         generator_device = device if device in {"cpu", "cuda"} else "cpu"
+
+        # Pengaman memori: di CPU, RAM tidak cukup berarti proses dibunuh OS
+        # (aplikasi "tiba-tiba tertutup"). Periksa dulu, turunkan resolusi bila
+        # perlu, dan tolak dengan pesan jelas bila mustahil.
+        render_resolution = options.resolution
+        # Hanya berlaku untuk pipeline diffusers sungguhan yang benar-benar
+        # mengalokasikan tensor besar (pipeline uji/injeksi dilewati).
+        real_pipeline = type(pipeline).__module__.split(".")[0] == "diffusers"
+        if device == "cpu" and real_pipeline:
+            from batikcraft_studio.ai.memory_guard import guard_cpu_generation
+
+            try:
+                render_resolution, note = guard_cpu_generation(options.resolution)
+            except MemoryError as exc:
+                raise BatificationError(str(exc)) from exc
+            if note:
+                logging.getLogger(__name__).warning(note)
+
         results: list[PretrainedAIBatificationResult] = []
 
         with self._inference_lock:
@@ -267,8 +285,8 @@ class BatikBrewSDXLGenerationProvider:
                     response = pipeline(
                         prompt=analysis.positive_prompt,
                         negative_prompt=analysis.negative_prompt,
-                        width=options.resolution,
-                        height=options.resolution,
+                        width=render_resolution,
+                        height=render_resolution,
                         num_inference_steps=options.inference_steps,
                         guidance_scale=options.guidance_scale,
                         generator=generator,
@@ -599,6 +617,12 @@ def _default_sdxl_pipeline_factory(
             "Model SDXL BatikBrew gagal dimuat. Pastikan runtime SDXL sudah diunduh dan "
             f"LoRA memang dilatih untuk SDXL. Detail: {exc}"
         ) from exc
+    logging.getLogger(__name__).info(
+        "Pipeline SDXL siap: perangkat=%s, dtype=%s, model=%s",
+        device,
+        getattr(dtype, "__str__", lambda: "?")(),
+        model_source,
+    )
     if device == "cpu":
         # Generasi CPU memuat SDXL fp32 (±13 GB) — tanpa slicing puncak RAM
         # bisa membunuh proses (force close). Aktifkan fitur hemat memori.

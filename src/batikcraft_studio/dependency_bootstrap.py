@@ -417,8 +417,20 @@ def managed_ai_install_command(
         str(pip_cache),
         "--target",
         str(install_target),
+        *_torch_index_arguments(),
         *packages,
     ]
+
+
+def _torch_index_arguments() -> list[str]:
+    """Index wheel PyTorch sesuai perangkat keras (CUDA bila GPU NVIDIA ada)."""
+
+    try:
+        from batikcraft_studio.ai.torch_wheel_index import torch_index_arguments
+
+        return torch_index_arguments()
+    except Exception:  # noqa: BLE001 - instalasi tidak boleh gagal karena ini
+        return []
 
 
 def maybe_run_dependency_installer(argv: Sequence[str] | None = None) -> int | None:
@@ -520,6 +532,7 @@ def run_bundled_pip_install(
         str(resolved_cache),
         "--target",
         str(target),
+        *_torch_index_arguments(),
         *requirements,
     ]
     try:
