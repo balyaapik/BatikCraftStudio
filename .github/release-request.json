@@ -1,5 +1,5 @@
 {
-  "release_tag": "v0.3.6",
-  "requested_at": "2026-07-20T15:00:00Z",
-  "reason": "Publish BatikCraft Studio 0.3.6: install CUDA-enabled PyTorch when an NVIDIA GPU is present, and guard CPU generation against out-of-memory process kills (clear refusal below ~9 GB free RAM, automatic 768 px fallback below ~14 GB). Fixes the application closing itself during AI generation."
+  "release_tag": "v0.3.7",
+  "requested_at": "2026-07-20T17:00:00Z",
+  "reason": "Publish BatikCraft Studio 0.3.7: the Dependency Center is now a single checkbox table (name, size, downloaded percent, progress bar, eligibility OK/NO, status) with Download & Install and Uninstall actions, an embedded Offline AI Model & LoRA tab, and the installation log tab. All scattered install buttons were removed."
 }
