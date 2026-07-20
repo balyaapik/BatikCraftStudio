@@ -5,6 +5,13 @@ from __future__ import annotations
 import logging
 import sys
 
+from .dependency_bootstrap_v042 import install_dependency_bootstrap_v042
+
+# Patch the legacy module as soon as the entry point is imported. Runtime uses the
+# corrected installer, while tests and integrations that monkeypatch the established
+# dependency_bootstrap entry point remain compatible.
+install_dependency_bootstrap_v042()
+
 
 def _configure_logging() -> None:
     logging.basicConfig(
@@ -30,9 +37,7 @@ def _run_private_worker_if_requested() -> int | None:
     package or model file was downloaded.
     """
 
-    # Release 0.4.2 keeps the selected CPU/CUDA variant when the frozen EXE
-    # launches its private pip worker.
-    from .dependency_bootstrap_v042 import maybe_run_dependency_installer
+    from .dependency_bootstrap import maybe_run_dependency_installer
 
     dependency_result = maybe_run_dependency_installer()
     if dependency_result is not None:
@@ -58,10 +63,8 @@ def main() -> int:
 
     activate_managed_ai_packages()
 
-    # Make all later imports (including DependencyCenterWindow's from-imports)
-    # receive the deterministic release-0.4.2 installer implementation.
-    from .dependency_bootstrap_v042 import install_dependency_bootstrap_v042
-
+    # Reapply defensively after managed package activation and before any UI module
+    # captures dependency functions through ``from ... import``.
     install_dependency_bootstrap_v042()
 
     # Create cache/runtime/model-library directories before any Windows folder picker,
