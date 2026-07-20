@@ -29,7 +29,10 @@ def test_installer_commands_include_torch_index() -> None:
     from batikcraft_studio import dependency_bootstrap
 
     source = inspect.getsource(dependency_bootstrap)
-    assert source.count("*_torch_index_arguments(),") == 2
+    # Jalur frozen dan non-frozen sama-sama menyisipkan index wheel torch;
+    # jalur non-frozen kini meneruskan varian pilihan pengguna (CPU/CUDA).
+    assert "*_torch_index_arguments(torch_variant)," in source
+    assert "*_torch_index_arguments()," in source
 
 
 def test_low_memory_refuses_with_clear_message_instead_of_dying(monkeypatch) -> None:

@@ -8,7 +8,7 @@ from batikcraft_studio.ui.dependency_center import _progress_bar
 
 def test_catalog_covers_packages_and_models() -> None:
     keys = {item.key for item in catalog.CATALOG}
-    assert {"torch", "diffusers", "sdxl", "sd15"} <= keys
+    assert {"torch_cpu", "torch_cuda", "diffusers", "sdxl", "sd15"} <= keys
     sdxl = next(item for item in catalog.CATALOG if item.key == "sdxl")
     assert sdxl.kind == catalog.KIND_MODEL
     assert sdxl.size_text.endswith("GB")
@@ -24,6 +24,9 @@ def test_eligibility_fails_when_disk_is_too_small(monkeypatch) -> None:
 
 def test_eligibility_passes_with_ample_disk(monkeypatch) -> None:
     monkeypatch.setattr(catalog, "free_disk_bytes", lambda: 200 * 1024**3)
+    from batikcraft_studio.ai import torch_wheel_index
+
+    monkeypatch.setattr(torch_wheel_index, "nvidia_gpu_present", lambda: True)
     for item in catalog.CATALOG:
         assert catalog.eligibility(item)[0] is True
 
@@ -40,3 +43,62 @@ def test_progress_bar_renders_proportionally() -> None:
     assert _progress_bar(1.0).count("░") == 0
     half = _progress_bar(0.5)
     assert half.count("█") == 6 and half.count("░") == 6
+
+
+def test_pytorch_is_offered_as_separate_cpu_and_cuda_rows() -> None:
+    keys = {item.key for item in catalog.CATALOG}
+    assert {"torch_cpu", "torch_cuda"} <= keys
+
+    cuda = next(item for item in catalog.CATALOG if item.key == "torch_cuda")
+    cpu = next(item for item in catalog.CATALOG if item.key == "torch_cpu")
+    assert cuda.requires_nvidia is True and cuda.variant == "cuda"
+    assert cpu.requires_nvidia is False and cpu.variant == "cpu"
+    # Build GPU jauh lebih besar daripada build CPU.
+    assert cuda.size_bytes > cpu.size_bytes * 4
+
+
+def test_cuda_row_is_ineligible_without_nvidia_gpu(monkeypatch) -> None:
+    monkeypatch.setattr(catalog, "free_disk_bytes", lambda: 200 * 1024**3)
+    from batikcraft_studio.ai import torch_wheel_index
+
+    monkeypatch.setattr(torch_wheel_index, "nvidia_gpu_present", lambda: False)
+    cuda = next(item for item in catalog.CATALOG if item.key == "torch_cuda")
+    eligible, reason = catalog.eligibility(cuda)
+    assert eligible is False and "NVIDIA" in reason
+
+
+def test_install_command_honours_requested_torch_variant() -> None:
+    from batikcraft_studio.dependency_bootstrap import managed_ai_install_command
+    from batikcraft_studio.ai.torch_wheel_index import CPU_WHEEL_INDEX, CUDA_WHEEL_INDEX
+
+    cuda_command = managed_ai_install_command(
+        ["torch>=2.4"], frozen=False, torch_variant="cuda"
+    )
+    cpu_command = managed_ai_install_command(
+        ["torch>=2.4"], frozen=False, torch_variant="cpu"
+    )
+    assert CUDA_WHEEL_INDEX in cuda_command
+    assert CPU_WHEEL_INDEX in cpu_command
+
+
+def test_progress_indicators_animate() -> None:
+    from batikcraft_studio.ui.dependency_center import _pulse_bar
+
+    # Fase tanpa angka: indikator berpindah posisi setiap tick.
+    assert _pulse_bar(0) != _pulse_bar(1) != _pulse_bar(2)
+    # Fase berangka: ujung bar berdenyut agar tidak tampak diam.
+    assert _progress_bar(0.5, pulse=0) != _progress_bar(0.5, pulse=1)
+
+
+def test_model_tab_has_no_dependency_install_buttons() -> None:
+    import inspect
+
+    from batikcraft_studio.ui import dependency_center
+
+    source = inspect.getsource(dependency_center.DependencyCenterWindow._build_model_tab)
+    assert "Instal Runtime SD1.5" not in source
+    assert "Instal BatikBrew SDXL" not in source
+    # Panel model fokus pada LoRA + runtime aktif.
+    assert "LoRA Terpasang" in source
+    assert "Aktifkan Model" in source
+    assert "Pakai Renderer Fondasi" in source

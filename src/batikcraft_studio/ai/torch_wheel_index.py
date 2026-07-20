@@ -15,6 +15,8 @@ _LOGGER = logging.getLogger(__name__)
 
 # Index resmi PyTorch. cu121 kompatibel dengan driver NVIDIA modern (>=527).
 CUDA_WHEEL_INDEX = "https://download.pytorch.org/whl/cu121"
+# Build CPU resmi: unduhan jauh lebih kecil daripada wheel default PyPI.
+CPU_WHEEL_INDEX = "https://download.pytorch.org/whl/cpu"
 
 
 def nvidia_gpu_present() -> bool:
@@ -48,4 +50,9 @@ def torch_index_arguments(force_cuda: bool | None = None) -> list[str]:
     return ["--extra-index-url", CUDA_WHEEL_INDEX]
 
 
-__all__ = ["CUDA_WHEEL_INDEX", "nvidia_gpu_present", "torch_index_arguments"]
+__all__ = [
+    "CPU_WHEEL_INDEX",
+    "CUDA_WHEEL_INDEX",
+    "nvidia_gpu_present",
+    "torch_index_arguments",
+]

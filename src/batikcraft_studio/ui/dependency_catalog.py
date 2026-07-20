@@ -33,6 +33,7 @@ class DependencyItem:
     folder: str = ""
     note: str = ""
     requires_nvidia: bool = False
+    variant: str = ""
     extra_requirements: tuple[str, ...] = field(default_factory=tuple)
 
     @property
@@ -46,13 +47,31 @@ class DependencyItem:
 # Ukuran adalah perkiraan unduhan nyata (setelah deduplikasi bobot).
 CATALOG: tuple[DependencyItem, ...] = (
     DependencyItem(
-        key="torch",
-        name="PyTorch (mesin inferensi)",
+        key="torch_cuda",
+        name="PyTorch GPU (CUDA) — untuk GPU NVIDIA",
         kind=KIND_PACKAGE,
-        size_bytes=int(2.4 * 1024**3),
+        size_bytes=int(2.9 * 1024**3),
         requirement="torch>=2.4",
         module="torch",
-        note="Otomatis memakai build CUDA bila GPU NVIDIA terdeteksi.",
+        variant="cuda",
+        requires_nvidia=True,
+        note=(
+            "Generasi berjalan di GPU: jauh lebih cepat dan hemat RAM. "
+            "Pilih salah satu saja antara versi GPU atau CPU."
+        ),
+    ),
+    DependencyItem(
+        key="torch_cpu",
+        name="PyTorch CPU — tanpa GPU NVIDIA",
+        kind=KIND_PACKAGE,
+        size_bytes=int(0.25 * 1024**3),
+        requirement="torch>=2.4",
+        module="torch",
+        variant="cpu",
+        note=(
+            "Unduhan jauh lebih kecil, tetapi generasi lambat dan butuh RAM "
+            "besar. Pilih ini bila komputer tidak punya GPU NVIDIA."
+        ),
     ),
     DependencyItem(
         key="diffusers",
@@ -114,6 +133,26 @@ def managed_runtime_root() -> Path:
     return default_managed_dependency_root() / "models" / "runtime"
 
 
+def installed_torch_variant() -> str | None:
+    """'cuda' / 'cpu' / None — varian torch yang benar-benar terpasang."""
+
+    packages = default_managed_ai_package_dir()
+    if not (packages / "torch").is_dir():
+        return None
+    for info in packages.glob("torch-*.dist-info"):
+        name = info.name.casefold()
+        if "+cu" in name or "cu12" in name or "cu11" in name:
+            return "cuda"
+    version_file = packages / "torch" / "version.py"
+    try:
+        content = version_file.read_text(encoding="utf-8", errors="ignore")
+    except OSError:
+        return "cpu"
+    if "cuda" in content and "None" not in content.split("cuda")[1][:20]:
+        return "cuda"
+    return "cpu"
+
+
 def is_installed(item: DependencyItem) -> bool:
     """True bila komponen sudah tersedia di folder terkelola."""
 
@@ -122,6 +161,10 @@ def is_installed(item: DependencyItem) -> bool:
         return folder.is_dir() and any(folder.iterdir())
     packages = default_managed_ai_package_dir()
     module_root = item.module.split(".")[0]
+    if item.variant:
+        # Baris CPU dan CUDA berbagi modul yang sama: hanya varian yang
+        # benar-benar terpasang yang ditandai "Terpasang".
+        return installed_torch_variant() == item.variant
     if (packages / module_root).is_dir():
         return True
     return any(packages.glob(f"{module_root}-*.dist-info")) if packages.is_dir() else False
@@ -224,6 +267,7 @@ __all__ = [
     "free_disk_bytes",
     "integrity_status",
     "installed_fraction",
+    "installed_torch_variant",
     "is_installed",
     "managed_runtime_root",
     "refresh_installed_state",

@@ -9,6 +9,7 @@ pengelola Model AI Offline & LoRA, tab ketiga menyimpan log instalasi.
 from __future__ import annotations
 
 import queue
+import re
 import shutil
 import subprocess
 import sys
@@ -44,9 +45,23 @@ _UNCHECKED = "☐"
 _BAR_SEGMENTS = 12
 
 
-def _progress_bar(fraction: float) -> str:
+def _progress_bar(fraction: float, pulse: int | None = None) -> str:
     filled = int(round(max(0.0, min(1.0, fraction)) * _BAR_SEGMENTS))
-    return "█" * filled + "░" * (_BAR_SEGMENTS - filled)
+    bar = ["█"] * filled + ["░"] * (_BAR_SEGMENTS - filled)
+    if pulse is not None and filled < _BAR_SEGMENTS:
+        # Denyut halus di ujung isian menandakan proses masih berjalan.
+        bar[filled] = "▓" if pulse % 2 == 0 else "▒"
+    return "".join(bar)
+
+
+def _pulse_bar(phase: int) -> str:
+    """Indikator bergerak untuk tahap tanpa persentase (resolusi/ekstraksi)."""
+
+    position = phase % _BAR_SEGMENTS
+    bar = ["░"] * _BAR_SEGMENTS
+    for offset in range(3):
+        bar[(position + offset) % _BAR_SEGMENTS] = "█"
+    return "".join(bar)
 
 
 class DependencyCenterWindow(tk.Toplevel):
@@ -62,6 +77,8 @@ class DependencyCenterWindow(tk.Toplevel):
         self._checked: set[str] = set()
         self._live_fraction: dict[str, float] = {}
         self._integrity_notes: dict[str, str] = {}
+        self._active_key: str | None = None
+        self._pulse_phase = 0
         self._messages: queue.Queue[tuple[str, object]] = queue.Queue()
         self._worker: threading.Thread | None = None
         self._busy = False
@@ -84,6 +101,7 @@ class DependencyCenterWindow(tk.Toplevel):
 
         self.refresh()
         self.after(150, self._poll_messages)
+        self.after(180, self._tick_animation)
 
     # ------------------------------------------------------------------
     # Tab 1 — tabel dependensi
@@ -170,43 +188,274 @@ class DependencyCenterWindow(tk.Toplevel):
     # Tab 2 — model offline & LoRA (tanpa tombol instalasi runtime)
     # ------------------------------------------------------------------
     def _build_model_tab(self, parent: ttk.Frame) -> None:
+        """Model LoRA aktif + pengaturan runtime, tanpa tombol instalasi.
+
+        Widget Tk tidak dapat dipindah antar-jendela, jadi panel ini dibangun
+        langsung di dalam tab (bukan menanam jendela lain).
+        """
+
         parent.columnconfigure(0, weight=1)
+        parent.columnconfigure(1, weight=1)
         parent.rowconfigure(0, weight=1)
         session = self.session
-        if session is None:
+        if session is None or not hasattr(session, "installed_models"):
             ttk.Label(
                 parent,
                 text=(
-                    "Pengelola model memerlukan proyek aktif. Buka jendela ini dari "
-                    "menu Dependencies saat editor sedang terbuka."
+                    "Pengelola model memerlukan proyek aktif. Buka Pusat Dependensi "
+                    "dari menu Dependencies saat editor sedang terbuka."
                 ),
                 style="Muted.TLabel",
                 wraplength=900,
+                justify="left",
             ).grid(row=0, column=0, sticky="nw")
             return
-        try:
-            from .offline_ai_dialogs_global import GlobalOfflineModelManagerWindow
 
-            holder = GlobalOfflineModelManagerWindow(self, session)
-            # Tanam isi jendela pengelola model ke dalam tab ini.
-            body = None
-            for child in holder.winfo_children():
-                body = child
-                break
-            if body is not None:
-                body.pack_forget()
-                body.grid_forget()
-                body.master = parent  # type: ignore[attr-defined]
-                body.grid(row=0, column=0, sticky="nsew")
-            holder.withdraw()
-            self._model_window = holder
-        except Exception as exc:  # noqa: BLE001 - jangan gagalkan seluruh jendela
+        left = ttk.LabelFrame(parent, text="LoRA Terpasang", padding=8)
+        left.grid(row=0, column=0, sticky="nsew", padx=(0, 8))
+        left.columnconfigure(0, weight=1)
+        left.rowconfigure(0, weight=1)
+        self.model_tree = ttk.Treeview(
+            left,
+            columns=("version", "family", "weight"),
+            show="tree headings",
+            selectmode="browse",
+        )
+        self.model_tree.heading("#0", text="Nama")
+        self.model_tree.heading("version", text="Versi")
+        self.model_tree.heading("family", text="Base")
+        self.model_tree.heading("weight", text="Bobot")
+        self.model_tree.column("#0", width=210)
+        self.model_tree.column("version", width=70, anchor="center")
+        self.model_tree.column("family", width=80, anchor="center")
+        self.model_tree.column("weight", width=70, anchor="e")
+        self.model_tree.grid(row=0, column=0, sticky="nsew")
+        model_actions = ttk.Frame(left)
+        model_actions.grid(row=1, column=0, sticky="ew", pady=(8, 0))
+        ttk.Button(
+            model_actions, text="Pasang .batikmodel…", command=self._install_lora_pack
+        ).pack(side="left")
+        ttk.Button(
+            model_actions, text="Hapus", command=self._uninstall_lora_pack
+        ).pack(side="left", padx=(6, 0))
+
+        right = ttk.LabelFrame(parent, text="Runtime Lokal & Model Aktif", padding=10)
+        right.grid(row=0, column=1, sticky="nsew")
+        right.columnconfigure(1, weight=1)
+
+        self.base_path = tk.StringVar(master=self)
+        self.controlnet_path = tk.StringVar(master=self)
+        row = 0
+        for label, variable in (
+            ("Folder base model", self.base_path),
+            ("Folder ControlNet", self.controlnet_path),
+        ):
+            ttk.Label(right, text=label).grid(row=row, column=0, sticky="w", pady=3)
             ttk.Label(
-                parent,
-                text=f"Pengelola model tidak dapat dimuat: {exc}",
+                right,
+                textvariable=variable,
                 style="Muted.TLabel",
-                wraplength=900,
-            ).grid(row=0, column=0, sticky="nw")
+                wraplength=320,
+                justify="left",
+            ).grid(row=row, column=1, sticky="ew", pady=3)
+            row += 1
+
+        self.device_value = tk.StringVar(master=self, value="auto")
+        self.precision_value = tk.StringVar(master=self, value="auto")
+        for label, variable, values in (
+            ("Perangkat", self.device_value, ("auto", "cpu", "cuda", "mps")),
+            ("Presisi", self.precision_value, ("auto", "float16", "float32", "bfloat16")),
+        ):
+            ttk.Label(right, text=label).grid(row=row, column=0, sticky="w", pady=3)
+            ttk.Combobox(
+                right, textvariable=variable, values=values, state="readonly"
+            ).grid(row=row, column=1, sticky="ew", pady=3)
+            row += 1
+
+        self.steps_value = tk.IntVar(master=self, value=28)
+        self.guidance_value = tk.DoubleVar(master=self, value=7.0)
+        self.control_value = tk.DoubleVar(master=self, value=0.85)
+        self.lora_value = tk.DoubleVar(master=self, value=0.85)
+        for label, variable, low, high, step in (
+            ("Inference steps", self.steps_value, 1, 150, 1),
+            ("Guidance scale", self.guidance_value, 0, 30, 0.5),
+            ("Kekuatan ControlNet", self.control_value, 0, 2, 0.05),
+            ("Kekuatan LoRA", self.lora_value, 0, 2, 0.05),
+        ):
+            ttk.Label(right, text=label).grid(row=row, column=0, sticky="w", pady=3)
+            ttk.Spinbox(
+                right,
+                textvariable=variable,
+                from_=low,
+                to=high,
+                increment=step,
+            ).grid(row=row, column=1, sticky="ew", pady=3)
+            row += 1
+
+        self.cpu_offload = tk.BooleanVar(master=self, value=False)
+        ttk.Checkbutton(
+            right, text="CPU offload untuk menghemat VRAM", variable=self.cpu_offload
+        ).grid(row=row, column=0, columnspan=2, sticky="w", pady=4)
+        row += 1
+        ttk.Label(
+            right,
+            text=(
+                "Folder model mengikuti Pusat Dependensi secara otomatis. "
+                "Unduhan runtime dilakukan di tab Dependensi."
+            ),
+            style="Muted.TLabel",
+            wraplength=340,
+            justify="left",
+        ).grid(row=row, column=0, columnspan=2, sticky="w", pady=(6, 6))
+        row += 1
+
+        model_buttons = ttk.Frame(right)
+        model_buttons.grid(row=row, column=0, columnspan=2, sticky="e")
+        ttk.Button(
+            model_buttons, text="Pakai Renderer Fondasi", command=self._use_foundation
+        ).pack(side="left")
+        ttk.Button(
+            model_buttons,
+            text="Aktifkan Model",
+            style="Accent.TButton",
+            command=self._activate_model,
+        ).pack(side="left", padx=(6, 0))
+
+        self.model_status = tk.StringVar(master=self, value="")
+        ttk.Label(
+            parent,
+            textvariable=self.model_status,
+            style="Muted.TLabel",
+            wraplength=960,
+            justify="left",
+        ).grid(row=1, column=0, columnspan=2, sticky="w", pady=(8, 0))
+        self._refresh_models()
+
+    # ------------------------------------------------------------------
+    # Aksi model LoRA
+    # ------------------------------------------------------------------
+    def _refresh_models(self) -> None:
+        tree = getattr(self, "model_tree", None)
+        if tree is None or not tree.winfo_exists():
+            return
+        for row in tree.get_children(""):
+            tree.delete(row)
+        try:
+            installed = list(self.session.installed_models)  # type: ignore[union-attr]
+        except Exception as exc:  # noqa: BLE001
+            self.model_status.set(f"Daftar model tidak dapat dibaca: {exc}")
+            return
+        for entry in installed:
+            manifest = entry.manifest
+            tree.insert(
+                "",
+                "end",
+                iid=manifest.model_id,
+                text=manifest.name,
+                values=(
+                    manifest.version,
+                    manifest.base_model_family,
+                    f"{manifest.recommended_weight:.2f}",
+                ),
+            )
+        # Path runtime selalu mengikuti hasil unduhan Pusat Dependensi.
+        try:
+            from batikcraft_studio.ai.runtime_model_installer import (
+                find_installed_runtime_models,
+            )
+
+            paths = find_installed_runtime_models()
+        except Exception:  # noqa: BLE001
+            paths = None
+        missing = "Belum terpasang — unduh di tab Dependensi."
+        self.base_path.set(str(paths.base_model) if paths else missing)
+        self.controlnet_path.set(str(paths.controlnet) if paths else missing)
+        try:
+            runtime = self.session.runtime_selection  # type: ignore[union-attr]
+        except Exception:  # noqa: BLE001
+            runtime = None
+        if runtime is None:
+            self.model_status.set("Provider aktif: renderer fondasi lokal.")
+        else:
+            self.model_status.set(f"Model aktif: {runtime.model_id}")
+            if tree.exists(runtime.model_id):
+                tree.selection_set(runtime.model_id)
+
+    def _selected_model_id(self) -> str | None:
+        tree = getattr(self, "model_tree", None)
+        if tree is None:
+            return None
+        selection = tree.selection()
+        return str(selection[0]) if selection else None
+
+    def _install_lora_pack(self) -> None:
+        from tkinter import filedialog
+
+        path = filedialog.askopenfilename(
+            parent=self,
+            title="Pasang paket model .batikmodel",
+            filetypes=[("BatikCraft model", "*.batikmodel"), ("Semua file", "*.*")],
+        )
+        if not path:
+            return
+        try:
+            self.session.install_model_pack(path, replace=True)  # type: ignore[union-attr]
+        except Exception as exc:  # noqa: BLE001
+            messagebox.showerror(self.title(), str(exc), parent=self)
+            return
+        self._refresh_models()
+
+    def _uninstall_lora_pack(self) -> None:
+        model_id = self._selected_model_id()
+        if model_id is None:
+            messagebox.showinfo(self.title(), "Pilih model LoRA dulu.", parent=self)
+            return
+        try:
+            self.session.uninstall_model_pack(model_id)  # type: ignore[union-attr]
+        except Exception as exc:  # noqa: BLE001
+            messagebox.showerror(self.title(), str(exc), parent=self)
+            return
+        self._refresh_models()
+
+    def _activate_model(self) -> None:
+        model_id = self._selected_model_id()
+        if model_id is None:
+            messagebox.showinfo(self.title(), "Pilih model LoRA dulu.", parent=self)
+            return
+        base = self.base_path.get().strip()
+        control = self.controlnet_path.get().strip()
+        if base.startswith("Belum terpasang"):
+            messagebox.showerror(
+                self.title(),
+                "Base model belum terpasang. Unduh di tab Dependensi terlebih dahulu.",
+                parent=self,
+            )
+            return
+        try:
+            self.session.configure_offline_model(  # type: ignore[union-attr]
+                model_id,
+                base_model_path=base,
+                controlnet_path=None if control.startswith("Belum") else control,
+                device=self.device_value.get(),
+                precision=self.precision_value.get(),
+                inference_steps=int(self.steps_value.get()),
+                guidance_scale=float(self.guidance_value.get()),
+                controlnet_scale=float(self.control_value.get()),
+                lora_scale=float(self.lora_value.get()),
+                cpu_offload=bool(self.cpu_offload.get()),
+            )
+        except Exception as exc:  # noqa: BLE001
+            messagebox.showerror(self.title(), str(exc), parent=self)
+            return
+        self._refresh_models()
+
+    def _use_foundation(self) -> None:
+        try:
+            self.session.use_foundation_renderer()  # type: ignore[union-attr]
+        except Exception as exc:  # noqa: BLE001
+            messagebox.showerror(self.title(), str(exc), parent=self)
+            return
+        self._refresh_models()
 
     # ------------------------------------------------------------------
     # Tab 3 — log
@@ -340,6 +589,7 @@ class DependencyCenterWindow(tk.Toplevel):
 
     def _install_worker(self, items: list[DependencyItem]) -> None:
         for index, item in enumerate(items, start=1):
+            self._messages.put(("active", item.key))
             self._messages.put(
                 ("status", f"[{index}/{len(items)}] Memasang {item.name}…")
             )
@@ -354,6 +604,7 @@ class DependencyCenterWindow(tk.Toplevel):
                 continue
             self._messages.put(("log", f"Selesai: {item.name}"))
             self._messages.put(("progress", (item.key, 1.0)))
+        self._messages.put(("active", None))
         self._messages.put(("done", None))
 
     def _install_packages(self, item: DependencyItem) -> None:
@@ -369,6 +620,7 @@ class DependencyCenterWindow(tk.Toplevel):
             cache_dir=cache_dir,
             frozen=frozen,
             log_file=log_path if frozen else None,
+            torch_variant=item.variant or None,
         )
         self._messages.put(("log", "$ " + " ".join(command)))
         creation = 0
@@ -383,10 +635,22 @@ class DependencyCenterWindow(tk.Toplevel):
             creationflags=creation,
         )
         assert process.stdout is not None
+        # pip --progress-bar raw menulis "Progress <selesai> of <total>" per file;
+        # angka itu dipakai untuk menggerakkan bar pada baris tabel.
+        progress_pattern = re.compile(r"Progress (\d+) of (\d+)")
         for line in process.stdout:
             stripped = line.rstrip()
-            if stripped:
-                self._messages.put(("log", stripped))
+            if not stripped:
+                continue
+            match = progress_pattern.search(stripped)
+            if match:
+                done, total = int(match.group(1)), int(match.group(2))
+                if total > 0:
+                    self._messages.put(("progress", (item.key, done / total)))
+                continue
+            if stripped.startswith(("Downloading", "Collecting", "Installing")):
+                self._messages.put(("status", f"{item.name}: {stripped[:70]}"))
+            self._messages.put(("log", stripped))
         code = process.wait()
         if code != 0:
             raise RuntimeError(f"pip keluar dengan kode {code}")
@@ -469,6 +733,13 @@ class DependencyCenterWindow(tk.Toplevel):
         state = "disabled" if busy else "normal"
         self.install_button.configure(state=state)
         self.uninstall_button.configure(state=state)
+        if busy:
+            self.overall_progress.configure(mode="indeterminate")
+            self.overall_progress.start(60)
+        else:
+            self.overall_progress.stop()
+            self.overall_progress.configure(mode="determinate")
+            self._active_key = None
 
     def _poll_messages(self) -> None:
         try:
@@ -482,6 +753,8 @@ class DependencyCenterWindow(tk.Toplevel):
                     key, fraction = payload
                     self._live_fraction[str(key)] = float(fraction)
                     self._update_row_progress(str(key), float(fraction))
+                elif kind == "active":
+                    self._active_key = str(payload) if payload else None
                 elif kind == "error":
                     messagebox.showerror(self.title(), str(payload), parent=self)
                 elif kind == "done":
@@ -497,12 +770,36 @@ class DependencyCenterWindow(tk.Toplevel):
         except tk.TclError:
             pass
 
+    def _tick_animation(self) -> None:
+        """Gerakkan indikator baris aktif supaya tidak terlihat mati.
+
+        Fase pip (resolusi dependensi, ekstraksi wheel) tidak memberi angka;
+        tanpa denyut ini bar tampak diam padahal proses berjalan.
+        """
+
+        key = self._active_key
+        if key and self.tree.exists(key):
+            self._pulse_phase = (self._pulse_phase + 1) % _BAR_SEGMENTS
+            fraction = self._live_fraction.get(key)
+            if fraction is None or fraction <= 0.0 or fraction >= 1.0:
+                self.tree.set(key, "progress", _pulse_bar(self._pulse_phase))
+                self.tree.set(key, "percent", "…")
+            else:
+                # Ada angka nyata: bar terisi, ujungnya berdenyut halus.
+                self.tree.set(
+                    key, "progress", _progress_bar(fraction, pulse=self._pulse_phase)
+                )
+            self.overall_progress.step(3)
+        try:
+            self.after(180, self._tick_animation)
+        except tk.TclError:
+            pass
+
     def _update_row_progress(self, key: str, fraction: float) -> None:
         if not self.tree.exists(key):
             return
         self.tree.set(key, "percent", f"{fraction * 100:.0f}%")
-        self.tree.set(key, "progress", _progress_bar(fraction))
-        self.overall_progress.configure(value=fraction * 100)
+        self.tree.set(key, "progress", _progress_bar(fraction, pulse=self._pulse_phase))
 
     def _append_log(self, message: str) -> None:
         self.log.configure(state="normal")

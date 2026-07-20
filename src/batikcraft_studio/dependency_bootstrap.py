@@ -377,8 +377,14 @@ def managed_ai_install_command(
     executable: str | Path | None = None,
     frozen: bool | None = None,
     log_file: str | Path | None = None,
+    torch_variant: str | None = None,
 ) -> list[str]:
-    """Build the child-process command used by the dependency manager GUI."""
+    """Build the child-process command used by the dependency manager GUI.
+
+    *torch_variant* memaksa build PyTorch tertentu: ``"cuda"`` memakai index
+    resmi PyTorch cu121, ``"cpu"`` memakai index CPU. Bila None, varian
+    ditentukan otomatis dari keberadaan GPU NVIDIA.
+    """
 
     packages = [str(value).strip() for value in requirements if str(value).strip()]
     if not packages:
@@ -417,17 +423,23 @@ def managed_ai_install_command(
         str(pip_cache),
         "--target",
         str(install_target),
-        *_torch_index_arguments(),
+        *_torch_index_arguments(torch_variant),
         *packages,
     ]
 
 
-def _torch_index_arguments() -> list[str]:
+def _torch_index_arguments(variant: str | None = None) -> list[str]:
     """Index wheel PyTorch sesuai perangkat keras (CUDA bila GPU NVIDIA ada)."""
 
     try:
         from batikcraft_studio.ai.torch_wheel_index import torch_index_arguments
 
+        if variant == "cuda":
+            return torch_index_arguments(force_cuda=True)
+        if variant == "cpu":
+            from batikcraft_studio.ai.torch_wheel_index import CPU_WHEEL_INDEX
+
+            return ["--extra-index-url", CPU_WHEEL_INDEX]
         return torch_index_arguments()
     except Exception:  # noqa: BLE001 - instalasi tidak boleh gagal karena ini
         return []
