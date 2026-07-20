@@ -1,5 +1,5 @@
 {
-  "release_tag": "v0.3.7",
-  "requested_at": "2026-07-20T17:00:00Z",
-  "reason": "Publish BatikCraft Studio 0.3.7: the Dependency Center is now a single checkbox table (name, size, downloaded percent, progress bar, eligibility OK/NO, status) with Download & Install and Uninstall actions, an embedded Offline AI Model & LoRA tab, and the installation log tab. All scattered install buttons were removed."
+  "release_tag": "v0.3.8",
+  "requested_at": "2026-07-20T19:00:00Z",
+  "reason": "Publish BatikCraft Studio 0.3.8: the Offline AI Model & LoRA tab is now populated with the active runtime and LoRA manager (redundant install buttons removed), dependency table progress animates during every install phase, and PyTorch is offered as separate CPU and CUDA rows with per-variant eligibility."
 }
