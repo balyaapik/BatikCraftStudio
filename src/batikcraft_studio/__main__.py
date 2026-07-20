@@ -5,6 +5,13 @@ from __future__ import annotations
 import logging
 import sys
 
+from .dependency_bootstrap_v042 import install_dependency_bootstrap_v042
+
+# Patch the legacy module as soon as the entry point is imported. Runtime uses the
+# corrected installer, while tests and integrations that monkeypatch the established
+# dependency_bootstrap entry point remain compatible.
+install_dependency_bootstrap_v042()
+
 
 def _configure_logging() -> None:
     logging.basicConfig(
@@ -55,6 +62,10 @@ def main() -> int:
     from .dependency_bootstrap import activate_managed_ai_packages
 
     activate_managed_ai_packages()
+
+    # Reapply defensively after managed package activation and before any UI module
+    # captures dependency functions through ``from ... import``.
+    install_dependency_bootstrap_v042()
 
     # Create cache/runtime/model-library directories before any Windows folder picker,
     # Hugging Face worker, or installer dialog tries to use them.
@@ -115,6 +126,12 @@ def main() -> int:
 
     install_lora_activation_persistence()
 
+    # Refuse to load SDXL on CPU when an NVIDIA GPU exists but the managed wheel
+    # is CPU-only. The guard runs before from_pretrained() can exhaust RAM.
+    from .ai.cuda_runtime_guard_v042 import install_cuda_runtime_guard_v042
+
+    install_cuda_runtime_guard_v042()
+
     # This must happen before tkinter or any application shell is imported.
     # Otherwise ``python -m batikcraft_studio`` is grouped under python.exe and
     # Windows may keep the Python icon in the taskbar.
@@ -129,6 +146,9 @@ def main() -> int:
     from .config import APP_NAME
     from .ui.cache_directory_guard import install_cache_directory_guard
     from .ui.canvas_selection_semantics import install_canvas_selection_semantics
+    from .ui.dependency_cuda_selection_patch import (
+        install_dependency_cuda_selection_patch,
+    )
     from .ui.dependency_integrity_patch import install_dependency_integrity_patch
     from .ui.dependency_profiles_patch import install_dependency_profiles_patch
     from .ui.inkscape_canvas_patch import install_inkscape_canvas_patch
@@ -145,6 +165,7 @@ def main() -> int:
 
     install_marketplace_model_progress()
     install_dependency_integrity_patch()
+    install_dependency_cuda_selection_patch()
     install_model_connectivity_settings_patch()
     install_dependency_profiles_patch()
     install_cache_directory_guard()
