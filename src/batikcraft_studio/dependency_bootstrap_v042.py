@@ -1,10 +1,8 @@
-"""Release 0.4.2 dependency-bootstrap corrections.
+"""Release 0.4.2+ dependency-bootstrap corrections.
 
-The frozen Windows installer previously dropped the selected Torch variant when
-launching its private child process. The child then returned to automatic
-``--extra-index-url`` resolution, allowing a newer CPU wheel from PyPI to replace
-the requested CUDA wheel. This module keeps the selected variant end-to-end,
-uses an exclusive official Torch index, and verifies the installed wheel.
+The frozen Windows installer keeps the selected Torch variant end-to-end, uses
+an exclusive official Torch index for direct Torch installs, and protects an
+already installed CUDA/CPU runtime while companion packages are added.
 """
 
 from __future__ import annotations
@@ -12,6 +10,7 @@ from __future__ import annotations
 import argparse
 import contextlib
 import os
+import re
 import site
 import sys
 from collections.abc import Iterable, Sequence
@@ -20,6 +19,9 @@ from typing import TextIO
 
 from batikcraft_studio import dependency_bootstrap as _legacy
 from batikcraft_studio.ai.torch_runtime_integrity import (
+    installed_torch_variant,
+    installed_torch_version,
+    prune_stale_torch_metadata,
     purge_managed_torch_installation,
     requirement_requests_torch,
     validate_torch_variant,
@@ -31,6 +33,16 @@ from batikcraft_studio.ai.torch_wheel_index import (
 )
 
 INSTALL_FLAG = _legacy.INSTALL_FLAG
+_TORCH_DEPENDENT_PACKAGES = {"accelerate", "peft"}
+
+
+def _requirement_name(requirement: str) -> str:
+    text = str(requirement).strip().casefold()
+    return re.split(r"[<>=!~\[;\s]", text, maxsplit=1)[0].replace("_", "-")
+
+
+def _requirements_need_existing_torch(requirements: Sequence[str]) -> bool:
+    return any(_requirement_name(value) in _TORCH_DEPENDENT_PACKAGES for value in requirements)
 
 
 def _resolved_torch_variant(
@@ -55,6 +67,50 @@ def _torch_index_arguments(
     return []
 
 
+def _torch_preservation_arguments(
+    requirements: Sequence[str],
+    *,
+    target: Path,
+    cache_dir: Path,
+) -> tuple[list[str], str | None, str | None, int]:
+    """Pin an existing Torch runtime while installing companion packages.
+
+    ``pip install --target --upgrade`` replaces existing directories.  PEFT and
+    Accelerate declare Torch as a dependency, so an unrestricted companion install
+    may stage a newer CPU wheel and then try to delete loaded CUDA DLLs.  For a
+    non-Torch request we constrain the resolver to the exact managed Torch version,
+    add the matching official wheel index, and omit ``--upgrade`` later.
+    """
+
+    if requirement_requests_torch(requirements):
+        return [], None, None, 0
+
+    version = installed_torch_version(target)
+    variant = installed_torch_variant(target)
+    if not version or variant not in {"cpu", "cuda"}:
+        return [], None, None, 0
+
+    removed = 0
+    try:
+        removed = prune_stale_torch_metadata(target)
+    except OSError:
+        # Metadata cleanup is defensive.  The constraint still prevents selection
+        # of a different Torch build even when an antivirus temporarily locks it.
+        removed = 0
+
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    constraint = cache_dir / "batikcraft-preserve-torch.txt"
+    constraint.write_text(f"torch=={version}\n", encoding="utf-8")
+    index = CUDA_WHEEL_INDEX if variant == "cuda" else CPU_WHEEL_INDEX
+    return ["--constraint", str(constraint), "--extra-index-url", index], version, variant, removed
+
+
+def _upgrade_arguments(preservation_arguments: Sequence[str]) -> list[str]:
+    if preservation_arguments:
+        return []
+    return ["--upgrade", "--upgrade-strategy", "only-if-needed"]
+
+
 def managed_ai_install_command(
     requirements: Iterable[str],
     *,
@@ -65,7 +121,7 @@ def managed_ai_install_command(
     log_file: str | Path | None = None,
     torch_variant: str | None = None,
 ) -> list[str]:
-    """Build a deterministic dependency-install command for release 0.4.2."""
+    """Build a deterministic dependency-install command."""
 
     packages = [str(value).strip() for value in requirements if str(value).strip()]
     if not packages:
@@ -94,6 +150,11 @@ def managed_ai_install_command(
         command.extend(["--", *packages])
         return command
 
+    preservation, _, _, _ = _torch_preservation_arguments(
+        packages,
+        target=install_target,
+        cache_dir=pip_cache,
+    )
     return [
         launcher,
         "-m",
@@ -101,9 +162,7 @@ def managed_ai_install_command(
         "install",
         "--disable-pip-version-check",
         "--no-input",
-        "--upgrade",
-        "--upgrade-strategy",
-        "only-if-needed",
+        *_upgrade_arguments(preservation),
         "--prefer-binary",
         "--progress-bar",
         "raw",
@@ -111,6 +170,7 @@ def managed_ai_install_command(
         str(pip_cache),
         "--target",
         str(install_target),
+        *preservation,
         *_torch_index_arguments(packages, resolved_variant),
         *packages,
     ]
@@ -167,12 +227,7 @@ def _dispatch_bundled_install(
     cache_dir: Path,
     torch_variant: str | None,
 ) -> int:
-    """Dispatch through the established bootstrap seam used by tests and plugins.
-
-    In the real application ``install_dependency_bootstrap_v042`` points that seam
-    back to the corrected installer below. Existing tests may replace it with a
-    three-argument fake, so the new keyword is supplied only when it is meaningful.
-    """
+    """Dispatch through the established bootstrap seam used by tests and plugins."""
 
     kwargs: dict[str, object] = {"target": target, "cache_dir": cache_dir}
     if torch_variant is not None:
@@ -221,6 +276,22 @@ def run_bundled_pip_install(
     resolved_variant = _resolved_torch_variant(packages, torch_variant)
     target = Path(target).expanduser().resolve()
     target.mkdir(parents=True, exist_ok=True)
+    resolved_cache = cache_dir or _legacy.default_managed_pip_cache_dir()
+    resolved_cache = Path(resolved_cache).expanduser().resolve()
+    resolved_cache.mkdir(parents=True, exist_ok=True)
+
+    if (
+        resolved_variant is None
+        and _requirements_need_existing_torch(packages)
+        and installed_torch_version(target) is None
+    ):
+        print(
+            "PyTorch belum terpasang. Pasang PyTorch GPU (CUDA) atau PyTorch CPU "
+            "terlebih dahulu sebelum Accelerate/PEFT.",
+            file=sys.stderr,
+        )
+        return 3
+
     if resolved_variant is not None:
         removed = purge_managed_torch_installation(target)
         print(
@@ -228,6 +299,26 @@ def run_bundled_pip_install(
             f"memasang varian {resolved_variant.upper()}.",
             flush=True,
         )
+
+    preservation, preserved_version, preserved_variant, stale_removed = (
+        _torch_preservation_arguments(
+            packages,
+            target=target,
+            cache_dir=resolved_cache,
+        )
+    )
+    if preservation:
+        print(
+            "Mempertahankan runtime PyTorch "
+            f"{preserved_version} ({str(preserved_variant).upper()}); "
+            "paket pendamping tidak diizinkan mengganti torch atau DLL aktif.",
+            flush=True,
+        )
+        if stale_removed:
+            print(
+                f"Membersihkan metadata Torch gagal sebelumnya: {stale_removed} path dihapus.",
+                flush=True,
+            )
 
     target_text = str(target)
     if target_text not in sys.path:
@@ -238,15 +329,11 @@ def run_bundled_pip_install(
         target_text if not previous_pythonpath else target_text + os.pathsep + previous_pythonpath
     )
 
-    resolved_cache = cache_dir or _legacy.default_managed_pip_cache_dir()
-    resolved_cache.mkdir(parents=True, exist_ok=True)
     arguments = [
         "install",
         "--disable-pip-version-check",
         "--no-input",
-        "--upgrade",
-        "--upgrade-strategy",
-        "only-if-needed",
+        *_upgrade_arguments(preservation),
         "--prefer-binary",
         "--progress-bar",
         "raw",
@@ -254,6 +341,7 @@ def run_bundled_pip_install(
         str(resolved_cache),
         "--target",
         target_text,
+        *preservation,
         *_torch_index_arguments(packages, resolved_variant),
         *packages,
     ]
@@ -263,6 +351,12 @@ def run_bundled_pip_install(
             version = validate_torch_variant(target, resolved_variant)
             print(
                 f"Verifikasi PyTorch berhasil: {version} ({resolved_variant.upper()}).",
+                flush=True,
+            )
+        if code == 0 and preservation and preserved_variant is not None:
+            version = validate_torch_variant(target, preserved_variant)
+            print(
+                f"PyTorch tetap terlindungi: {version} ({preserved_variant.upper()}).",
                 flush=True,
             )
         return code
