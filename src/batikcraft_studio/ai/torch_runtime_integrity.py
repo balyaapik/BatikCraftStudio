@@ -84,6 +84,51 @@ def installed_torch_variant(target: str | Path) -> str | None:
     return "cpu"
 
 
+def _dist_info_version(path: Path) -> str | None:
+    metadata_file = path / "METADATA"
+    try:
+        content = metadata_file.read_text(encoding="utf-8", errors="ignore")
+    except OSError:
+        content = ""
+    match = re.search(r"^Version:\s*(\S+)\s*$", content, re.MULTILINE | re.IGNORECASE)
+    if match:
+        return match.group(1)
+
+    stem = path.name[: -len(".dist-info")] if path.name.endswith(".dist-info") else path.name
+    if "-" in stem:
+        return stem.split("-", 1)[1]
+    return None
+
+
+def prune_stale_torch_metadata(target: str | Path) -> int:
+    """Remove stale Torch metadata without touching loaded native DLLs.
+
+    A failed ``pip --target --upgrade`` can copy metadata for a newer CPU wheel before
+    Windows rejects deletion of the active CUDA ``torch`` directory.  The Python package
+    remains the original runtime, but duplicate ``torch-*.dist-info`` directories can
+    confuse later dependency resolution.  Only metadata whose version differs from the
+    actual ``torch/version.py`` runtime is removed here.
+    """
+
+    root = Path(target).expanduser().resolve()
+    current = installed_torch_version(root)
+    if not current:
+        return 0
+
+    removed = 0
+    for path in root.glob("torch-*.dist-info"):
+        if _dist_info_version(path) == current:
+            continue
+        if path.is_dir():
+            shutil.rmtree(path, ignore_errors=False)
+        else:
+            path.unlink(missing_ok=True)
+        removed += 1
+    if removed:
+        importlib.invalidate_caches()
+    return removed
+
+
 def purge_managed_torch_installation(target: str | Path) -> int:
     """Remove the previous managed Torch wheel before changing variants."""
 
@@ -131,6 +176,7 @@ def validate_torch_variant(target: str | Path, expected: str) -> str:
 __all__ = [
     "installed_torch_variant",
     "installed_torch_version",
+    "prune_stale_torch_metadata",
     "purge_managed_torch_installation",
     "requirement_requests_torch",
     "validate_torch_variant",
