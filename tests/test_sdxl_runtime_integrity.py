@@ -120,9 +120,16 @@ def test_pointer_and_tiny_weight_files_require_repair(tmp_path: Path) -> None:
     assert any("ukuran bobot unet terlalu kecil" in issue for issue in issues)
 
 
-def test_dependency_window_reports_repair_instead_of_all_installed() -> None:
-    source = inspect.getsource(dependency_integrity_patch)
+def test_dependency_table_reports_repair_instead_of_all_installed() -> None:
+    """Status integritas kini tampil sebagai kolom Status pada Pusat
+    Dependensi (jendela tombol lama sudah dihapus)."""
 
-    assert "PERLU REPARASI" in source
-    assert "Periksa & Reparasi Semua AI + BatikBrew SDXL" in source
-    assert "inspect_batikbrew_runtime" in source
+    from batikcraft_studio.ui import dependency_catalog, dependency_center
+
+    catalog_source = inspect.getsource(dependency_catalog)
+    assert "PERLU REPARASI" in catalog_source
+    assert "inspect_batikbrew_runtime" in catalog_source
+
+    center_source = inspect.getsource(dependency_center)
+    assert "integrity_status" in center_source
+    assert "untuk memperbaiki" in center_source

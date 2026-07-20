@@ -94,26 +94,34 @@ def test_incompatible_version_is_selected_for_repair(monkeypatch) -> None:
     )
 
 
-def test_dependency_manager_installs_only_local_ai_packages() -> None:
-    modules = {module for module, _requirement in dependency_profiles_patch._LOCAL_REQUIREMENTS}
+def test_dependency_center_replaces_button_based_manager() -> None:
+    """Jendela lama berbasis tombol digantikan Pusat Dependensi bertabel:
+    pengguna mencentang komponen, lalu Unduh & Instal / Uninstall."""
 
-    assert "torch" in modules
-    assert "diffusers" in modules
-    assert "openai" not in modules
-    assert "google.genai" not in modules
-    assert "keyring" not in modules
+    from batikcraft_studio.ui import dependency_center, dependency_profiles_patch
+
+    # Patch tombol lama kini no-op.
+    patch_source = inspect.getsource(dependency_profiles_patch)
+    assert "Dihapus" in patch_source
+    assert "install_all_button" not in patch_source
+
+    source = inspect.getsource(dependency_center)
+    assert "Unduh & Instal Terpilih" in source
+    assert "Uninstall Terpilih" in source
+    assert '"eligibility"' in source
+    assert "Log Instalasi" in source
+    assert "Model AI Offline & LoRA" in source
+    # Tidak boleh ada lagi tombol instal-semua atau instal per komponen.
+    assert "Instal Semua AI" not in source
 
 
-def test_dependency_manager_explains_cloud_api_and_uses_large_status_table() -> None:
-    source = inspect.getsource(dependency_profiles_patch)
+def test_menu_exposes_single_dependency_entry() -> None:
+    from batikcraft_studio import batikbrew_context_tool_app as app
 
-    assert "OpenAI dan Gemini memakai API key" in source
-    assert 'window.title("AI Lokal & Model")' in source
-    # Jendela kini memakai layout tab yang dapat digulir: lebar lebih ringkas
-    # dan tabel tidak lagi dipaksa 14 baris (bagian bawah sempat terpotong).
-    assert "width = min(1120" in source
-    assert "window.tree.configure(height=7)" in source
-    assert 'text="Dependency AI Lokal"' in source
+    source = inspect.getsource(app)
+    assert "Pusat Dependensi (Unduh, Instal, Uninstall)…" in source
+    assert "Unduh / Instal BatikBrew SDXL…" not in source
+    assert "Instal / Reparasi Python AI Packages…" not in source
 
 
 def test_pyproject_exposes_scoped_ai_extras() -> None:

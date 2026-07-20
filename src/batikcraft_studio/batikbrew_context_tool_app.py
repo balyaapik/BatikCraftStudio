@@ -94,26 +94,11 @@ class ContextToolApplication(_ProgressApplication):
         _insert_before_help(menu_bar, "Effects", effects_menu)
 
         dependencies_menu = tk.Menu(menu_bar, tearoff=False)
+        # Satu pintu: seluruh unduhan/instalasi/uninstall dilakukan lewat tabel
+        # bercentang di Pusat Dependensi (tanpa tombol instal tersebar).
         dependencies_menu.add_command(
-            label="Dependency Manager…",
+            label="Pusat Dependensi (Unduh, Instal, Uninstall)…",
             command=self.open_dependency_manager,
-        )
-        dependencies_menu.add_command(
-            label="Instal / Reparasi Python AI Packages…",
-            command=self.open_dependency_manager,
-        )
-        dependencies_menu.add_separator()
-        dependencies_menu.add_command(
-            label="Unduh / Instal BatikBrew SDXL…",
-            command=lambda: self.install_runtime_models("sdxl"),
-        )
-        dependencies_menu.add_command(
-            label="Unduh / Instal SD1.5 + ControlNet…",
-            command=lambda: self.install_runtime_models("sd15"),
-        )
-        dependencies_menu.add_command(
-            label="Instal / Kelola LoRA & Model Lokal…",
-            command=editor.open_offline_model_manager,
         )
         dependencies_menu.add_separator()
         dependencies_menu.add_command(
@@ -247,13 +232,15 @@ class ContextToolApplication(_ProgressApplication):
             self.open_folder(default_log_dir())
 
     def open_dependency_manager(self) -> None:
-        editor = self.main_window._editor()
-        window = DependencyManagerWindow(
-            self.root,
-            install_sdxl=lambda: self.install_runtime_models("sdxl"),
-            install_sd15=lambda: self.install_runtime_models("sd15"),
-            manage_lora=editor.open_offline_model_manager,
-        )
+        """Buka Pusat Dependensi: tabel bercentang + model offline + log."""
+
+        from .ui.dependency_center import DependencyCenterWindow
+
+        try:
+            session = self.main_window._editor().session
+        except Exception:  # noqa: BLE001 - tetap buka walau editor belum siap
+            session = None
+        window = DependencyCenterWindow(self.root, session=session)
         window.focus_set()
 
     def install_runtime_models(self, family: str) -> None:
