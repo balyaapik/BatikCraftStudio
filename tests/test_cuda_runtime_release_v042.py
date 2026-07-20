@@ -51,7 +51,7 @@ def test_non_torch_packages_do_not_receive_torch_only_index(tmp_path: Path) -> N
     assert dependency_bootstrap_v042.CPU_WHEEL_INDEX not in command
 
 
-def test_select_all_keeps_only_cuda_on_nvidia(monkeypatch) -> None:
+def test_dual_selection_keeps_only_cuda_on_nvidia(monkeypatch) -> None:
     monkeypatch.setattr(dependency_cuda_selection_patch, "nvidia_gpu_present", lambda: True)
     checked = dependency_cuda_selection_patch.normalise_checked_keys(
         {"torch_cpu", "torch_cuda", "diffusers", "sdxl"}
@@ -61,10 +61,20 @@ def test_select_all_keeps_only_cuda_on_nvidia(monkeypatch) -> None:
     assert "torch_cpu" not in checked
 
 
-def test_select_all_keeps_only_cpu_without_nvidia(monkeypatch) -> None:
+def test_dual_selection_keeps_only_cpu_without_nvidia(monkeypatch) -> None:
     monkeypatch.setattr(dependency_cuda_selection_patch, "nvidia_gpu_present", lambda: False)
     checked = dependency_cuda_selection_patch.normalise_checked_keys(
         {"torch_cpu", "torch_cuda", "diffusers"}
+    )
+
+    assert "torch_cpu" in checked
+    assert "torch_cuda" not in checked
+
+
+def test_explicit_single_cpu_choice_is_preserved_on_nvidia(monkeypatch) -> None:
+    monkeypatch.setattr(dependency_cuda_selection_patch, "nvidia_gpu_present", lambda: True)
+    checked = dependency_cuda_selection_patch.normalise_checked_keys(
+        {"torch_cpu", "diffusers"}
     )
 
     assert "torch_cpu" in checked
@@ -83,18 +93,21 @@ def test_torch_variant_detection_and_purge(tmp_path: Path) -> None:
     (packages / "functorch").mkdir()
 
     assert torch_runtime_integrity.installed_torch_variant(packages) == "cuda"
-    assert torch_runtime_integrity.validate_torch_variant(packages, "cuda") == "2.5.1+cu121"
+    version = torch_runtime_integrity.validate_torch_variant(packages, "cuda")
+    assert version == "2.5.1+cu121"
     assert torch_runtime_integrity.purge_managed_torch_installation(packages) >= 3
     assert torch_runtime_integrity.installed_torch_variant(packages) is None
 
 
-def test_cuda_guard_runs_before_sdxl_factory() -> None:
+def test_cuda_guard_runs_before_final_sdxl_factory_call() -> None:
     from batikcraft_studio.ai import cuda_runtime_guard_v042
 
     source = inspect.getsource(cuda_runtime_guard_v042.install_cuda_runtime_guard_v042)
     assert "nvidia_gpu_present" in source
     assert "guard_cpu_generation" in source
-    assert source.index("guard_cpu_generation") < source.index("return original_factory(settings)")
+    assert source.rindex("guard_cpu_generation") < source.rindex(
+        "return original_factory(settings)"
+    )
 
 
 def test_release_bootstrap_is_installed_before_application_import() -> None:
@@ -102,12 +115,13 @@ def test_release_bootstrap_is_installed_before_application_import() -> None:
         encoding="utf-8"
     )
 
+    application_import = "from .integrated_market_app import ContextToolApplication"
     assert source.index("install_dependency_bootstrap_v042()") < source.index(
-        "from .integrated_market_app import ContextToolApplication"
+        application_import
     )
     assert source.index("install_cuda_runtime_guard_v042()") < source.index(
-        "from .integrated_market_app import ContextToolApplication"
+        application_import
     )
     assert source.index("install_dependency_cuda_selection_patch()") < source.index(
-        "from .integrated_market_app import ContextToolApplication"
+        application_import
     )
