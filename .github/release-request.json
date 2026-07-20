@@ -1,5 +1,5 @@
 {
-  "release_tag": "v0.3.9",
-  "requested_at": "2026-07-20T21:00:00Z",
-  "reason": "Publish BatikCraft Studio 0.3.9: explicit PyTorch variants now install through --index-url so the chosen CUDA build is really installed, installed-variant detection reads the real version string, and both pattern and canvas image generation use bfloat16 plus memory slicing and RAM checks on CPU to prevent out-of-memory shutdowns."
+  "release_tag": "v0.4.0",
+  "requested_at": "2026-07-20T23:00:00Z",
+  "reason": "Publish BatikCraft Studio 0.4.0: fix model downloads in the Dependency Center (progress callback now matches the installer signature) and detect NVIDIA GPUs through the CUDA driver library instead of launching nvidia-smi, which failed with a 0xc0000142 dialog in frozen builds."
 }
