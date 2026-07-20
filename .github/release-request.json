@@ -1,5 +1,5 @@
 {
-  "release_tag": "v0.4.3",
-  "requested_at": "2026-07-20T19:45:00Z",
-  "reason": "Publish BatikCraft Studio 0.4.3: fix the frozen Windows dependency entry point so the PyTorch CUDA installer uses the release parser that accepts --torch-variant cuda, preventing argparse exit code 2 and allowing CUDA wheel installation to proceed."
+  "release_tag": "v0.4.4",
+  "requested_at": "2026-07-20T20:30:00Z",
+  "reason": "Publish BatikCraft Studio 0.4.4: preserve the installed PyTorch CPU/CUDA runtime while installing Accelerate, PEFT, and other companion dependencies; prevent pip --target --upgrade from replacing loaded torch DLLs such as asmjit.dll; pin dependency resolution to the existing Torch version and clean stale metadata left by failed upgrades."
 }
