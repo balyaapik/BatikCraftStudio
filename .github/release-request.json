@@ -1,5 +1,5 @@
 {
-  "release_tag": "v0.4.1",
-  "requested_at": "2026-07-21T01:00:00Z",
-  "reason": "Publish BatikCraft Studio 0.4.1: the Dependency Center installation log now captures the complete pip output (including the frozen-build child log file), rich per-component headers, exit codes, model download byte details, mirroring to batikcraft.log, and Save/Clear log actions."
+  "release_tag": "v0.4.2",
+  "requested_at": "2026-07-20T19:00:00Z",
+  "reason": "Publish BatikCraft Studio 0.4.2: keep the selected PyTorch CPU/CUDA variant through the frozen Windows installer, use exclusive official Torch indexes, prevent CPU and CUDA rows from being installed together, purge and verify old Torch wheels, and stop SDXL from silently falling back to CPU on NVIDIA systems before model loading can crash the application."
 }
