@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "batikcraft-studio"
-version = "0.4.1"
+version = "0.4.2"
 description = "Native Tkinter studio for manual and AI-assisted batik motif creation."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -149,7 +149,7 @@ select = ["E", "F", "I", "UP", "B"]
 "src/batikcraft_studio/ui/image_set_dataset_dialog.py" = ["E501"]
 "src/batikcraft_studio/ui/library_asset_nft_dialog.py" = ["E501"]
 "src/batikcraft_studio/ui/local_training_dialog.py" = ["E501"]
-"src/batikcraft_studio/ui/marketplace_mint_dialog.py" = ["E501", "UP035"]
+"src/batikcraft_studio/ui/marketplace_mint_dialog.py" = ["E501"]
 "src/batikcraft_studio/ui/nft_economics_dialog.py" = ["F821", "F841"]
 "src/batikcraft_studio/ui/object_tree_editor.py" = ["E501"]
 "src/batikcraft_studio/ui/offline_ai_dialogs_global.py" = ["E501", "F401"]
