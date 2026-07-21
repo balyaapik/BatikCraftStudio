@@ -81,6 +81,62 @@ def sdxl_requirement_message(model_path: str | Path, family: str) -> str:
     )
 
 
+def detect_lora_family(lora_path: str | Path) -> str:
+    """Tebak keluarga LoRA dari manifest paket atau isi bobotnya."""
+
+    path = Path(lora_path).expanduser()
+    if not path.is_file():
+        return FAMILY_UNKNOWN
+
+    # 1) Paket .batikmodel menyimpan base_model_family pada manifest.
+    for candidate in (
+        path.parent / "manifest.json",
+        path.parent.parent / "manifest.json",
+    ):
+        if not candidate.is_file():
+            continue
+        try:
+            payload = json.loads(candidate.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+            continue
+        model = payload.get("model") if isinstance(payload, dict) else None
+        family = str((model or {}).get("base_model_family", "")).casefold()
+        if family in {"sdxl", "stable-diffusion-xl", "sd-xl"}:
+            return FAMILY_SDXL
+        if family in {"sd15", "sd-1.5", "stable-diffusion-1-5", "sd1.5"}:
+            return FAMILY_SD15
+
+    # 2) Header safetensors: SDXL memakai dimensi 2048 dan blok text_encoder_2.
+    try:
+        with path.open("rb") as stream:
+            header_size = int.from_bytes(stream.read(8), "little")
+            if not 0 < header_size <= 32 * 1024 * 1024:
+                return FAMILY_UNKNOWN
+            header = json.loads(stream.read(header_size).decode("utf-8"))
+    except (OSError, ValueError, UnicodeDecodeError, json.JSONDecodeError):
+        return FAMILY_UNKNOWN
+
+    keys = [key for key in header if key != "__metadata__"]
+    if any("text_encoder_2" in key for key in keys):
+        return FAMILY_SDXL
+    for key in keys:
+        entry = header.get(key)
+        shape = entry.get("shape") if isinstance(entry, dict) else None
+        if not shape:
+            continue
+        if 2048 in shape:
+            return FAMILY_SDXL
+        if 768 in shape and "text_model" in key:
+            return FAMILY_SD15
+    metadata = header.get("__metadata__") or {}
+    base = str(metadata.get("ss_base_model_version", "")).casefold()
+    if "xl" in base:
+        return FAMILY_SDXL
+    if base:
+        return FAMILY_SD15
+    return FAMILY_UNKNOWN
+
+
 def unet_supports_sdxl(pipeline: Any) -> bool:
     """True bila UNet pipeline benar-benar UNet SDXL."""
 
@@ -95,6 +151,7 @@ __all__ = [
     "FAMILY_SDXL",
     "FAMILY_UNKNOWN",
     "describe_family",
+    "detect_lora_family",
     "detect_model_family",
     "sdxl_requirement_message",
     "unet_supports_sdxl",

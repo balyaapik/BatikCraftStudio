@@ -657,7 +657,7 @@ def _default_sdxl_pipeline_factory(
     try:
         activate_managed_ai_packages()
         import torch
-        from diffusers import StableDiffusionXLPipeline
+        from diffusers import StableDiffusionPipeline, StableDiffusionXLPipeline
     except ImportError as exc:
         raise BatificationError(describe_ai_import_error(exc)) from exc
 
@@ -696,18 +696,42 @@ def _default_sdxl_pipeline_factory(
     from batikcraft_studio.ai.model_family import (
         FAMILY_SDXL,
         FAMILY_UNKNOWN,
+        detect_lora_family,
         detect_model_family,
         sdxl_requirement_message,
     )
 
-    if local.exists():
-        family = detect_model_family(model_source)
-        trace(f"Keluarga model terdeteksi: {family}")
-        if family not in (FAMILY_SDXL, FAMILY_UNKNOWN):
-            raise BatificationError(sdxl_requirement_message(model_source, family))
+    from batikcraft_studio.ai.model_family import FAMILY_SD15, describe_family
+
+    family = detect_model_family(model_source) if local.exists() else FAMILY_UNKNOWN
+    trace(f"Keluarga base model: {describe_family(family)}")
+
+    # LoRA SD 1.5 tidak dapat dipakai di atas SDXL, dan sebaliknya. Pilih kelas
+    # pipeline yang cocok dengan base model alih-alih memaksa SDXL: memaksa
+    # SDXL pada base SD 1.5 gagal jauh di dalam diffusers
+    # (addition_time_embed_dim None) dengan pesan yang membingungkan.
+    lora_family = detect_lora_family(settings.lora_path)
+    if lora_family != FAMILY_UNKNOWN:
+        trace(f"Keluarga LoRA: {describe_family(lora_family)}")
+    if (
+        lora_family in (FAMILY_SDXL, FAMILY_SD15)
+        and family in (FAMILY_SDXL, FAMILY_SD15)
+        and lora_family != family
+    ):
+        raise BatificationError(
+            f"LoRA ini dilatih untuk {describe_family(lora_family)}, sedangkan "
+            f"base model yang dipilih adalah {describe_family(family)}.\n"
+            "Samakan keduanya pada tab Model AI Offline & LoRA: pilih base "
+            "model yang sesuai, atau pakai LoRA yang cocok dengan base model."
+        )
+
+    pipeline_class = StableDiffusionXLPipeline
+    if FAMILY_SD15 in (family, lora_family):
+        pipeline_class = StableDiffusionPipeline
+        trace("Memakai pipeline Stable Diffusion 1.5 (sesuai model & LoRA).")
 
     try:
-        pipeline = StableDiffusionXLPipeline.from_pretrained(
+        pipeline = pipeline_class.from_pretrained(
             model_source,
             torch_dtype=dtype,
             use_safetensors=True,
@@ -727,7 +751,9 @@ def _default_sdxl_pipeline_factory(
             unet_supports_sdxl,
         )
 
-        if not unet_supports_sdxl(pipeline):
+        if pipeline_class is StableDiffusionXLPipeline and not unet_supports_sdxl(
+            pipeline
+        ):
             # UNet tanpa addition_time_embed_dim = bukan UNet SDXL.
             raise BatificationError(
                 sdxl_requirement_message(

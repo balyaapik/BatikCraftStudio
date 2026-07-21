@@ -83,3 +83,61 @@ def test_generation_validates_family_before_and_after_loading() -> None:
     assert "detect_model_family" in source
     assert "unet_supports_sdxl" in source
     assert "sdxl_requirement_message" in source
+
+
+def test_lora_family_from_batikmodel_manifest(tmp_path) -> None:
+    """Paket .batikmodel menyatakan base_model_family; itu sumber paling tepercaya."""
+
+    pack = tmp_path / "batikcraft-style-any-object-v1"
+    (pack / "model").mkdir(parents=True)
+    (pack / "manifest.json").write_text(
+        json.dumps(
+            {
+                "format": "batikcraft-model-pack",
+                "model": {"base_model_family": "sd15", "resolution": 512},
+            }
+        ),
+        encoding="utf-8",
+    )
+    lora = pack / "model" / "pytorch_lora_weights.safetensors"
+    # Header safetensors minimal supaya file dapat dibaca.
+    header = json.dumps({"__metadata__": {}}).encode("utf-8")
+    lora.write_bytes(len(header).to_bytes(8, "little") + header)
+
+    assert model_family.detect_lora_family(lora) == model_family.FAMILY_SD15
+
+
+def test_lora_family_from_safetensors_header(tmp_path) -> None:
+    sdxl_lora = tmp_path / "sdxl.safetensors"
+    header = json.dumps(
+        {
+            "lora_te2_text_model.weight": {"shape": [2048, 64], "dtype": "F16"},
+            "__metadata__": {},
+        }
+    ).encode("utf-8")
+    sdxl_lora.write_bytes(len(header).to_bytes(8, "little") + header)
+    assert model_family.detect_lora_family(sdxl_lora) == model_family.FAMILY_SDXL
+
+    sd15_lora = tmp_path / "sd15.safetensors"
+    header = json.dumps(
+        {
+            "lora_te_text_model_encoder.weight": {"shape": [768, 32], "dtype": "F16"},
+            "__metadata__": {},
+        }
+    ).encode("utf-8")
+    sd15_lora.write_bytes(len(header).to_bytes(8, "little") + header)
+    assert model_family.detect_lora_family(sd15_lora) == model_family.FAMILY_SD15
+
+
+def test_generation_routes_pipeline_by_model_family() -> None:
+    """LoRA SD 1.5 harus dijalankan dengan pipeline SD 1.5, bukan dipaksa SDXL
+    (penyebab 'NoneType * int' pada addition_time_embed_dim)."""
+
+    from batikcraft_studio.ai import batikbrew_generation
+
+    source = inspect.getsource(batikbrew_generation)
+    assert "pipeline_class = StableDiffusionPipeline" in source
+    assert "pipeline = pipeline_class.from_pretrained(" in source
+    assert "detect_lora_family(settings.lora_path)" in source
+    # Ketidakcocokan LoRA vs base model dilaporkan sebelum bobot dimuat.
+    assert "LoRA ini dilatih untuk" in source
