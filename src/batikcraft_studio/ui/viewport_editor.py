@@ -81,6 +81,7 @@ _GRID_BASE = 25.0
 _GRID_MINOR = "#B8C0C8"
 _GRID_MAJOR = "#8793A0"
 _ZOOM_DEBOUNCE_MS = 100  # milliseconds after last zoom event before final render
+_MAX_PREVIEW_PIXELS = 16_000_000  # batas atas biaya satu resize pratinjau
 
 
 class ViewportEditorWorkspaceView(CanvasStructureEditorWorkspaceView):
@@ -108,6 +109,12 @@ class ViewportEditorWorkspaceView(CanvasStructureEditorWorkspaceView):
         # Preview (low-quality) image kept for instant feedback
         self._preview_photo: ImageTk.PhotoImage | None = None
         self._preview_canvas_id: int | None = None
+        # Pratinjau cepat saat zoom: gambar hasil render terakhir beserta skala
+        # dan titik asalnya DALAM KOORDINAT PROYEK. Koordinat proyek dipakai
+        # (bukan koordinat kanvas) karena origin kanvas ikut berubah saat zoom.
+        self._last_preview_pil: Image.Image | None = None
+        self._last_preview_scale: float = 0.0
+        self._last_preview_origin_proj: tuple[float, float] = (0.0, 0.0)
         super().__init__(*args, **kwargs)
         self._install_viewport_controls()
         self._viewport_ready = True
@@ -290,25 +297,73 @@ class ViewportEditorWorkspaceView(CanvasStructureEditorWorkspaceView):
         new_scale: float,
         anchor_proj: tuple[float, float] | None,
     ) -> None:
-        """Scale the most-recent preview tile image for instant feedback."""
-        if self._preview_photo is None:
-            return
-        if old_scale <= 0:
+        """Tampilkan hasil render terakhir yang diskalakan, seketika.
+
+        Ini yang membuat zoom terasa mulus. Render tile berjalan di thread lain
+        dan baru selesai belakangan; tanpa lapisan ini kanvas menampilkan tile
+        berskala lama di posisi yang sudah bergeser -- terlihat sebagai gambar
+        berkedip, atau hilang sama sekali ketika tile lama jatuh di luar
+        scrollregion yang baru.
+
+        Biayanya satu resize BILINEAR seukuran viewport per langkah zoom, jadi
+        tidak bergantung pada jumlah objek maupun besar gambar di kanvas.
+        """
+
+        project = self.session.project
+        source = self._last_preview_pil
+        if project is None or source is None or self._last_preview_scale <= 0:
             return
         try:
-            # Use PIL Image kept in self._last_preview_pil if available
-            src: Image.Image | None = getattr(self, "_last_preview_pil", None)
-            if src is None:
+            ratio = new_scale / self._last_preview_scale
+            target_w = max(1, round(source.width * ratio))
+            target_h = max(1, round(source.height * ratio))
+            # Batasi biaya: yang terlihat hanya seluas viewport. Gambar sangat
+            # besar tidak perlu diskalakan seluruhnya.
+            if target_w * target_h > _MAX_PREVIEW_PIXELS:
                 return
-            ratio = new_scale / old_scale
-            new_w = max(1, round(src.width * ratio))
-            new_h = max(1, round(src.height * ratio))
-            quick = src.resize((new_w, new_h), Image.Resampling.BILINEAR)
-            self._preview_photo = ImageTk.PhotoImage(quick)
-            if self._preview_canvas_id is not None:
-                self.canvas.itemconfigure(self._preview_canvas_id, image=self._preview_photo)
+            resample = (
+                Image.Resampling.NEAREST
+                if ratio > 1.0
+                else Image.Resampling.BILINEAR
+            )
+            scaled = source.resize((target_w, target_h), resample)
+            photo = ImageTk.PhotoImage(scaled)
+
+            left, top, _content_w, _content_h = self._preview_geometry(
+                project, new_scale
+            )
+            origin_x, origin_y = self._last_preview_origin_proj
+            canvas_x = left + origin_x * new_scale
+            canvas_y = top + origin_y * new_scale
+
+            if self._preview_canvas_id is None:
+                self._preview_canvas_id = self.canvas.create_image(
+                    canvas_x,
+                    canvas_y,
+                    image=photo,
+                    anchor="nw",
+                    tags="zoom-preview",
+                )
+            else:
+                self.canvas.itemconfigure(self._preview_canvas_id, image=photo)
+                self.canvas.coords(self._preview_canvas_id, canvas_x, canvas_y)
+            # Referensi harus dipegang, kalau tidak PhotoImage langsung dibuang
+            # garbage collector dan gambarnya hilang.
+            self._preview_photo = photo
+            self.canvas.tag_raise("zoom-preview")
         except Exception:  # noqa: BLE001
             pass
+
+    def _hide_quick_preview(self) -> None:
+        """Lepas lapisan pratinjau -- hanya setelah tile final terpasang."""
+
+        if self._preview_canvas_id is not None:
+            try:
+                self.canvas.delete(self._preview_canvas_id)
+            except Exception:  # noqa: BLE001
+                pass
+            self._preview_canvas_id = None
+        self._preview_photo = None
 
     # ------------------------------------------------------------------
     # Core render
@@ -350,24 +405,23 @@ class ViewportEditorWorkspaceView(CanvasStructureEditorWorkspaceView):
         )
         self._preview_scale = desired_scale
 
-        # Layout geometry
+        # Layout geometry — satu sumber kebenaran, dipakai juga oleh pratinjau
+        # zoom supaya keduanya tidak mungkin bergeser satu sama lain.
         display_width = max(1, round(project.canvas.width * desired_scale))
         display_height = max(1, round(project.canvas.height * desired_scale))
-        content_width = max(width, display_width + _VIEW_PADDING * 2)
-        content_height = max(height, display_height + _VIEW_PADDING * 2)
-
-        self._preview_left = (
-            (content_width - display_width) / 2
-            if content_width == width
-            else float(_VIEW_PADDING)
-        )
-        self._preview_top = (
-            (content_height - display_height) / 2
-            if content_height == height
-            else float(_VIEW_PADDING)
-        )
+        (
+            self._preview_left,
+            self._preview_top,
+            content_width,
+            content_height,
+        ) = self._preview_geometry(project, desired_scale)
 
         self.canvas.configure(scrollregion=(0, 0, content_width, content_height))
+        # Tile yang sudah ada masih memakai koordinat skala lama. Render tile
+        # baru berjalan di thread lain, jadi tanpa langkah ini ada jeda di mana
+        # gambar berada di luar scrollregion baru -- persis gejala "gambar
+        # menghilang saat zoom".
+        self._reposition_tiles_for_scale(desired_scale)
         anchor = getattr(self, "_zoom_render_anchor", None)
         if anchor is not None and anchor[0] is not None:
             self._zoom_render_anchor = None  # sekali pakai
@@ -391,6 +445,53 @@ class ViewportEditorWorkspaceView(CanvasStructureEditorWorkspaceView):
 
         # Trigger async tile render
         self._kick_tile_render(project, desired_scale, generation, content_width, content_height)
+
+    def _preview_geometry(
+        self, project: Any, scale: float
+    ) -> tuple[float, float, float, float]:
+        """Geometri tata letak untuk *scale*: (left, top, content_w, content_h).
+
+        Dipakai bersama oleh render final dan pratinjau zoom. Kalau keduanya
+        menghitung sendiri-sendiri, pratinjau akan meleset dari tile final dan
+        pergantiannya terlihat sebagai lompatan.
+        """
+
+        width = max(self.canvas.winfo_width(), 40)
+        height = max(self.canvas.winfo_height(), 40)
+        display_width = max(1, round(project.canvas.width * scale))
+        display_height = max(1, round(project.canvas.height * scale))
+        content_width = max(width, display_width + _VIEW_PADDING * 2)
+        content_height = max(height, display_height + _VIEW_PADDING * 2)
+        left = (
+            (content_width - display_width) / 2
+            if content_width == width
+            else float(_VIEW_PADDING)
+        )
+        top = (
+            (content_height - display_height) / 2
+            if content_height == height
+            else float(_VIEW_PADDING)
+        )
+        return left, top, content_width, content_height
+
+    def _reposition_tiles_for_scale(self, scale: float) -> None:
+        """Geser tile yang sudah tampil ke posisi skala *scale*.
+
+        Ukuran pikselnya masih ukuran lama (sedikit buram sampai render selesai),
+        tetapi gambar tetap ada di tempat yang benar. Operasinya hanya
+        ``coords`` per tile -- tidak ada penskalaan gambar sama sekali.
+        """
+
+        if not self._tile_canvas_ids:
+            return
+        tile_px = max(1, round(TILE_SIZE * scale))
+        left = self._preview_left
+        top = self._preview_top
+        for (tx, ty), cid in self._tile_canvas_ids.items():
+            try:
+                self.canvas.coords(cid, left + tx * tile_px, top + ty * tile_px)
+            except Exception:  # noqa: BLE001
+                continue
 
     def _increment_render_generation(self) -> int:
         self._render_generation += 1
@@ -509,6 +610,11 @@ class ViewportEditorWorkspaceView(CanvasStructureEditorWorkspaceView):
         # (stitch visible tiles into one image for _last_preview_pil)
         self._stitch_preview_pil(tiles, zoom_scale, preview_left, preview_top)
 
+        # Baru sekarang lapisan pratinjau boleh dilepas: penggantinya sudah ada
+        # di layar. Melepasnya lebih awal persis itulah kedipan yang terlihat.
+        if tiles:
+            self._hide_quick_preview()
+
         self._draw_grid()
         self._draw_selection()
         self._draw_rulers()
@@ -535,14 +641,22 @@ class ViewportEditorWorkspaceView(CanvasStructureEditorWorkspaceView):
             y = (ty - min_ty) * tile_px
             canvas.paste(img, (x, y))
         self._last_preview_pil = canvas
+        # Skala dan titik asal DALAM KOORDINAT PROYEK: keduanya wajib supaya
+        # pratinjau zoom bisa diposisikan ulang dengan benar pada skala apa pun.
+        self._last_preview_scale = zoom_scale
+        self._last_preview_origin_proj = (
+            float(min_tx * TILE_SIZE),
+            float(min_ty * TILE_SIZE),
+        )
 
     def _clear_tile_overlays(self) -> None:
         for cid in self._tile_canvas_ids.values():
             self.canvas.delete(cid)
         self._tile_canvas_ids.clear()
         self._tile_photos.clear()
-        self._preview_photo = None
-        self._preview_canvas_id = None
+        self._hide_quick_preview()
+        self._last_preview_pil = None
+        self._last_preview_scale = 0.0
 
     # ------------------------------------------------------------------
     # Revision helpers
