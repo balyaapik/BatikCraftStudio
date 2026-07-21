@@ -281,6 +281,22 @@ class BatikBrewSDXLGenerationProvider:
             for index in range(options.variation_count):
                 seed = (base_seed + index) & 0x7FFFFFFF
                 generator = torch.Generator(device=generator_device).manual_seed(seed)
+                from batikcraft_studio.ai.generation_trace import trace as _trace
+
+                _trace(
+                    f"Variasi {index + 1}/{options.variation_count} "
+                    f"(seed {seed}, {render_resolution}px, "
+                    f"{options.inference_steps} langkah) dimulai"
+                )
+
+                def _step_callback(
+                    _pipe: Any, step: int, _timestep: Any, callback_kwargs: dict
+                ) -> dict:
+                    total_steps = max(1, int(options.inference_steps))
+                    if step == 0 or (step + 1) % 5 == 0 or step + 1 >= total_steps:
+                        _trace(f"  langkah {step + 1}/{total_steps}")
+                    return callback_kwargs
+
                 try:
                     response = pipeline(
                         prompt=analysis.positive_prompt,
@@ -290,6 +306,7 @@ class BatikBrewSDXLGenerationProvider:
                         num_inference_steps=options.inference_steps,
                         guidance_scale=options.guidance_scale,
                         generator=generator,
+                        **_step_callback_kwargs(pipeline, _step_callback),
                     )
                 except Exception as exc:
                     raise BatificationError(f"Generasi SDXL BatikBrew gagal: {exc}") from exc
@@ -615,6 +632,15 @@ def _default_sdxl_pipeline_factory(
     from batikcraft_studio.ai.memory_guard import guard_model_load
 
     logger = logging.getLogger(__name__)
+    from batikcraft_studio.ai.generation_trace import (
+        describe_compute_environment,
+        trace,
+    )
+
+    for line in describe_compute_environment(torch):
+        trace(line)
+    trace(f"Perangkat dipakai: {device} · presisi {dtype}")
+    trace(f"Memuat model: {model_source}")
     logger.info(
         "Memuat SDXL: perangkat=%s, dtype=%s, sumber=%s", device, dtype, model_source
     )
@@ -637,6 +663,7 @@ def _default_sdxl_pipeline_factory(
             low_cpu_mem_usage=True,
         )
         logger.info("Bobot SDXL termuat; menyiapkan perangkat…")
+        trace("Bobot model termuat, menyiapkan perangkat…")
         from batikcraft_studio.ai.memory_guard import low_memory_profile
 
         frugal = low_memory_profile(device, torch)
@@ -648,11 +675,13 @@ def _default_sdxl_pipeline_factory(
             # kebutuhan. VRAM puncak turun drastis (cocok untuk 6 GB), dengan
             # konsekuensi lebih lambat.
             logger.info("Profil hemat: sequential CPU offload aktif.")
+            trace("Profil hemat: sequential CPU offload aktif (VRAM kecil).")
             pipeline.enable_sequential_cpu_offload()
         elif offload_needed and device == "cuda" and hasattr(
             pipeline, "enable_model_cpu_offload"
         ):
             logger.info("Mengaktifkan model CPU offload (VRAM terbatas).")
+            trace("Model CPU offload aktif (VRAM terbatas).")
             pipeline.enable_model_cpu_offload()
         else:
             pipeline.to(device)
@@ -705,6 +734,28 @@ def _resolve_device(torch: Any, requested: str) -> str:
     from batikcraft_studio.ai.device_resolution import resolve_torch_device
 
     return resolve_torch_device(torch, requested)
+
+
+def _step_callback_kwargs(pipeline: Any, callback: Any) -> dict[str, Any]:
+    """Argumen callback per langkah sesuai versi diffusers yang terpasang."""
+
+    import inspect
+
+    try:
+        parameters = inspect.signature(pipeline.__call__).parameters
+    except (TypeError, ValueError):
+        return {}
+    if "callback_on_step_end" in parameters:
+        return {"callback_on_step_end": callback}
+    if "callback" in parameters:
+        # API lama memakai (step, timestep, latents).
+        return {
+            "callback": lambda step, timestep, latents: callback(
+                pipeline, step, timestep, {}
+            ),
+            "callback_steps": 1,
+        }
+    return {}
 
 
 def _vram_is_tight(torch: Any, device: str) -> bool:

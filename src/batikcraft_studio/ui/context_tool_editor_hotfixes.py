@@ -2561,6 +2561,21 @@ class _HotfixV14(_HotfixV13):
 
         def worker() -> None:
             reporter = progress.reporter
+            # Alirkan jejak proses generasi ke panel log dialog secara langsung.
+            from batikcraft_studio.ai.generation_trace import set_trace_sink
+
+            def sink(line: str) -> None:
+                try:
+                    progress.log_line(line)
+                except Exception:  # noqa: BLE001
+                    pass
+
+            set_trace_sink(sink)
+            progress.log_line(f"Provider: {provider_label(provider_id)}")
+            progress.log_line(
+                f"Mode: {'ornamen tunggal' if output_mode == OUTPUT_MODE_ORNAMENT else 'pola penuh'}"
+                f" · {options.variation_count} variasi"
+            )
             try:
                 reporter.update(
                     "Tahap 2/6 — Menganalisis warna, garis, tema, dan komposisi",
@@ -2595,11 +2610,15 @@ class _HotfixV14(_HotfixV13):
                 )
             except Exception as exc:  # noqa: BLE001 - worker failures return to Tk
                 message = str(exc)
+                progress.log_line(f"GAGAL: {message}")
                 progress.fail(message)
+                set_trace_sink(None)
                 self._post_pretrained_ai_callback(
                     lambda: self._finish_batikbrew_error(message)
                 )
                 return
+            progress.log_line("Selesai: semua variasi dihasilkan.")
+            set_trace_sink(None)
             self._post_pretrained_ai_callback(
                 lambda: self._show_batikbrew_variations(plan, results)
             )
@@ -2976,6 +2995,21 @@ class ContextToolEditorWorkspaceView(_HotfixV14):
 
         def worker() -> None:
             reporter = progress.reporter
+            # Alirkan jejak proses generasi ke panel log dialog secara langsung.
+            from batikcraft_studio.ai.generation_trace import set_trace_sink
+
+            def sink(line: str) -> None:
+                try:
+                    progress.log_line(line)
+                except Exception:  # noqa: BLE001
+                    pass
+
+            set_trace_sink(sink)
+            progress.log_line(f"Provider: {provider_label(provider_id)}")
+            progress.log_line(
+                f"Mode: {'ornamen tunggal' if output_mode == OUTPUT_MODE_ORNAMENT else 'pola penuh'}"
+                f" · {options.variation_count} variasi"
+            )
             try:
                 reporter.update(
                     "Tahap 2/6 — Menganalisis warna, garis, tema, dan komposisi",

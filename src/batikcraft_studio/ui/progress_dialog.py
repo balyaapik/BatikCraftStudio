@@ -83,8 +83,8 @@ class ProgressDialog(tk.Toplevel):
         self._auto_close_ms = auto_close_ms
 
         self.title(title)
-        self.geometry("600x260")
-        self.minsize(500, 220)
+        self.geometry("640x460")
+        self.minsize(560, 380)
         self.resizable(True, True)
         self.transient(parent.winfo_toplevel())
         self.protocol("WM_DELETE_WINDOW", self._request_window_close)
@@ -117,11 +117,33 @@ class ProgressDialog(tk.Toplevel):
             style="Muted.TLabel",
             wraplength=560,
             justify="left",
-        ).grid(row=3, column=0, sticky="nsew", pady=(4, 0))
-        body.rowconfigure(3, weight=1)
+        ).grid(row=3, column=0, sticky="ew", pady=(4, 0))
+
+        # Panel log seperti terminal: memperlihatkan proses generasi
+        # (perangkat, model, langkah difusi) selagi berjalan.
+        log_frame = ttk.LabelFrame(body, text="Log proses", padding=(6, 4))
+        log_frame.grid(row=4, column=0, sticky="nsew", pady=(10, 0))
+        log_frame.columnconfigure(0, weight=1)
+        log_frame.rowconfigure(0, weight=1)
+        self.log = tk.Text(
+            log_frame,
+            height=10,
+            wrap="none",
+            state="disabled",
+            background="#12100E",
+            foreground="#E8DFD2",
+            insertbackground="#E8DFD2",
+            font=("Consolas", 9),
+            borderwidth=0,
+        )
+        self.log.grid(row=0, column=0, sticky="nsew")
+        log_scroll = ttk.Scrollbar(log_frame, orient="vertical", command=self.log.yview)
+        log_scroll.grid(row=0, column=1, sticky="ns")
+        self.log.configure(yscrollcommand=log_scroll.set)
+        body.rowconfigure(4, weight=1)
 
         actions = ttk.Frame(body)
-        actions.grid(row=4, column=0, sticky="e", pady=(14, 0))
+        actions.grid(row=5, column=0, sticky="e", pady=(12, 0))
         self.cancel_button = ttk.Button(actions, text="Batal", command=self.cancel)
         if self._cancellable:
             self.cancel_button.pack(side="right")
@@ -135,6 +157,28 @@ class ProgressDialog(tk.Toplevel):
 
     def post(self, update: ProgressUpdate) -> None:
         self._events.put(update)
+
+    def log_line(self, message: str) -> None:
+        """Tambahkan satu baris ke panel log (aman dipanggil dari worker)."""
+
+        self._events.put(("log", message))
+
+    def _append_log(self, message: str) -> None:
+        from datetime import datetime
+
+        widget = getattr(self, "log", None)
+        if widget is None or not widget.winfo_exists():
+            return
+        widget.configure(state="normal")
+        widget.insert("end", f"[{datetime.now():%H:%M:%S}] {message}\n")
+        try:
+            lines = int(widget.index("end-1c").split(".")[0])
+            if lines > 800:
+                widget.delete("1.0", f"{lines - 800}.0")
+        except (tk.TclError, ValueError):
+            pass
+        widget.see("end")
+        widget.configure(state="disabled")
 
     def finish(self, message: str = "Selesai") -> None:
         self._events.put(("complete", message))
@@ -208,6 +252,9 @@ class ProgressDialog(tk.Toplevel):
                 self.percent_value.set("")
                 self.progress.configure(mode="indeterminate")
                 self.progress.start(12)
+            return
+        if isinstance(event, tuple) and len(event) == 2 and event[0] == "log":
+            self._append_log(str(event[1]))
             return
         if not isinstance(event, tuple) or len(event) != 2:
             return
