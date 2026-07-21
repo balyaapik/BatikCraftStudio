@@ -114,6 +114,9 @@ class ViewportEditorWorkspaceView(CanvasStructureEditorWorkspaceView):
         self._last_preview_origin_proj: tuple[float, float] = (0.0, 0.0)
         # Sisi tile (koordinat proyek) dari grid yang sedang tampil.
         self._active_tile_size: int = TILE_SIZE
+        # Tata letak render terakhir: (skala, lebar konten, tinggi konten).
+        self._last_layout: tuple[float, float, float] | None = None
+        self._grid_signature: tuple[Any, ...] | None = None
         super().__init__(*args, **kwargs)
         self._install_viewport_controls()
         self._viewport_ready = True
@@ -158,6 +161,9 @@ class ViewportEditorWorkspaceView(CanvasStructureEditorWorkspaceView):
 
     def set_grid_visible(self, visible: bool) -> None:
         self._grid_visible = bool(visible)
+        # Tanda tangan harus direset, kalau tidak _draw_grid() akan menganggap
+        # grid masih tergambar dan menolak menggambarnya kembali.
+        self._grid_signature = None
         if self._grid_visible:
             self._draw_grid()
             self._draw_selection()
@@ -442,17 +448,31 @@ class ViewportEditorWorkspaceView(CanvasStructureEditorWorkspaceView):
             content_height,
         ) = self._preview_geometry(project, desired_scale)
 
-        self.canvas.configure(scrollregion=(0, 0, content_width, content_height))
-        # Tile yang sudah ada masih memakai koordinat skala lama. Render tile
-        # baru berjalan di thread lain, jadi tanpa langkah ini ada jeda di mana
-        # gambar berada di luar scrollregion baru -- persis gejala "gambar
-        # menghilang saat zoom".
-        self._reposition_tiles_for_scale(desired_scale)
+        # Menggambar tidak mengubah tata letak. Kalau skala dan ukuran konten
+        # sama seperti render sebelumnya, JANGAN sentuh scrollregion maupun
+        # posisi gulir: _current_project_center() -> _restore_project_center()
+        # adalah perjalanan bolak-balik lewat pembagian float, dan Tk
+        # membulatkan hasilnya ke piksel bulat. Selisih pecahannya membuat
+        # kanvas bergeser ~1 px setiap frame -- itulah kedipan yang terlihat
+        # saat menggambar. Di bawah 100% gejalanya tidak muncul karena gambar
+        # masih muat di jendela sehingga posisinya terkunci di 0.
+        layout = (desired_scale, content_width, content_height)
+        layout_changed = getattr(self, "_last_layout", None) != layout
         anchor = getattr(self, "_zoom_render_anchor", None)
-        if anchor is not None and anchor[0] is not None:
+        has_anchor = anchor is not None and anchor[0] is not None
+
+        if layout_changed:
+            self.canvas.configure(scrollregion=(0, 0, content_width, content_height))
+            # Tile yang sudah ada masih memakai koordinat skala lama. Render
+            # tile baru berjalan di thread lain, jadi tanpa langkah ini ada
+            # jeda di mana gambar berada di luar scrollregion baru.
+            self._reposition_tiles_for_scale(desired_scale)
+            self._last_layout = layout
+
+        if has_anchor:
             self._zoom_render_anchor = None  # sekali pakai
             self._restore_zoom_anchor(anchor, content_width, content_height)
-        else:
+        elif layout_changed:
             self._restore_project_center(old_center, content_width, content_height)
         self._update_zoom_label()
 
@@ -719,6 +739,7 @@ class ViewportEditorWorkspaceView(CanvasStructureEditorWorkspaceView):
         self._last_preview_pil = None
         self._last_preview_scale = 0.0
         self._active_tile_size = TILE_SIZE
+        self._last_layout = None
 
     # ------------------------------------------------------------------
     # Revision helpers
@@ -756,10 +777,27 @@ class ViewportEditorWorkspaceView(CanvasStructureEditorWorkspaceView):
     # ------------------------------------------------------------------
 
     def _draw_grid(self) -> None:
-        self.canvas.delete("canvas-grid")
         project = self.session.project
         if not self._grid_visible or project is None or self._preview_scale <= 0:
+            self.canvas.delete("canvas-grid")
+            self._grid_signature = None
             return
+        # Grid hanya bergantung pada skala dan posisi gulir. Saat menggambar,
+        # keduanya tidak berubah — menghapus lalu membuat ulang ~80 item garis
+        # di setiap frame hanya menghasilkan kedipan tanpa perubahan apa pun.
+        signature = (
+            self._preview_scale,
+            self._preview_left,
+            self._preview_top,
+            round(self.canvas.canvasx(0)),
+            round(self.canvas.canvasy(0)),
+            self.canvas.winfo_width(),
+            self.canvas.winfo_height(),
+        )
+        if getattr(self, "_grid_signature", None) == signature:
+            return
+        self._grid_signature = signature
+        self.canvas.delete("canvas-grid")
         scale = self._preview_scale
         spacing = _GRID_BASE
         while spacing * scale < 12:

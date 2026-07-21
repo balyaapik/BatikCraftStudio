@@ -1,5 +1,5 @@
 {
-  "release_tag": "v0.6.2",
-  "requested_at": "2026-07-21T22:20:00Z",
-  "reason": "Publish BatikCraft Studio 0.6.2: canvas zoom is now capped at 150% as requested. Zoom presets above 150% (200%, 300%, 400%, 600%, 800%) were removed, and wheel, keyboard and preset zoom all clamp to the new maximum."
+  "release_tag": "v0.6.3",
+  "requested_at": "2026-07-21T23:30:00Z",
+  "reason": "Publish BatikCraft Studio 0.6.3: fixes canvas flicker while drawing. Every render re-issued a scroll command and rebuilt every grid line even when nothing about the layout had changed, forcing a full canvas repaint roughly 28 times per second during a stroke. Scroll position and grid are now only touched when the layout actually changes."
 }
