@@ -48,6 +48,25 @@ class PretrainedAIPlan:
         return self.motif_object_id is not None
 
 
+def _without_background(content: bytes) -> bytes:
+    """Buang latar foto bila ada; aset yang sudah transparan dibiarkan."""
+
+    try:
+        from batikcraft_studio.imaging.background_removal import remove_background
+
+        cleaned, removed = remove_background(content)
+    except Exception:  # noqa: BLE001 - kegagalan tidak boleh menghentikan generasi
+        return content
+    if removed:
+        try:
+            from batikcraft_studio.ai.generation_trace import trace
+
+            trace("Latar foto dihapus sebelum batifikasi.")
+        except Exception:  # noqa: BLE001
+            pass
+    return cleaned
+
+
 class PretrainedAIBatificationProjectSession(NonMLBatificationProjectSession):
     """Add object AI and notebook-compatible BatikBrew SDXL generation."""
 
@@ -102,6 +121,9 @@ class PretrainedAIBatificationProjectSession(NonMLBatificationProjectSession):
             raise ProjectSessionError("Goresan penghapus tidak dapat menjadi referensi AI.")
         try:
             source_content = renderable_source_content(source, self._assets)
+            # Foto berlatar membuat model ikut membatikkan latarnya sehingga
+            # hasilnya bukan ornamen tunggal. Pisahkan objek lebih dulu.
+            source_content = _without_background(source_content)
             motif_content = (
                 build_default_batik_reference(source_content)
                 if motif is None
@@ -220,11 +242,16 @@ class PretrainedAIBatificationProjectSession(NonMLBatificationProjectSession):
             source_format = "BATIKBREW_SDXL_GENERATION_V1"
             name = f"Motif BatikBrew dari {plan.source_name}"[:120]
             output_transform = _batikbrew_output_transform(source, result)
+            # Hasil BatikBrew diperlakukan sebagai GAMBAR TUNGGAL biasa:
+            # dapat dipilih, disalin, ditempel, dan diekspor seperti gambar
+            # impor lain — bukan komponen terikat objek sumbernya.
+            output_kind = ObjectKind.RASTER
         else:
             motif_source = "selected_object" if motif is not None else "generated_batik_reference"
             source_format = "PRETRAINED_AI_BATIFICATION_V1"
             name = f"Batifikasi AI {plan.source_name}"[:120]
             output_transform = plan.source_transform
+            output_kind = ObjectKind.RASTER
 
         properties = {
             "source_format": source_format,
@@ -239,10 +266,14 @@ class PretrainedAIBatificationProjectSession(NonMLBatificationProjectSession):
             "batification_non_destructive": True,
             "batification_editable_component": True,
             "batikbrew_generation": is_batikbrew,
+            # Ditandai sebagai gambar mandiri: dapat disalin/ditempel dan
+            # disimpan ke pustaka aset seperti gambar impor.
+            "standalone_image": True,
+            "asset_category": "ornamen",
         }
         output = LayerObject(
             name=name,
-            kind=ObjectKind.MOTIF,
+            kind=output_kind,
             asset_ref=asset_ref,
             visible=True,
             locked=False,
