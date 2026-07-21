@@ -21,6 +21,7 @@ from __future__ import annotations
 import hashlib
 import math
 from collections import OrderedDict
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
@@ -129,6 +130,121 @@ def _asset_digest(content: bytes | None) -> str:
         _ASSET_DIGEST_CACHE.pop(next(iter(_ASSET_DIGEST_CACHE)))
     _ASSET_DIGEST_CACHE[key] = (content, digest)
     return digest
+
+
+_DECODED_ASSET_CACHE: "OrderedDict[int, tuple[bytes, list[Image.Image]]]" = OrderedDict()
+_DECODED_ASSET_LIMIT_BYTES = 128 * 1024 * 1024
+_DECODED_ASSET_USED_BYTES = 0
+_MIN_MIP_EDGE = 64
+
+
+def _evict_decoded_assets() -> None:
+    global _DECODED_ASSET_USED_BYTES
+
+    while _DECODED_ASSET_USED_BYTES > _DECODED_ASSET_LIMIT_BYTES and _DECODED_ASSET_CACHE:
+        _key, (_content, levels) = _DECODED_ASSET_CACHE.popitem(last=False)
+        _DECODED_ASSET_USED_BYTES -= sum(_image_bytes(level) for level in levels)
+
+
+def _decoded_levels(content: bytes, opener: Callable[[], Image.Image]) -> list[Image.Image]:
+    global _DECODED_ASSET_USED_BYTES
+
+    key = id(content)
+    hit = _DECODED_ASSET_CACHE.get(key)
+    if hit is not None and hit[0] is content:
+        _DECODED_ASSET_CACHE.move_to_end(key)
+        return hit[1]
+
+    image = opener()
+    levels = [image]
+    size = _image_bytes(image)
+    if size > _DECODED_ASSET_LIMIT_BYTES:
+        # Terlalu besar untuk di-cache; jangan usir seluruh isi cache karenanya.
+        return levels
+    _DECODED_ASSET_CACHE[key] = (content, levels)
+    _DECODED_ASSET_USED_BYTES += size
+    _evict_decoded_assets()
+    return levels
+
+
+def decode_asset_once(content: bytes, opener: Callable[[], Image.Image]) -> Image.Image:
+    """Decode raster bytes at most once and reuse the decoded image."""
+
+    return _decoded_levels(content, opener)[0]
+
+
+def display_source(
+    content: bytes,
+    opener: Callable[[], Image.Image],
+    width: int,
+    height: int,
+) -> Image.Image:
+    """Sumber terbaik untuk diperkecil ke ``width`` x ``height``.
+
+    Dua penyebab lag saat hasil BatikBrew (768-1024 px) ada di kanvas:
+
+    1. PNG penuh didekode ulang untuk *setiap* objek di *setiap* langkah zoom.
+    2. LANCZOS dari 1024 px menimbang seluruh piksel sumber, dan biayanya
+       sebanding dengan luas *sumber* -- bukan luas hasil.
+
+    Fungsi ini menjawab keduanya: hasil dekode disimpan, lalu piramida mipmap
+    (1/2, 1/4, ...) dibangun sekali dan dipakai ulang. Perkecilan berikutnya
+    berangkat dari level terdekat yang masih >= 2x ukuran target, sehingga
+    kualitasnya tetap terjaga dengan biaya jauh lebih kecil.
+
+    Gambar yang dikembalikan dipakai bersama, jadi pemanggil **tidak boleh**
+    memodifikasinya di tempat. ``resize``/``rotate``/``crop`` aman karena
+    selalu menghasilkan objek baru.
+    """
+
+    global _DECODED_ASSET_USED_BYTES
+
+    levels = _decoded_levels(content, opener)
+    base = levels[0]
+    if width <= 0 or height <= 0:
+        return base
+
+    best = base
+    for level in levels:
+        if level.width >= width * 2 and level.height >= height * 2:
+            best = level
+        else:
+            break
+
+    cached = _DECODED_ASSET_CACHE.get(id(content))
+    if cached is None or cached[1] is not levels:
+        return best  # aset tidak ter-cache; jangan bangun piramida sekali pakai
+
+    while (
+        best.width >= width * 4
+        and best.height >= height * 4
+        and best.width // 2 >= _MIN_MIP_EDGE
+        and best.height // 2 >= _MIN_MIP_EDGE
+    ):
+        smaller = best.resize(
+            (best.width // 2, best.height // 2), Image.Resampling.LANCZOS
+        )
+        levels.append(smaller)
+        _DECODED_ASSET_USED_BYTES += _image_bytes(smaller)
+        best = smaller
+    _evict_decoded_assets()
+    return best
+
+
+def clear_decoded_asset_cache() -> None:
+    global _DECODED_ASSET_USED_BYTES
+
+    _DECODED_ASSET_CACHE.clear()
+    _DECODED_ASSET_USED_BYTES = 0
+
+
+def decoded_asset_cache_stats() -> dict[str, int]:
+    return {
+        "decoded_count": len(_DECODED_ASSET_CACHE),
+        "decoded_levels": sum(len(levels) for _c, levels in _DECODED_ASSET_CACHE.values()),
+        "decoded_bytes": _DECODED_ASSET_USED_BYTES,
+        "decoded_limit": _DECODED_ASSET_LIMIT_BYTES,
+    }
 
 
 def _gradient_hash(props: dict[str, Any] | None) -> str:

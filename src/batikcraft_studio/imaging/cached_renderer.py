@@ -58,10 +58,29 @@ from batikcraft_studio.imaging.tile_cache import (
     TileCacheKey,
     _asset_digest,
     _gradient_hash,
+    clear_decoded_asset_cache,
+    decoded_asset_cache_stats,
+    display_source,
     tile_project_bounds,
     zoom_scale_bucket,
 )
 from batikcraft_studio.imaging.viewport_renderer import bounds_intersect
+
+
+def _resize_for_display(image: Image.Image, width: int, height: int) -> Image.Image:
+    """Skalakan sumber yang sudah dipilih ke ukuran layar.
+
+    Pemilihan level mipmap dikerjakan ``display_source``; di sini hanya tersisa
+    faktor kecil. LANCZOS dipakai untuk perkecilan (kualitas), BICUBIC untuk
+    perbesaran -- LANCZOS tidak menambah detail apa pun saat upscale, hanya
+    biaya.
+    """
+
+    if image.width == width and image.height == height:
+        return image
+    if width >= image.width and height >= image.height:
+        return image.resize((width, height), Image.Resampling.BICUBIC)
+    return image.resize((width, height), Image.Resampling.LANCZOS)
 
 
 class CachedViewportRenderer:
@@ -137,13 +156,16 @@ class CachedViewportRenderer:
         """Clear all caches (call on project close/open)."""
         self._tile_cache.clear()
         self._obj_cache.clear()
+        # Piramida mipmap memegang gambar berukuran penuh; lepaskan juga supaya
+        # menutup proyek benar-benar mengembalikan memorinya.
+        clear_decoded_asset_cache()
 
     def invalidate_tile_cache(self) -> None:
         """Invalidate all tile cache entries (e.g. background color change)."""
         self._tile_cache.clear()
 
     def debug_stats(self) -> dict[str, Any]:
-        stats: dict[str, Any] = {}
+        stats: dict[str, Any] = dict(decoded_asset_cache_stats())
         stats.update(self._tile_cache.debug_stats())
         stats.update(self._obj_cache.debug_stats())
         stats["rendered_objects"] = self._rendered_objects
@@ -332,8 +354,13 @@ class CachedViewportRenderer:
                 raise MissingRasterAssetError(
                     f"Object {item.name!r} references missing asset {item.asset_ref!r}."
                 )
-            image = _open_rgba(content, f"Object {item.name!r}")
-            image = image.resize((width, height), Image.Resampling.LANCZOS)
+            image = display_source(
+                content,
+                lambda: _open_rgba(content, f"Object {item.name!r}"),
+                width,
+                height,
+            )
+            image = _resize_for_display(image, width, height)
 
         if item.transform.scale_x < 0:
             image = image.transpose(Image.Transpose.FLIP_LEFT_RIGHT)
@@ -377,8 +404,13 @@ class CachedViewportRenderer:
         else:
             if content is None:
                 raise MissingRasterAssetError(f"Layer {layer.name!r} has no raster content.")
-            image = _open_rgba(content, f"Layer {layer.name!r}")
-            image = image.resize((width, height), Image.Resampling.LANCZOS)
+            image = display_source(
+                content,
+                lambda: _open_rgba(content, f"Layer {layer.name!r}"),
+                width,
+                height,
+            )
+            image = _resize_for_display(image, width, height)
         if layer.transform.scale_x < 0:
             image = image.transpose(Image.Transpose.FLIP_LEFT_RIGHT)
         if layer.transform.scale_y < 0:

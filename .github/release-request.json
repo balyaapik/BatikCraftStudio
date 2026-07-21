@@ -1,5 +1,5 @@
 {
-  "release_tag": "v0.5.9",
-  "requested_at": "2026-07-21T16:05:00Z",
-  "reason": "Publish BatikCraft Studio 0.5.9: fixes the WinError 5 regression from 0.5.8 where the new GPU crash guard tried to create its log folder inside C:\\Program Files and aborted BatikBrew generation. The log folder is now write-probed with a per-user fallback, and the crash guard disables itself silently when no writable folder exists."
+  "release_tag": "v0.5.10",
+  "requested_at": "2026-07-21T17:10:00Z",
+  "reason": "Publish BatikCraft Studio 0.5.10: canvas performance with BatikBrew results. Decoded raster assets are now cached instead of re-decoded on every zoom step, and a mipmap pyramid feeds large downscales, making canvas interaction with 768-1024px AI outputs about 2.4x faster."
 }
