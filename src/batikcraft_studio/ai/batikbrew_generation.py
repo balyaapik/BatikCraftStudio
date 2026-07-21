@@ -690,6 +690,22 @@ def _default_sdxl_pipeline_factory(
     except MemoryError as exc:
         raise BatificationError(str(exc)) from exc
 
+    # Periksa keluarga model SEBELUM memuat bobot: memuat SD 1.5 sebagai SDXL
+    # "berhasil" tetapi gagal jauh di dalam diffusers dengan pesan yang
+    # membingungkan (NoneType * int pada addition_time_embed_dim).
+    from batikcraft_studio.ai.model_family import (
+        FAMILY_SDXL,
+        FAMILY_UNKNOWN,
+        detect_model_family,
+        sdxl_requirement_message,
+    )
+
+    if local.exists():
+        family = detect_model_family(model_source)
+        trace(f"Keluarga model terdeteksi: {family}")
+        if family not in (FAMILY_SDXL, FAMILY_UNKNOWN):
+            raise BatificationError(sdxl_requirement_message(model_source, family))
+
     try:
         pipeline = StableDiffusionXLPipeline.from_pretrained(
             model_source,
@@ -705,6 +721,19 @@ def _default_sdxl_pipeline_factory(
         )
         logger.info("Bobot SDXL termuat; menyiapkan perangkat…")
         trace("Bobot model termuat, menyiapkan perangkat…")
+        from batikcraft_studio.ai.model_family import (
+            detect_model_family,
+            sdxl_requirement_message,
+            unet_supports_sdxl,
+        )
+
+        if not unet_supports_sdxl(pipeline):
+            # UNet tanpa addition_time_embed_dim = bukan UNet SDXL.
+            raise BatificationError(
+                sdxl_requirement_message(
+                    model_source, detect_model_family(model_source)
+                )
+            )
         from batikcraft_studio.ai.memory_guard import low_memory_profile
 
         frugal = low_memory_profile(device, torch)
