@@ -1,5 +1,5 @@
 {
-  "release_tag": "v0.5.3",
-  "requested_at": "2026-07-21T17:00:00Z",
-  "reason": "Publish BatikCraft Studio 0.5.3: BatikBrew now detects the LoRA family from the .batikmodel manifest and safetensors header and runs Stable Diffusion 1.5 LoRAs on an SD 1.5 pipeline instead of forcing SDXL, fixing the 'unsupported operand type(s) for *: NoneType and int' failure, and reports LoRA/base-model mismatches before loading weights."
+  "release_tag": "v0.5.4",
+  "requested_at": "2026-07-21T19:00:00Z",
+  "reason": "Publish BatikCraft Studio 0.5.4: batified results are inserted as standalone raster images that can be copied, pasted and stored like any canvas image, and photo backgrounds are removed automatically before SDXL generation so the output is a clean single ornament."
 }
