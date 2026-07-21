@@ -133,3 +133,26 @@ def test_bounds_dihitung_sekali_dan_dipakai_ulang():
 
     assert len(index.bounds) == len(objects)
     assert len(index.signatures) == len(objects)
+
+
+def test_indeks_dibangun_ulang_saat_daftar_objek_berbeda():
+    """Regresi: patch interaksi menyaring objek dan membuat Layer baru.
+
+    Posisi di dalam indeks hanya sahih untuk daftar objek yang membangunnya.
+    Tanpa pemeriksaan identitas, indeks lama akan menunjuk objek yang salah.
+    """
+
+    from batikcraft_studio.imaging.cached_renderer import CachedViewportRenderer
+
+    a = _object("a", 100, 100)
+    b = _object("b", 200, 200)
+    penuh = _layer([a, b])
+    disaring = Layer(name=penuh.name, kind=penuh.kind, layer_id=penuh.layer_id, objects=[a])
+
+    renderer = CachedViewportRenderer()
+    index_penuh = renderer._get_layer_index(penuh, 1)
+    index_disaring = renderer._get_layer_index(disaring, 1)
+
+    assert index_penuh is not index_disaring
+    assert len(index_penuh.bounds) == 2
+    assert len(index_disaring.bounds) == 1

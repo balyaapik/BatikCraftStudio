@@ -171,7 +171,8 @@ def _patch_cached_renderer() -> None:
         region_left: float,
         region_top: float,
         out_size: tuple[int, int],
-    ) -> Image.Image:
+        project_revision: int = 0,
+    ) -> Image.Image | None:
         excluded = self._inkscape_excluded_object_ids
         if excluded and layer.objects:
             filtered = tuple(item for item in layer.objects if item.object_id not in excluded)
@@ -186,6 +187,7 @@ def _patch_cached_renderer() -> None:
             region_left,
             region_top,
             out_size,
+            project_revision,
         )
 
     def set_interaction_exclusions(

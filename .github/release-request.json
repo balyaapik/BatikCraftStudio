@@ -1,5 +1,5 @@
 {
-  "release_tag": "v0.6.4",
-  "requested_at": "2026-07-22T00:40:00Z",
-  "reason": "Publish BatikCraft Studio 0.6.4: zoom no longer looks like a full re-render. Crossing a zoom bucket boundary (18%, 38%, 74%) changed every tile and object cache key at once, forcing everything to be redrawn. Cached tiles with identical content are now reused across scales as an instant placeholder while the sharp version renders in the background."
+  "release_tag": "v0.6.5",
+  "requested_at": "2026-07-22T02:10:00Z",
+  "reason": "Publish BatikCraft Studio 0.6.5: fixes a regression introduced in 0.6.0 where every tile render raised TypeError because the Inkscape canvas monkey-patch did not accept the new project_revision argument. The error was swallowed by the render worker, leaving tiles unrendered. Also skips layers with no objects in a tile, which alone wasted up to 436 ms per render on a 20-layer document."
 }

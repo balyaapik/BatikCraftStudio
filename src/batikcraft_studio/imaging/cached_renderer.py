@@ -120,13 +120,29 @@ class _LayerSpatialIndex:
     Setiap tile hanya memeriksa objek di sel yang bersinggungan dengannya.
     """
 
-    __slots__ = ("bounds", "buckets", "oversized", "signatures")
+    __slots__ = (
+        "bounds",
+        "buckets",
+        "objects",
+        "oversized",
+        "render_keys",
+        "signatures",
+    )
 
     def __init__(self, layer: Layer) -> None:
+        # Referensi kuat ke daftar objek yang MEMBANGUN indeks ini. Posisi di
+        # dalam indeks hanya sahih untuk daftar itu; kalau pemanggil menyaring
+        # objek (mis. patch interaksi Inkscape membuang objek yang sedang
+        # digeser), daftarnya berbeda dan indeks lama akan salah menunjuk.
+        self.objects = layer.objects
         self.bounds: list[tuple[float, float, float, float]] = []
         self.buckets: dict[tuple[int, int], list[int]] = {}
         # Tanda tangan isi per objek, dipakai untuk kunci cache tile.
         self.signatures: list[tuple[Any, ...]] = []
+        # Kunci cache render per objek, per bucket zoom. Menyusunnya melibatkan
+        # SHA-1 gradien; tanpa memoisasi ini kunci yang sama disusun ulang
+        # sekali untuk setiap tile yang disentuh objek tersebut.
+        self.render_keys: dict[float, list[ObjectRenderCacheKey | None]] = {}
         # Objek yang membentang sangat luas akan memenuhi terlalu banyak sel;
         # menyimpannya terpisah lebih murah daripada meledakkan indeks.
         self.oversized: list[int] = []
@@ -147,6 +163,44 @@ class _LayerSpatialIndex:
             for gy in range(gy0, gy1 + 1):
                 for gx in range(gx0, gx1 + 1):
                     self.buckets.setdefault((gx, gy), []).append(index)
+
+    def render_key(
+        self,
+        position: int,
+        item: LayerObject,
+        content: bytes | None,
+        bucket: float,
+        total: int,
+    ) -> ObjectRenderCacheKey:
+        """Kunci cache render objek, disusun sekali per objek per bucket."""
+
+        slots = self.render_keys.get(bucket)
+        if slots is None:
+            slots = [None] * total
+            self.render_keys[bucket] = slots
+        cached = slots[position]
+        if cached is not None:
+            return cached
+        gradient = item.properties.get("gradient")
+        shear_x, shear_y = object_shear(item)
+        key = ObjectRenderCacheKey(
+            object_id=item.object_id,
+            asset_ref=item.asset_ref,
+            asset_digest=_asset_digest(content),
+            bounds_w=item.bounds.width,
+            bounds_h=item.bounds.height,
+            scale_x=item.transform.scale_x,
+            scale_y=item.transform.scale_y,
+            rotation_degrees=item.transform.rotation_degrees,
+            shear_x=shear_x,
+            shear_y=shear_y,
+            fill_mode=str(item.properties.get("fill_mode", "solid")),
+            gradient_hash=_gradient_hash(dict(gradient) if gradient else None),
+            opacity=item.opacity,
+            render_scale_bucket=bucket,
+        )
+        slots[position] = key
+        return key
 
     def candidates(self, proj_bounds: tuple[float, float, float, float]) -> list[int]:
         """Indeks objek yang mungkin bersinggungan, dalam urutan gambar."""
@@ -324,7 +378,13 @@ class CachedViewportRenderer:
         """Indeks spasial layer, dibangun ulang hanya saat proyek berubah."""
 
         cached = self._layer_index.get(layer.layer_id)
-        if cached is not None and cached[0] == project_revision:
+        if (
+            cached is not None
+            and cached[0] == project_revision
+            # Identitas daftar objek wajib dicocokkan: posisi dalam indeks tidak
+            # berarti apa-apa untuk daftar objek yang berbeda.
+            and cached[1].objects is layer.objects
+        ):
             return cached[1]
         index = _LayerSpatialIndex(layer)
         self._layer_index[layer.layer_id] = (project_revision, index)
@@ -432,6 +492,13 @@ class CachedViewportRenderer:
                     out_size=out_size,
                     project_revision=project_revision,
                 )
+                if layer_surface is None:
+                    # Tidak ada satu pun objek layer ini yang menyentuh tile.
+                    # Dulu tetap dialokasikan surface kosong seukuran tile lalu
+                    # dikomposisi — sekitar 0,9 ms yang terbuang, DIKALIKAN
+                    # jumlah layer DIKALIKAN jumlah tile. Pada 20 layer dan 24
+                    # tile itu ~436 ms per render yang tidak menggambar apa pun.
+                    continue
                 eff_opacity = _effective_layer_opacity(project, layer)
                 if eff_opacity < 1.0:
                     alpha = layer_surface.getchannel("A")
@@ -480,20 +547,34 @@ class CachedViewportRenderer:
         region_top: float,
         out_size: tuple[int, int],
         project_revision: int = 0,
-    ) -> Image.Image:
-        surface = Image.new("RGBA", out_size, (0, 0, 0, 0))
+    ) -> Image.Image | None:
+        """Surface layer untuk tile ini, atau ``None`` bila tidak ada isinya."""
+
         index = self._get_layer_index(layer, project_revision)
         objects = layer.objects
-        for position in index.candidates(proj_bounds):
-            item = objects[position]
-            if not item.visible:
-                continue
-            if not bounds_intersect(index.bounds[position], proj_bounds):
-                if self._debug:
-                    self._culled_objects += 1
-                continue
+        visible_positions = [
+            position
+            for position in index.candidates(proj_bounds)
+            if objects[position].visible
+            and bounds_intersect(index.bounds[position], proj_bounds)
+        ]
+        if not visible_positions:
+            if self._debug:
+                self._culled_objects += len(objects)
+            return None
 
-            prepared = self._get_or_render_object(item, assets, zoom_scale=zoom_scale)
+        surface = Image.new("RGBA", out_size, (0, 0, 0, 0))
+        for position in visible_positions:
+            item = objects[position]
+
+            prepared = self._get_or_render_object(
+                item,
+                assets,
+                zoom_scale=zoom_scale,
+                index=index,
+                position=position,
+                total=len(objects),
+            )
             if self._debug:
                 self._rendered_objects += 1
             cx = (item.transform.x - region_left) * zoom_scale
@@ -511,33 +592,45 @@ class CachedViewportRenderer:
         item: LayerObject,
         assets: Mapping[str, bytes],
         zoom_scale: float,
+        index: "_LayerSpatialIndex | None" = None,
+        position: int | None = None,
+        total: int = 0,
     ) -> Image.Image:
         bucket = zoom_scale_bucket(zoom_scale)
         content = assets.get(item.asset_ref) if item.asset_ref else None
-        shear_x, shear_y = object_shear(item)
-        gradient = item.properties.get("gradient")
-        fill_mode = item.properties.get("fill_mode", "solid")
 
-        key = ObjectRenderCacheKey(
-            object_id=item.object_id,
-            asset_ref=item.asset_ref,
-            asset_digest=_asset_digest(content),
-            bounds_w=item.bounds.width,
-            bounds_h=item.bounds.height,
-            scale_x=item.transform.scale_x,
-            scale_y=item.transform.scale_y,
-            rotation_degrees=item.transform.rotation_degrees,
-            shear_x=shear_x,
-            shear_y=shear_y,
-            fill_mode=str(fill_mode),
-            gradient_hash=_gradient_hash(dict(gradient) if gradient else None),
-            opacity=item.opacity,
-            render_scale_bucket=bucket,
-        )
+        if index is not None and position is not None:
+            # Jalur cepat: kunci sudah disusun sekali per objek per bucket.
+            key = index.render_key(position, item, content, bucket, total)
+        else:
+            gradient = item.properties.get("gradient")
+            shear_x, shear_y = object_shear(item)
+            key = ObjectRenderCacheKey(
+                object_id=item.object_id,
+                asset_ref=item.asset_ref,
+                asset_digest=_asset_digest(content),
+                bounds_w=item.bounds.width,
+                bounds_h=item.bounds.height,
+                scale_x=item.transform.scale_x,
+                scale_y=item.transform.scale_y,
+                rotation_degrees=item.transform.rotation_degrees,
+                shear_x=shear_x,
+                shear_y=shear_y,
+                fill_mode=str(item.properties.get("fill_mode", "solid")),
+                gradient_hash=_gradient_hash(dict(gradient) if gradient else None),
+                opacity=item.opacity,
+                render_scale_bucket=bucket,
+            )
         cached = self._obj_cache.get(key)
         if cached is not None:
             return cached
 
+        # Catatan hasil pengukuran: sempat dicoba menyimpan satu "master" per
+        # objek pada resolusi asli lalu menurunkan level zoom lain dengan
+        # resize. Ternyata LEBIH LAMBAT — menggambar langsung pada ukuran kecil
+        # jauh lebih murah daripada me-resize gambar besar (LANCZOS 512->256
+        # sekitar 5 ms, sementara mengomposisi 60 objek kecil hanya 1,8 ms).
+        # Jalur render langsung dipertahankan.
         image = self._render_object(item, assets, zoom_scale=bucket)
         self._obj_cache.put(key, image)
         return image
