@@ -58,6 +58,14 @@ penyempurnaan lanjutan.
 4. **Run All**. Sel 5 menampilkan pratinjau objek → batik.
 5. Unduh `*.batikmodel` dari panel Output.
 
+## Mengunduh hasil dari Kaggle
+
+Pada panel **Output**, klik berkas `*.batikmodel` lalu gunakan tombol unduh pada
+berkas itu. **Hindari "Download All"** — Kaggle membungkus seluruh keluaran
+menjadi satu `.zip`, sehingga yang terunduh adalah arsip berisi paket, bukan
+paketnya. Bila terlanjur, ekstrak `.zip` tersebut dan ambil berkas
+`.batikmodel` di dalamnya.
+
 ## Memasang di aplikasi
 
 **Pusat Dependensi → tab Model AI Offline & LoRA → Pasang .batikmodel…**,
@@ -78,4 +86,13 @@ akan menampilkan `Keluarga base model: Stable Diffusion XL` dan
 | Gaya batik kurang kuat | naikkan `strength` (0,65–0,75) atau bobot LoRA |
 | Motif terlalu ramai | kurangi `max_steps`, atau perkaya caption dataset |
 | Siluet objek tidak terjaga | naikkan `controlnet_conditioning_scale` (0,8–1,0) |
+
+## Bila muncul "Manifest model tidak valid"
+
+Aplikasi memvalidasi manifest secara ketat: kunci root harus tepat
+`format`, `schema_version`, `model`, `files`; blok `model` harus memuat 16
+field (termasuk `license` dan `controlnet_family`); setiap entri `files`
+memerlukan `path`, `role`, `sha256`, dan `size`. Sel pengemasan pada notebook
+sudah memeriksa semuanya sebelum berkas dibuat — pastikan Anda memakai notebook
+versi terbaru.
 | Warna meleset dari palet batik | tambah gambar bernuansa soga/indigo ke dataset |

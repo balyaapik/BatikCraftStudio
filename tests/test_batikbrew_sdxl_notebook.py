@@ -37,7 +37,8 @@ def test_exported_package_matches_application_format() -> None:
     source = _sources()
     assert '"format": "batikcraft-model-pack"' in source
     assert '"base_model_family": "sdxl"' in source
-    assert '"lora_file": "model/pytorch_lora_weights.safetensors"' in source
+    assert 'lora_entry_path = "model/pytorch_lora_weights.safetensors"' in source
+    assert '"lora_file": lora_entry_path' in source
     assert "trigger_words" in source and "recommended_weight" in source
 
 
@@ -168,3 +169,65 @@ def test_optional_cells_skip_gracefully_without_sample_photo() -> None:
     assert "Paket .batikmodel tetap tersedia" in source
     # Pembangun pasangan juga tidak boleh menggagalkan Run All.
     assert "pembangunan pasangan dilewati" in source
+
+
+def test_packaged_manifest_passes_the_real_application_parser(tmp_path) -> None:
+    """Regresi: manifest notebook ditolak aplikasi ('Manifest model tidak
+    valid') karena kekurangan blok `files` serta field `license` dan
+    `controlnet_family`. Uji ini menjalankan sel pengemasan sungguhan lalu
+    memvalidasinya dengan parser aplikasi."""
+
+    import zipfile
+    from dataclasses import dataclass
+
+    from batikcraft_studio.ai.model_pack import _parse_manifest
+
+    notebook = json.loads(NOTEBOOK.read_text(encoding="utf-8"))
+    packaging = next(
+        "".join(cell["source"])
+        for cell in notebook["cells"]
+        if "".join(cell.get("source", [])).startswith("# 5) Bungkus")
+    )
+
+    output_dir = tmp_path / "lora"
+    output_dir.mkdir()
+    (output_dir / "pytorch_lora_weights.safetensors").write_bytes(b"X" * 4096)
+
+    weights_dir = output_dir
+
+    @dataclass
+    class Config:
+        output_dir: str = str(weights_dir)
+        model_id: str = "batikcraft-batikbrew-sdxl-v1"
+        model_name: str = "BatikCraft BatikBrew SDXL Style"
+        author: str = "Tester"
+        trigger_word: str = "bcr_batikstyle"
+        resolution: int = 768
+        max_steps: int = 100
+        lora_rank: int = 32
+        learning_rate: float = 1e-4
+
+    namespace = {"cfg": Config(), "total_images": 12, "Path": Path, "__name__": "__main__"}
+    exec(  # noqa: S102 - menjalankan sel notebook memang tujuan uji ini
+        packaging.replace('Path("/kaggle/working")', f'Path("{tmp_path}")'),
+        namespace,
+    )
+
+    package = next(tmp_path.glob("*.batikmodel"))
+    with zipfile.ZipFile(package) as archive:
+        manifest = json.loads(archive.read("manifest.json"))
+        assert "model/pytorch_lora_weights.safetensors" in archive.namelist()
+
+    parsed, files = _parse_manifest(manifest)
+    assert parsed.base_model_family == "sdxl"
+    assert parsed.trigger_words == ("bcr_batikstyle",)
+    assert files[0]["role"] == "lora"
+
+
+def test_notebook_warns_about_kaggle_download_all_zip() -> None:
+    """Kaggle 'Download All' membungkus keluaran menjadi .zip sehingga
+    pengguna mengira paketnya rusak."""
+
+    source = _sources()
+    assert "Download All" in source
+    assert ".zip" in source
