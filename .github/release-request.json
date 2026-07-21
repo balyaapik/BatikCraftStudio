@@ -1,5 +1,5 @@
 {
-  "release_tag": "v0.5.0",
-  "requested_at": "2026-07-21T11:00:00Z",
-  "reason": "Publish BatikCraft Studio 0.5.0: the BatikBrew generation dialog now shows a live terminal-style log below the progress bar (device, precision, model, memory profile, per-variation and per-step progress) and reports the compute environment explicitly, including a clear warning when an NVIDIA GPU is present but a CPU-only PyTorch build is installed."
+  "release_tag": "v0.5.1",
+  "requested_at": "2026-07-21T13:00:00Z",
+  "reason": "Publish BatikCraft Studio 0.5.1: BatikBrew LoRA generation no longer fails with 'unsupported operand type(s) for *' when the SDXL folder has an incomplete UNet config, all numeric parameters are normalised before reaching diffusers, and generation failures now report the full traceback in the log panel."
 }
