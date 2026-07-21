@@ -330,6 +330,42 @@ class CachedViewportRenderer:
         self._layer_index[layer.layer_id] = (project_revision, index)
         return index
 
+    def find_approximate_tile(
+        self,
+        project: Project,
+        *,
+        project_revision: int,
+        visibility_revision: int,
+        zoom_scale: float,
+        tile_x: int,
+        tile_y: int,
+    ) -> Image.Image | None:
+        """Tile dengan isi sama pada skala lain — untuk tampilan sementara.
+
+        Melewati batas bucket zoom berarti setiap tile dan setiap objek harus
+        digambar ulang. Tanpa tampilan sementara, jeda itu terlihat sebagai
+        seluruh gambar dirender ulang. Versi lama sudah ada di cache dan cukup
+        baik untuk ditampilkan sesaat.
+        """
+
+        bucket = zoom_scale_bucket(zoom_scale)
+        tile_size = tile_project_size(zoom_scale)
+        content_revision = self._tile_content_revision(
+            project, tile_x, tile_y, tile_size, project_revision
+        )
+        key = TileCacheKey(
+            project_revision=content_revision,
+            zoom_bucket=bucket,
+            tile_size=tile_size,
+            tile_x=tile_x,
+            tile_y=tile_y,
+            canvas_background=project.canvas.background_color,
+            visibility_revision=visibility_revision,
+        )
+        if self._tile_cache.get(key) is not None:
+            return None  # versi tajamnya sudah ada, tidak perlu sementara
+        return self._tile_cache.find_any_scale(key)
+
     def invalidate_object(self, object_id: str) -> None:
         """Invalidate all cached images for a single object."""
         self._obj_cache.invalidate_object(object_id)

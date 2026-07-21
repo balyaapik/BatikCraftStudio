@@ -300,6 +300,8 @@ class TileCache:
         self._max_bytes = max_bytes
         self._debug = debug
         self._store: OrderedDict[TileCacheKey, Image.Image] = OrderedDict()
+        # Indeks sekunder: isi tile -> kunci pada berbagai skala.
+        self._by_content: dict[tuple[Any, ...], list[TileCacheKey]] = {}
         self._used_bytes: int = 0
         # Debug stats
         self._hits = 0
@@ -308,6 +310,47 @@ class TileCache:
     # ------------------------------------------------------------------
     # Public interface
     # ------------------------------------------------------------------
+
+    @staticmethod
+    def content_id(key: TileCacheKey) -> tuple[Any, ...]:
+        """Identitas tile yang TIDAK bergantung skala.
+
+        Dipakai untuk menemukan versi tile yang sama pada zoom lain. Isi tile
+        (objek apa saja, bagaimana) sama persis; hanya resolusinya berbeda.
+        """
+
+        return (
+            key.project_revision,
+            key.tile_x,
+            key.tile_y,
+            key.canvas_background,
+            key.visibility_revision,
+        )
+
+    def find_any_scale(self, key: TileCacheKey) -> Image.Image | None:
+        """Tile dengan isi sama pada skala mana pun, kalau ada.
+
+        Inilah yang membuat zoom melewati batas bucket tidak lagi terasa seperti
+        merender ulang seluruh gambar: versi lama langsung dipakai sebagai
+        tampilan sementara (diskalakan seadanya) sementara versi tajam dirender
+        di latar belakang.
+        """
+
+        candidates = self._by_content.get(self.content_id(key))
+        if not candidates:
+            return None
+        best: Image.Image | None = None
+        best_area = -1
+        for candidate in candidates:
+            image = self._store.get(candidate)
+            if image is None:
+                continue
+            area = image.width * image.height
+            # Pilih yang resolusinya paling tinggi agar hasil sementaranya
+            # sebaik mungkin.
+            if area > best_area:
+                best_area, best = area, image
+        return best
 
     def get(self, key: TileCacheKey) -> Image.Image | None:
         if key in self._store:
@@ -324,10 +367,26 @@ class TileCache:
         if key in self._store:
             self._used_bytes -= _image_bytes(self._store[key])
             del self._store[key]
+        else:
+            self._by_content.setdefault(self.content_id(key), []).append(key)
         self._store[key] = image
         self._store.move_to_end(key)
         self._used_bytes += size
         self._evict()
+
+    def _forget(self, key: TileCacheKey) -> None:
+        """Lepaskan kunci dari indeks sekunder."""
+
+        content = self.content_id(key)
+        keys = self._by_content.get(content)
+        if not keys:
+            return
+        try:
+            keys.remove(key)
+        except ValueError:
+            return
+        if not keys:
+            del self._by_content[content]
 
     def invalidate_project(self, project_revision: int | None = None) -> None:
         """Remove all tiles for a given revision, or all tiles if revision is None."""
@@ -338,9 +397,11 @@ class TileCache:
         for k in keys_to_remove:
             self._used_bytes -= _image_bytes(self._store[k])
             del self._store[k]
+            self._forget(k)
 
     def clear(self) -> None:
         self._store.clear()
+        self._by_content.clear()
         self._used_bytes = 0
 
     def debug_stats(self) -> dict[str, Any]:
@@ -358,8 +419,9 @@ class TileCache:
 
     def _evict(self) -> None:
         while self._used_bytes > self._max_bytes and self._store:
-            _key, img = self._store.popitem(last=False)
+            key, img = self._store.popitem(last=False)
             self._used_bytes -= _image_bytes(img)
+            self._forget(key)
 
 
 # ---------------------------------------------------------------------------

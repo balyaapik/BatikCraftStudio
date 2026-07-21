@@ -117,6 +117,8 @@ class ViewportEditorWorkspaceView(CanvasStructureEditorWorkspaceView):
         # Tata letak render terakhir: (skala, lebar konten, tinggi konten).
         self._last_layout: tuple[float, float, float] | None = None
         self._grid_signature: tuple[Any, ...] | None = None
+        # Referensi PhotoImage sementara; wajib dipegang agar tidak dibuang GC.
+        self._placeholder_photos: dict[tuple[int, int], ImageTk.PhotoImage] = {}
         super().__init__(*args, **kwargs)
         self._install_viewport_controls()
         self._viewport_ready = True
@@ -587,6 +589,21 @@ class ViewportEditorWorkspaceView(CanvasStructureEditorWorkspaceView):
             overscan=1,
         )
 
+        # Tampilan sementara: tile dengan isi sama dari zoom sebelumnya dipasang
+        # SEKARANG (di thread utama, hanya satu resize murah per tile), supaya
+        # melewati batas bucket tidak pernah menyisakan layar kosong sementara
+        # versi tajamnya dirender di latar belakang.
+        self._apply_placeholder_tiles(
+            project,
+            tile_coords,
+            zoom_scale=zoom_scale,
+            tile_size=tile_size,
+            preview_left=preview_left,
+            preview_top=preview_top,
+            project_revision=project_revision,
+            visibility_revision=visibility_revision,
+        )
+
         def _worker() -> None:
             tiles: list[tuple[int, int, Image.Image]] = []
             failures = 0
@@ -627,6 +644,65 @@ class ViewportEditorWorkspaceView(CanvasStructureEditorWorkspaceView):
         thread = threading.Thread(target=_worker, daemon=True)
         thread.start()
 
+    def _apply_placeholder_tiles(
+        self,
+        project: Any,
+        tile_coords: list[tuple[int, int]],
+        *,
+        zoom_scale: float,
+        tile_size: int,
+        preview_left: float,
+        preview_top: float,
+        project_revision: int,
+        visibility_revision: int,
+    ) -> None:
+        """Pasang versi lama tile (skala apa pun) sebagai tampilan sementara."""
+
+        renderer = self._cached_renderer
+        tile_px = max(1, round(tile_size * zoom_scale))
+        for tx, ty in tile_coords:
+            try:
+                approximate = renderer.find_approximate_tile(
+                    project,
+                    project_revision=project_revision,
+                    visibility_revision=visibility_revision,
+                    zoom_scale=zoom_scale,
+                    tile_x=tx,
+                    tile_y=ty,
+                )
+            except Exception:  # noqa: BLE001
+                continue
+            if approximate is None:
+                continue
+            try:
+                if approximate.width != tile_px or approximate.height != tile_px:
+                    approximate = approximate.resize(
+                        (tile_px, tile_px), Image.Resampling.BILINEAR
+                    )
+                photo = ImageTk.PhotoImage(approximate)
+                canvas_x = preview_left + tx * tile_px
+                canvas_y = preview_top + ty * tile_px
+                if (tx, ty) in self._tile_canvas_ids:
+                    self.canvas.itemconfigure(
+                        self._tile_canvas_ids[(tx, ty)], image=photo
+                    )
+                    self.canvas.coords(
+                        self._tile_canvas_ids[(tx, ty)], canvas_x, canvas_y
+                    )
+                else:
+                    self._tile_canvas_ids[(tx, ty)] = self.canvas.create_image(
+                        canvas_x,
+                        canvas_y,
+                        image=photo,
+                        anchor="nw",
+                        tags="project-tile",
+                    )
+                # Sengaja TIDAK dicatat di _tile_photos sebagai sumber final:
+                # ini hanya sementara, versi tajamnya harus tetap menggantinya.
+                self._placeholder_photos[(tx, ty)] = photo
+            except Exception:  # noqa: BLE001
+                continue
+
     def _apply_tiles(
         self,
         tiles: list[tuple[int, int, Image.Image]],
@@ -662,6 +738,10 @@ class ViewportEditorWorkspaceView(CanvasStructureEditorWorkspaceView):
                 applied is not None
                 and applied[0] is source
                 and (tx, ty) in self._tile_canvas_ids
+                # Kalau posisi ini sedang menampilkan tile sementara, gambarnya
+                # HARUS dipasang ulang walaupun sumbernya identik — kalau tidak,
+                # versi buramnya akan tertinggal di layar selamanya.
+                and (tx, ty) not in self._placeholder_photos
             ):
                 # Unchanged cached tile already on screen: skip PhotoImage copy.
                 self.canvas.coords(self._tile_canvas_ids[(tx, ty)], canvas_x, canvas_y)
@@ -671,6 +751,7 @@ class ViewportEditorWorkspaceView(CanvasStructureEditorWorkspaceView):
                 img = img.resize((tile_px, tile_px), Image.Resampling.BILINEAR)
             photo = ImageTk.PhotoImage(img)
             self._tile_photos[(tx, ty)] = (source, photo)  # keep references
+            self._placeholder_photos.pop((tx, ty), None)
             if (tx, ty) in self._tile_canvas_ids:
                 self.canvas.itemconfigure(self._tile_canvas_ids[(tx, ty)], image=photo)
                 self.canvas.coords(self._tile_canvas_ids[(tx, ty)], canvas_x, canvas_y)
@@ -735,6 +816,7 @@ class ViewportEditorWorkspaceView(CanvasStructureEditorWorkspaceView):
             self.canvas.delete(cid)
         self._tile_canvas_ids.clear()
         self._tile_photos.clear()
+        self._placeholder_photos.clear()
         self._hide_quick_preview()
         self._last_preview_pil = None
         self._last_preview_scale = 0.0
