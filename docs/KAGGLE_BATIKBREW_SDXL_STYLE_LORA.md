@@ -66,6 +66,24 @@ menjadi satu `.zip`, sehingga yang terunduh adalah arsip berisi paket, bukan
 paketnya. Bila terlanjur, ekstrak `.zip` tersebut dan ambil berkas
 `.batikmodel` di dalamnya.
 
+## Memperbaiki paket lama tanpa melatih ulang
+
+Bila Anda sudah punya hasil pelatihan (berkas `.zip`, `.safetensors`, atau
+`.batikmodel` yang ditolak), gunakan program kecil di repositori ini —
+bobotnya dipakai kembali, tidak ada pelatihan ulang:
+
+```bash
+python scripts/repair_batikmodel.py output.zip
+python scripts/repair_batikmodel.py pytorch_lora_weights.safetensors --family sdxl
+python scripts/repair_batikmodel.py paket-lama.batikmodel -o diperbaiki.batikmodel
+```
+
+Program menerima ketiga bentuk masukan (termasuk `.zip` hasil "Download All"
+Kaggle), menebak keluarga model dari bobotnya, menyusun manifest yang lengkap,
+lalu memvalidasinya sebelum menulis berkas. Opsi `--family`, `--resolution`,
+`--id`, `--name`, `--trigger`, dan `--author` tersedia bila ingin menimpa
+nilai tebakan. Hanya memerlukan Python 3.11+ tanpa pustaka tambahan.
+
 ## Memasang di aplikasi
 
 **Pusat Dependensi → tab Model AI Offline & LoRA → Pasang .batikmodel…**,
