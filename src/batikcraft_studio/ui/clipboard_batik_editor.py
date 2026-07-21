@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+
 from collections.abc import Callable
 
 from batikcraft_studio.application import ClipboardProjectSession, ProjectSessionError
@@ -24,6 +26,10 @@ class ClipboardBatikEditorWorkspaceView(PolishedBatikEditorWorkspaceView):
         except ProjectSessionError as exc:
             self.set_status(str(exc))
             return
+        except Exception as exc:  # noqa: BLE001 - kegagalan tak terduga harus terlihat
+            logging.getLogger(__name__).exception("Salin objek gagal")
+            self.set_status(f"Salin objek gagal: {type(exc).__name__}: {exc}")
+            return
         self.set_status(tr("clipboard.copied", name=item.name))
 
     def paste_object(self) -> None:
@@ -31,6 +37,10 @@ class ClipboardBatikEditorWorkspaceView(PolishedBatikEditorWorkspaceView):
             item = self._clipboard_session.paste_object()
         except ProjectSessionError as exc:
             self.set_status(str(exc))
+            return
+        except Exception as exc:  # noqa: BLE001 - kegagalan tak terduga harus terlihat
+            logging.getLogger(__name__).exception("Tempel objek gagal")
+            self.set_status(f"Tempel objek gagal: {type(exc).__name__}: {exc}")
             return
         self.refresh_context()
         self.after_idle(lambda: self._sync_palette_from_selection(announce=False))

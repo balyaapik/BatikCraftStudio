@@ -98,8 +98,13 @@ class ClipboardProjectSession(InteractiveTransformProjectSession):
         remapped_assets = {
             old_ref: f"assets/{uuid4()}.png" for old_ref, _content in clipboard.assets
         }
+        # Hanya nilai berupa string yang dapat menjadi kunci pemetaan aset.
+        # Properti bernilai dict/list (mis. batification_settings dan
+        # batification_metadata pada hasil BatikBrew) sebelumnya membuat
+        # paste gagal dengan "unhashable type: 'dict'", sehingga hasil AI
+        # hanya bisa digandakan lewat panel layer.
         properties = {
-            key: remapped_assets.get(value, value)
+            key: _remap_asset_values(value, remapped_assets)
             for key, value in source.properties.items()
             if key not in _NON_CLONED_PROPERTY_KEYS
         }
@@ -229,10 +234,43 @@ def _referenced_asset_paths(item: LayerObject) -> set[str]:
     references: set[str] = set()
     if item.asset_ref is not None:
         references.add(item.asset_ref)
-    for value in item.properties.values():
-        if isinstance(value, str) and value.startswith("assets/"):
-            references.add(value)
+    _collect_asset_paths(item.properties, references)
     return references
+
+
+def _remap_asset_values(value: object, mapping: dict[str, str]) -> object:
+    """Ganti rujukan aset lama dengan yang baru, termasuk di dalam dict/list.
+
+    Hanya string yang dapat dijadikan kunci pemetaan; nilai dict/list ditelusuri
+    isinya. Tanpa penelusuran ini, salinan objek hasil AI menyimpan rujukan ke
+    aset proyek asal yang bisa tidak ada di proyek tujuan.
+    """
+
+    if isinstance(value, str):
+        return mapping.get(value, value)
+    if isinstance(value, dict):
+        return {key: _remap_asset_values(nested, mapping) for key, nested in value.items()}
+    if isinstance(value, list):
+        return [_remap_asset_values(nested, mapping) for nested in value]
+    if isinstance(value, tuple):
+        return tuple(_remap_asset_values(nested, mapping) for nested in value)
+    return value
+
+
+def _collect_asset_paths(value: object, references: set[str]) -> None:
+    """Telusuri properti bersarang agar aset di dalam dict/list ikut disalin."""
+
+    if isinstance(value, str):
+        if value.startswith("assets/"):
+            references.add(value)
+        return
+    if isinstance(value, dict):
+        for nested in value.values():
+            _collect_asset_paths(nested, references)
+        return
+    if isinstance(value, (list, tuple)):
+        for nested in value:
+            _collect_asset_paths(nested, references)
 
 
 def _copy_name(name: str) -> str:
