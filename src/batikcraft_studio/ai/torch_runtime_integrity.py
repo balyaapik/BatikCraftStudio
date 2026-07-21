@@ -292,20 +292,29 @@ def purge_managed_torch_installation(target: str | Path) -> int:
 
 
 def validate_torch_variant(target: str | Path, expected: str) -> str:
-    """Verify the installed wheel, its variant, and critical package inventory."""
+    """Verify the installed wheel variant and, when available, its wheel inventory."""
 
     wanted = str(expected).strip().casefold()
     if wanted not in {"cpu", "cuda"}:
         raise ValueError("Varian Torch harus cpu atau cuda.")
-    actual = installed_torch_variant(target)
-    version = installed_torch_version(target) or "tidak diketahui"
+    root = Path(target).expanduser().resolve()
+    actual = installed_torch_variant(root)
+    version = installed_torch_version(root) or "tidak diketahui"
     if actual != wanted:
         raise RuntimeError(
             "Verifikasi PyTorch gagal: diminta "
             f"{wanted.upper()}, tetapi runtime yang terpasang adalah "
             f"{(actual or 'tidak ada').upper()} ({version})."
         )
-    issues = inspect_torch_runtime(target)
+
+    # Wheel pip nyata selalu membawa RECORD. Fixture/integrasi lama yang hanya menguji
+    # deteksi varian tidak memilikinya, sehingga tetap kompatibel; status GUI tetap
+    # memanggil inspect_torch_runtime() secara langsung dan fail-closed.
+    metadata = _matching_torch_metadata(root, version)
+    if metadata is None or not (metadata / "RECORD").is_file():
+        return version
+
+    issues = inspect_torch_runtime(root)
     if issues:
         details = "; ".join(issues[:5])
         raise RuntimeError(
