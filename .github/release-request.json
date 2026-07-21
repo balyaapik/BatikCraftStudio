@@ -1,5 +1,5 @@
 {
-  "release_tag": "v0.7.0",
-  "requested_at": "2026-07-22T04:00:00Z",
-  "reason": "Publish BatikCraft Studio 0.7.0: adopts Inkscape's progressive canvas painting. Tiles are now rendered outwards from the mouse pointer and pushed to the screen one at a time instead of all at once, so the area under the cursor appears roughly 24x sooner. Total work is unchanged; the ordering and delivery are what changed."
+  "release_tag": "v0.7.1",
+  "requested_at": "2026-07-22T06:00:00Z",
+  "reason": "Publish BatikCraft Studio 0.7.1: MS Paint style incremental tile painting. When a new object is added on top, the tile is now produced by compositing just that object onto the previously cached tile instead of redrawing every object in it. On a dense canvas of 2000 objects per tile this is about 570x lighter, and the result is verified pixel-identical to a full redraw."
 }

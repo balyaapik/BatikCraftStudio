@@ -302,6 +302,10 @@ class TileCache:
         self._store: OrderedDict[TileCacheKey, Image.Image] = OrderedDict()
         # Indeks sekunder: isi tile -> kunci pada berbagai skala.
         self._by_content: dict[tuple[Any, ...], list[TileCacheKey]] = {}
+        # Tanda tangan isi per tile, untuk pembaruan inkremental.
+        self._parts: dict[TileCacheKey, tuple[Any, ...]] = {}
+        # Slot = posisi tile pada skala tertentu, lintas revisi isi.
+        self._by_slot: dict[tuple[Any, ...], list[TileCacheKey]] = {}
         self._used_bytes: int = 0
         # Debug stats
         self._hits = 0
@@ -310,6 +314,42 @@ class TileCache:
     # ------------------------------------------------------------------
     # Public interface
     # ------------------------------------------------------------------
+
+    @staticmethod
+    def slot_id(key: TileCacheKey) -> tuple[Any, ...]:
+        """Posisi + skala tile, tanpa memandang isinya."""
+
+        return (
+            key.zoom_bucket,
+            key.tile_size,
+            key.tile_x,
+            key.tile_y,
+            key.canvas_background,
+            key.visibility_revision,
+        )
+
+    def find_prefix(
+        self, key: TileCacheKey, parts: tuple[Any, ...]
+    ) -> tuple[Image.Image, int] | None:
+        """Tile lama yang isinya merupakan AWALAN dari isi sekarang.
+
+        Menggambar goresan baru menambahkan objek di paling atas, jadi daftar
+        isi tile yang baru = daftar lama + objek baru. Kalau versi lamanya masih
+        ada di cache, hasil akhirnya cukup diperoleh dengan menimpakan objek
+        baru saja — biayanya sebesar objek itu, bukan sebesar seluruh gambar.
+        """
+
+        best: tuple[Image.Image, int] | None = None
+        for candidate in self._by_slot.get(self.slot_id(key), ()):
+            stored = self._parts.get(candidate)
+            image = self._store.get(candidate)
+            if stored is None or image is None:
+                continue
+            if len(stored) >= len(parts) or parts[: len(stored)] != stored:
+                continue
+            if best is None or len(stored) > best[1]:
+                best = (image, len(stored))
+        return best
 
     @staticmethod
     def content_id(key: TileCacheKey) -> tuple[Any, ...]:
@@ -362,13 +402,21 @@ class TileCache:
             self._misses += 1
         return None
 
-    def put(self, key: TileCacheKey, image: Image.Image) -> None:
+    def put(
+        self,
+        key: TileCacheKey,
+        image: Image.Image,
+        parts: tuple[Any, ...] | None = None,
+    ) -> None:
         size = _image_bytes(image)
         if key in self._store:
             self._used_bytes -= _image_bytes(self._store[key])
             del self._store[key]
         else:
             self._by_content.setdefault(self.content_id(key), []).append(key)
+            self._by_slot.setdefault(self.slot_id(key), []).append(key)
+        if parts is not None:
+            self._parts[key] = parts
         self._store[key] = image
         self._store.move_to_end(key)
         self._used_bytes += size
@@ -377,16 +425,20 @@ class TileCache:
     def _forget(self, key: TileCacheKey) -> None:
         """Lepaskan kunci dari indeks sekunder."""
 
-        content = self.content_id(key)
-        keys = self._by_content.get(content)
-        if not keys:
-            return
-        try:
-            keys.remove(key)
-        except ValueError:
-            return
-        if not keys:
-            del self._by_content[content]
+        self._parts.pop(key, None)
+        for index, ident in (
+            (self._by_content, self.content_id(key)),
+            (self._by_slot, self.slot_id(key)),
+        ):
+            keys = index.get(ident)
+            if not keys:
+                continue
+            try:
+                keys.remove(key)
+            except ValueError:
+                continue
+            if not keys:
+                del index[ident]
 
     def invalidate_project(self, project_revision: int | None = None) -> None:
         """Remove all tiles for a given revision, or all tiles if revision is None."""
@@ -402,6 +454,8 @@ class TileCache:
     def clear(self) -> None:
         self._store.clear()
         self._by_content.clear()
+        self._by_slot.clear()
+        self._parts.clear()
         self._used_bytes = 0
 
     def debug_stats(self) -> dict[str, Any]:

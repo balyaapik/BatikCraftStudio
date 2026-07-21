@@ -26,6 +26,7 @@ Call ``renderer.invalidate_object(object_id)`` when a single object changes.
 from __future__ import annotations
 
 import math
+from dataclasses import dataclass
 from collections.abc import Mapping
 from typing import Any
 
@@ -104,6 +105,18 @@ def _object_signature(item: LayerObject) -> tuple[Any, ...]:
         str(item.properties.get("fill_mode", "solid")),
         _gradient_hash(dict(gradient) if gradient else None),
     )
+
+
+@dataclass(frozen=True)
+class _TilePlan:
+    """Isi satu tile: tanda tangan, urutan gambar, dan kelayakan inkremental."""
+
+    parts: tuple[Any, ...]
+    plan: list[tuple[Layer, "_LayerSpatialIndex", int]]
+    #: ``drawn_at[i]`` = jumlah objek yang tergambar setelah ``parts[:i]``.
+    #: Ini yang memetakan panjang awalan yang cocok ke titik lanjut menggambar.
+    drawn_at: tuple[int, ...]
+    incremental_ok: bool
 
 
 class _LayerSpatialIndex:
@@ -317,11 +330,11 @@ class CachedViewportRenderer:
         # cache-nya — itulah kenapa kanvas terasa dirender ulang dari nol setiap
         # kali menggambar. Dengan tanda tangan isi, hanya tile yang benar-benar
         # memuat objek yang berubah yang perlu digambar ulang.
-        content_revision = self._tile_content_revision(
+        tile_plan = self._tile_content_plan(
             project, tile_x, tile_y, tile_size, project_revision
         )
         key = TileCacheKey(
-            project_revision=content_revision,
+            project_revision=hash(tile_plan.parts) & 0x7FFF_FFFF,
             zoom_bucket=bucket,
             tile_size=tile_size,
             tile_x=tile_x,
@@ -332,6 +345,31 @@ class CachedViewportRenderer:
         cached = self._tile_cache.get(key)
         if cached is not None:
             return cached
+
+        # --- Jalur cepat ala MS Paint ---------------------------------------
+        # Menggambar menambahkan objek di paling atas, jadi isi tile yang baru
+        # adalah isi lama DITAMBAH objek baru. Kalau versi lamanya masih ada di
+        # cache, hasil akhirnya cukup diperoleh dengan menimpakan objek baru
+        # saja: biayanya sebesar objek itu, BUKAN sebesar seluruh gambar.
+        #
+        # Inilah alasan MS Paint tetap ringan pada gambar serumit apa pun —
+        # bedanya, di sini objek tetap utuh dan bisa diedit satu per satu.
+        if tile_plan.incremental_ok:
+            reused = self._tile_cache.find_prefix(key, tile_plan.parts)
+            if reused is not None:
+                base, matched = reused
+                surface = base.copy()
+                proj_bounds = tile_project_bounds(tile_x, tile_y, tile_size)
+                self._composite_objects(
+                    surface,
+                    tile_plan.plan[tile_plan.drawn_at[matched]:],
+                    assets,
+                    zoom_scale=bucket,
+                    region_left=proj_bounds[0],
+                    region_top=proj_bounds[1],
+                )
+                self._tile_cache.put(key, surface, tile_plan.parts)
+                return surface
 
         # Render HARUS memakai skala yang sama dengan yang ada di kunci cache.
         # Kalau tidak, tile pertama pada satu bucket menentukan skala semua
@@ -345,8 +383,61 @@ class CachedViewportRenderer:
             tile_size=tile_size,
             project_revision=project_revision,
         )
-        self._tile_cache.put(key, tile_image)
+        self._tile_cache.put(key, tile_image, tile_plan.parts)
         return tile_image
+
+    def _tile_content_plan(
+        self,
+        project: Project,
+        tile_x: int,
+        tile_y: int,
+        tile_size: int,
+        project_revision: int,
+    ) -> "_TilePlan":
+        """Rencana isi tile: (tanda tangan, daftar gambar, boleh-inkremental).
+
+        Selain hash isi, dikembalikan juga urutan objek yang akan digambar dan
+        apakah tile ini memenuhi syarat pembaruan inkremental — yaitu ketika
+        menambah objek baru cukup ditimpakan di atas hasil sebelumnya, tanpa
+        menggambar ulang semuanya (inilah yang membuat MS Paint ringan).
+        """
+
+        proj_bounds = tile_project_bounds(tile_x, tile_y, tile_size)
+        parts: list[Any] = [project.canvas.background_color]
+        plan: list[tuple[Layer, "_LayerSpatialIndex", int]] = []
+        # drawn_at[i] = berapa objek sudah tergambar setelah parts[:i].
+        drawn_at: list[int] = [0]
+        incremental_ok = True
+        for layer in project.layers:
+            if layer.node_kind is LayerNodeKind.GROUP:
+                continue
+            if not project.is_layer_effectively_visible(layer.layer_id):
+                continue
+            if not layer.objects:
+                # Layer legacy: jatuh kembali ke revisi global agar tetap aman.
+                parts.append(("legacy", layer.layer_id, project_revision))
+                drawn_at.append(len(plan))
+                incremental_ok = False
+                continue
+            index = self._get_layer_index(layer, project_revision)
+            opacity = _effective_layer_opacity(project, layer)
+            parts.append(("layer", layer.layer_id, opacity))
+            drawn_at.append(len(plan))
+            if opacity < 1.0:
+                # Surface layer diskalakan alfanya SETELAH seluruh objeknya
+                # tergambar, jadi menimpakan objek baru di atas hasil akhir
+                # tidak menghasilkan piksel yang sama.
+                incremental_ok = False
+            for position in index.candidates(proj_bounds):
+                if not bounds_intersect(index.bounds[position], proj_bounds):
+                    continue
+                parts.append(index.signatures[position])
+                plan.append((layer, index, position))
+                drawn_at.append(len(plan))
+                if layer.objects[position].kind is ObjectKind.ERASER_STROKE:
+                    # Penghapus mengurangi alfa; tidak bisa ditimpakan.
+                    incremental_ok = False
+        return _TilePlan(tuple(parts), plan, tuple(drawn_at), incremental_ok)
 
     def _tile_content_revision(
         self,
@@ -356,31 +447,11 @@ class CachedViewportRenderer:
         tile_size: int,
         project_revision: int,
     ) -> int:
-        """Hash isi satu tile: objek apa saja yang tampil di sana, dan bagaimana.
-
-        Biayanya kecil karena hanya menyentuh objek yang benar-benar bersinggungan
-        dengan tile (lewat indeks spasial), dan tanda tangannya sudah dihitung
-        sekali saat indeks dibangun.
-        """
-
-        proj_bounds = tile_project_bounds(tile_x, tile_y, tile_size)
-        parts: list[Any] = [project.canvas.background_color]
-        for layer in project.layers:
-            if layer.node_kind is LayerNodeKind.GROUP:
-                continue
-            if not project.is_layer_effectively_visible(layer.layer_id):
-                continue
-            if not layer.objects:
-                # Layer legacy: jatuh kembali ke revisi global agar tetap aman.
-                parts.append(("legacy", layer.layer_id, project_revision))
-                continue
-            index = self._get_layer_index(layer, project_revision)
-            parts.append(("layer", layer.layer_id, _effective_layer_opacity(project, layer)))
-            for position in index.candidates(proj_bounds):
-                if not bounds_intersect(index.bounds[position], proj_bounds):
-                    continue
-                parts.append(index.signatures[position])
-        return hash(tuple(parts)) & 0x7FFF_FFFF
+        return hash(
+            self._tile_content_plan(
+                project, tile_x, tile_y, tile_size, project_revision
+            ).parts
+        ) & 0x7FFF_FFFF
 
     def _get_layer_index(self, layer: Layer, project_revision: int) -> _LayerSpatialIndex:
         """Indeks spasial layer, dibangun ulang hanya saat proyek berubah."""
@@ -572,16 +643,37 @@ class CachedViewportRenderer:
             return None
 
         surface = Image.new("RGBA", out_size, (0, 0, 0, 0))
-        for position in visible_positions:
-            item = objects[position]
+        self._composite_objects(
+            surface,
+            [(layer, index, position) for position in visible_positions],
+            assets,
+            zoom_scale=zoom_scale,
+            region_left=region_left,
+            region_top=region_top,
+        )
+        return surface
 
+    def _composite_objects(
+        self,
+        surface: Image.Image,
+        entries: list[tuple[Layer, "_LayerSpatialIndex", int]],
+        assets: Mapping[str, bytes],
+        *,
+        zoom_scale: float,
+        region_left: float,
+        region_top: float,
+    ) -> None:
+        """Gambar objek-objek dalam *entries* ke atas *surface*, sesuai urutan."""
+
+        for layer, index, position in entries:
+            item = layer.objects[position]
             prepared = self._get_or_render_object(
                 item,
                 assets,
                 zoom_scale=zoom_scale,
                 index=index,
                 position=position,
-                total=len(objects),
+                total=len(layer.objects),
             )
             if self._debug:
                 self._rendered_objects += 1
@@ -593,7 +685,6 @@ class CachedViewportRenderer:
                 self._erase_from_surface(surface, prepared, dest_left, dest_top)
             else:
                 surface.alpha_composite(prepared, dest=(dest_left, dest_top))
-        return surface
 
     def _get_or_render_object(
         self,
