@@ -1,5 +1,5 @@
 {
-  "release_tag": "v0.5.11",
-  "requested_at": "2026-07-21T18:30:00Z",
-  "reason": "Publish BatikCraft Studio 0.5.11: fixes zoom flashing and the artwork disappearing at zoom levels such as 125%. The quick zoom preview was dead code and never displayed, tiles kept stale coordinates while the threaded render caught up, and preview geometry was duplicated. Zoom now shows a viewport-bounded scaled preview that is only removed once the sharp tiles are on screen."
+  "release_tag": "v0.6.0",
+  "requested_at": "2026-07-21T20:15:00Z",
+  "reason": "Publish BatikCraft Studio 0.6.0: canvas rendering rework. Tiles are now screen-space bounded so memory stays flat (24 MB) from 100% to 800% zoom instead of ballooning to 576 MB and failing silently at 200%+. Object render sizes are clamped, tile render failures are logged instead of swallowed, and a per-layer spatial index replaces the full object scan per tile, making canvases with many objects about 11x faster to render."
 }

@@ -52,6 +52,7 @@ from batikcraft_studio.imaging.renderer import (
 from batikcraft_studio.imaging.shape import ShapeError, render_shape_image
 from batikcraft_studio.imaging.tile_cache import (
     TILE_SIZE,
+    tile_project_size,
     ObjectRenderCache,
     ObjectRenderCacheKey,
     TileCache,
@@ -65,6 +66,88 @@ from batikcraft_studio.imaging.tile_cache import (
     zoom_scale_bucket,
 )
 from batikcraft_studio.imaging.viewport_renderer import bounds_intersect
+
+
+_MAX_OBJECT_RENDER_PX = 4096
+_MAX_OBJECT_RENDER_PIXELS = 16_000_000
+
+
+_INDEX_CELL = 512
+_MAX_CELLS_PER_OBJECT = 64
+
+
+class _LayerSpatialIndex:
+    """Indeks spasial sederhana atas objek satu layer.
+
+    Tanpa ini, setiap tile harus menelusuri SELURUH objek di layer hanya untuk
+    membuang sebagian besar darinya — dan ``object_axis_aligned_bounds`` bukan
+    operasi murah karena ikut menghitung rotasi/shear. Dengan 1000 objek dan 24
+    tile itu 24.000 perhitungan bounds untuk setiap kali render; inilah sebabnya
+    kanvas terasa berat begitu objeknya banyak, terlepas objek itu hasil AI atau
+    bukan.
+
+    Bounds dihitung sekali per revisi proyek, lalu objek dimasukkan ke sel grid.
+    Setiap tile hanya memeriksa objek di sel yang bersinggungan dengannya.
+    """
+
+    __slots__ = ("bounds", "buckets", "oversized")
+
+    def __init__(self, layer: Layer) -> None:
+        self.bounds: list[tuple[float, float, float, float]] = []
+        self.buckets: dict[tuple[int, int], list[int]] = {}
+        # Objek yang membentang sangat luas akan memenuhi terlalu banyak sel;
+        # menyimpannya terpisah lebih murah daripada meledakkan indeks.
+        self.oversized: list[int] = []
+
+        for index, item in enumerate(layer.objects):
+            box = object_axis_aligned_bounds(item)
+            self.bounds.append(box)
+            if not item.visible:
+                continue
+            gx0 = int(math.floor(box[0] / _INDEX_CELL))
+            gy0 = int(math.floor(box[1] / _INDEX_CELL))
+            gx1 = int(math.floor(box[2] / _INDEX_CELL))
+            gy1 = int(math.floor(box[3] / _INDEX_CELL))
+            if (gx1 - gx0 + 1) * (gy1 - gy0 + 1) > _MAX_CELLS_PER_OBJECT:
+                self.oversized.append(index)
+                continue
+            for gy in range(gy0, gy1 + 1):
+                for gx in range(gx0, gx1 + 1):
+                    self.buckets.setdefault((gx, gy), []).append(index)
+
+    def candidates(self, proj_bounds: tuple[float, float, float, float]) -> list[int]:
+        """Indeks objek yang mungkin bersinggungan, dalam urutan gambar."""
+
+        left, top, right, bottom = proj_bounds
+        gx0 = int(math.floor(left / _INDEX_CELL))
+        gy0 = int(math.floor(top / _INDEX_CELL))
+        gx1 = int(math.floor(right / _INDEX_CELL))
+        gy1 = int(math.floor(bottom / _INDEX_CELL))
+        found: set[int] = set(self.oversized)
+        for gy in range(gy0, gy1 + 1):
+            for gx in range(gx0, gx1 + 1):
+                bucket = self.buckets.get((gx, gy))
+                if bucket:
+                    found.update(bucket)
+        # Urutan gambar (painter's algorithm) wajib dipertahankan.
+        return sorted(found)
+
+
+def _clamp_render_size(width: int, height: int) -> tuple[int, int]:
+    """Batasi ukuran render satu objek agar alokasinya tidak pernah meledak."""
+
+    if (
+        width <= _MAX_OBJECT_RENDER_PX
+        and height <= _MAX_OBJECT_RENDER_PX
+        and width * height <= _MAX_OBJECT_RENDER_PIXELS
+    ):
+        return width, height
+    ratio = min(
+        _MAX_OBJECT_RENDER_PX / max(width, 1),
+        _MAX_OBJECT_RENDER_PX / max(height, 1),
+        (_MAX_OBJECT_RENDER_PIXELS / max(width * height, 1)) ** 0.5,
+    )
+    return max(1, int(width * ratio)), max(1, int(height * ratio))
 
 
 def _resize_for_display(image: Image.Image, width: int, height: int) -> Image.Image:
@@ -108,6 +191,7 @@ class CachedViewportRenderer:
         self._debug = debug
         self._rendered_objects = 0
         self._culled_objects = 0
+        self._layer_index: dict[str, tuple[int, _LayerSpatialIndex]] = {}
 
     # ------------------------------------------------------------------
     # Public API
@@ -126,13 +210,17 @@ class CachedViewportRenderer:
     ) -> Image.Image:
         """Return a cached tile or render it now.
 
-        The tile covers one ``TILE_SIZE × TILE_SIZE`` block of project space
-        rendered at *zoom_scale*.
+        The tile covers one ``tile_size × tile_size`` block of project space
+        rendered at *zoom_scale*. ``tile_size`` mengecil saat zoom membesar
+        supaya sisi tile di layar — dan karenanya biaya render serta memori —
+        tetap terbatas.
         """
         bucket = zoom_scale_bucket(zoom_scale)
+        tile_size = tile_project_size(zoom_scale)
         key = TileCacheKey(
             project_revision=project_revision,
             zoom_bucket=bucket,
+            tile_size=tile_size,
             tile_x=tile_x,
             tile_y=tile_y,
             canvas_background=project.canvas.background_color,
@@ -142,11 +230,30 @@ class CachedViewportRenderer:
         if cached is not None:
             return cached
 
+        # Penting: render pada zoom_scale sebenarnya, bukan bucket. Sisi tile
+        # sudah dibatasi tile_size, jadi tidak ada lagi alasan membulatkan ke
+        # bucket besar yang membuat alokasinya meledak.
         tile_image = self._render_tile(
-            project, assets, zoom_scale=bucket, tile_x=tile_x, tile_y=tile_y
+            project,
+            assets,
+            zoom_scale=zoom_scale,
+            tile_x=tile_x,
+            tile_y=tile_y,
+            tile_size=tile_size,
+            project_revision=project_revision,
         )
         self._tile_cache.put(key, tile_image)
         return tile_image
+
+    def _get_layer_index(self, layer: Layer, project_revision: int) -> _LayerSpatialIndex:
+        """Indeks spasial layer, dibangun ulang hanya saat proyek berubah."""
+
+        cached = self._layer_index.get(layer.layer_id)
+        if cached is not None and cached[0] == project_revision:
+            return cached[1]
+        index = _LayerSpatialIndex(layer)
+        self._layer_index[layer.layer_id] = (project_revision, index)
+        return index
 
     def invalidate_object(self, object_id: str) -> None:
         """Invalidate all cached images for a single object."""
@@ -156,6 +263,7 @@ class CachedViewportRenderer:
         """Clear all caches (call on project close/open)."""
         self._tile_cache.clear()
         self._obj_cache.clear()
+        self._layer_index.clear()
         # Piramida mipmap memegang gambar berukuran penuh; lepaskan juga supaya
         # menutup proyek benar-benar mengembalikan memorinya.
         clear_decoded_asset_cache()
@@ -183,9 +291,11 @@ class CachedViewportRenderer:
         zoom_scale: float,
         tile_x: int,
         tile_y: int,
+        tile_size: int = TILE_SIZE,
+        project_revision: int = 0,
     ) -> Image.Image:
-        proj_bounds = tile_project_bounds(tile_x, tile_y, TILE_SIZE)
-        tile_px = max(1, round(TILE_SIZE * zoom_scale))
+        proj_bounds = tile_project_bounds(tile_x, tile_y, tile_size)
+        tile_px = max(1, round(tile_size * zoom_scale))
         out_size = (tile_px, tile_px)
 
         bg_color = (*ImageColor.getrgb(project.canvas.background_color), 255)
@@ -209,6 +319,7 @@ class CachedViewportRenderer:
                     region_left=region_left,
                     region_top=region_top,
                     out_size=out_size,
+                    project_revision=project_revision,
                 )
                 eff_opacity = _effective_layer_opacity(project, layer)
                 if eff_opacity < 1.0:
@@ -257,13 +368,16 @@ class CachedViewportRenderer:
         region_left: float,
         region_top: float,
         out_size: tuple[int, int],
+        project_revision: int = 0,
     ) -> Image.Image:
         surface = Image.new("RGBA", out_size, (0, 0, 0, 0))
-        for item in layer.objects:
+        index = self._get_layer_index(layer, project_revision)
+        objects = layer.objects
+        for position in index.candidates(proj_bounds):
+            item = objects[position]
             if not item.visible:
                 continue
-            obj_bounds = object_axis_aligned_bounds(item)
-            if not bounds_intersect(obj_bounds, proj_bounds):
+            if not bounds_intersect(index.bounds[position], proj_bounds):
                 if self._debug:
                     self._culled_objects += 1
                 continue
@@ -325,6 +439,11 @@ class CachedViewportRenderer:
     ) -> Image.Image:
         width = max(1, round(item.bounds.width * abs(item.transform.scale_x) * zoom_scale))
         height = max(1, round(item.bounds.height * abs(item.transform.scale_y) * zoom_scale))
+        # Pengaman keras: pada 800% sebuah hasil BatikBrew 1024 px diminta
+        # dirender 8192x8192 = 256 MB. Alokasi sebesar itu gagal (dan dulu
+        # kegagalannya ditelan diam-diam sehingga kanvas jadi kosong). Tile
+        # hanya butuh potongan seluas layar, jadi batasi di sini.
+        width, height = _clamp_render_size(width, height)
 
         if item.kind is ObjectKind.SHAPE:
             from batikcraft_studio.domain import LayerKind as LK

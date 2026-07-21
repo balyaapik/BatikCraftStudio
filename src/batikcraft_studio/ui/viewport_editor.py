@@ -28,6 +28,7 @@ calling back to the main thread.
 
 from __future__ import annotations
 
+import logging
 import math
 import threading
 import time
@@ -43,6 +44,7 @@ from batikcraft_studio.imaging import ProjectRenderError, render_project_preview
 from batikcraft_studio.imaging.cached_renderer import CachedViewportRenderer
 from batikcraft_studio.imaging.tile_cache import (
     TILE_SIZE,
+    tile_project_size,
     tile_project_bounds,
     visible_tile_coords,
     zoom_scale_bucket,
@@ -115,6 +117,8 @@ class ViewportEditorWorkspaceView(CanvasStructureEditorWorkspaceView):
         self._last_preview_pil: Image.Image | None = None
         self._last_preview_scale: float = 0.0
         self._last_preview_origin_proj: tuple[float, float] = (0.0, 0.0)
+        # Sisi tile (koordinat proyek) dari grid yang sedang tampil.
+        self._active_tile_size: int = TILE_SIZE
         super().__init__(*args, **kwargs)
         self._install_viewport_controls()
         self._viewport_ready = True
@@ -314,45 +318,72 @@ class ViewportEditorWorkspaceView(CanvasStructureEditorWorkspaceView):
         if project is None or source is None or self._last_preview_scale <= 0:
             return
         try:
-            ratio = new_scale / self._last_preview_scale
-            target_w = max(1, round(source.width * ratio))
-            target_h = max(1, round(source.height * ratio))
-            # Batasi biaya: yang terlihat hanya seluas viewport. Gambar sangat
-            # besar tidak perlu diskalakan seluruhnya.
-            if target_w * target_h > _MAX_PREVIEW_PIXELS:
-                return
-            resample = (
-                Image.Resampling.NEAREST
-                if ratio > 1.0
-                else Image.Resampling.BILINEAR
-            )
-            scaled = source.resize((target_w, target_h), resample)
-            photo = ImageTk.PhotoImage(scaled)
-
-            left, top, _content_w, _content_h = self._preview_geometry(
+            base_scale = self._last_preview_scale
+            origin_x, origin_y = self._last_preview_origin_proj
+            left, top, content_w, content_h = self._preview_geometry(
                 project, new_scale
             )
-            origin_x, origin_y = self._last_preview_origin_proj
-            canvas_x = left + origin_x * new_scale
-            canvas_y = top + origin_y * new_scale
 
+            # Wilayah proyek yang benar-benar akan terlihat. Memotong dulu baru
+            # menskalakan membuat biayanya terikat pada luas VIEWPORT, bukan
+            # pada level zoom — pada 800% pendekatan lama harus menskalakan
+            # gambar raksasa dan akhirnya menyerah, sehingga layar jadi kosong.
+            view_w = max(self.canvas.winfo_width(), 40)
+            view_h = max(self.canvas.winfo_height(), 40)
+            view_left = self.canvas.canvasx(0)
+            view_top = self.canvas.canvasy(0)
+            proj_left = (view_left - left) / new_scale
+            proj_top = (view_top - top) / new_scale
+            proj_right = proj_left + view_w / new_scale
+            proj_bottom = proj_top + view_h / new_scale
+
+            src_w_proj = source.width / base_scale
+            src_h_proj = source.height / base_scale
+            crop_left = max(origin_x, proj_left)
+            crop_top = max(origin_y, proj_top)
+            crop_right = min(origin_x + src_w_proj, proj_right)
+            crop_bottom = min(origin_y + src_h_proj, proj_bottom)
+            if crop_right <= crop_left or crop_bottom <= crop_top:
+                return  # tidak ada irisan dengan layar
+
+            box = (
+                max(0, int((crop_left - origin_x) * base_scale)),
+                max(0, int((crop_top - origin_y) * base_scale)),
+                min(source.width, int(math.ceil((crop_right - origin_x) * base_scale))),
+                min(source.height, int(math.ceil((crop_bottom - origin_y) * base_scale))),
+            )
+            if box[2] <= box[0] or box[3] <= box[1]:
+                return
+            patch = source.crop(box)
+
+            target_w = max(1, round((crop_right - crop_left) * new_scale))
+            target_h = max(1, round((crop_bottom - crop_top) * new_scale))
+            if target_w * target_h > _MAX_PREVIEW_PIXELS:
+                return  # tidak akan terjadi untuk viewport wajar, tapi tetap dijaga
+            resample = (
+                Image.Resampling.NEAREST
+                if new_scale > base_scale
+                else Image.Resampling.BILINEAR
+            )
+            photo = ImageTk.PhotoImage(patch.resize((target_w, target_h), resample))
+
+            canvas_x = left + crop_left * new_scale
+            canvas_y = top + crop_top * new_scale
             if self._preview_canvas_id is None:
                 self._preview_canvas_id = self.canvas.create_image(
-                    canvas_x,
-                    canvas_y,
-                    image=photo,
-                    anchor="nw",
-                    tags="zoom-preview",
+                    canvas_x, canvas_y, image=photo, anchor="nw", tags="zoom-preview"
                 )
             else:
                 self.canvas.itemconfigure(self._preview_canvas_id, image=photo)
                 self.canvas.coords(self._preview_canvas_id, canvas_x, canvas_y)
-            # Referensi harus dipegang, kalau tidak PhotoImage langsung dibuang
+            # Referensi wajib dipegang; kalau tidak PhotoImage langsung dibuang
             # garbage collector dan gambarnya hilang.
             self._preview_photo = photo
             self.canvas.tag_raise("zoom-preview")
         except Exception:  # noqa: BLE001
-            pass
+            logging.getLogger(__name__).debug(
+                "Pratinjau zoom dilewati.", exc_info=True
+            )
 
     def _hide_quick_preview(self) -> None:
         """Lepas lapisan pratinjau -- hanya setelah tile final terpasang."""
@@ -484,7 +515,8 @@ class ViewportEditorWorkspaceView(CanvasStructureEditorWorkspaceView):
 
         if not self._tile_canvas_ids:
             return
-        tile_px = max(1, round(TILE_SIZE * scale))
+        active = getattr(self, "_active_tile_size", None) or TILE_SIZE
+        tile_px = max(1, round(active * scale))
         left = self._preview_left
         top = self._preview_top
         for (tx, ty), cid in self._tile_canvas_ids.items():
@@ -525,6 +557,9 @@ class ViewportEditorWorkspaceView(CanvasStructureEditorWorkspaceView):
         proj_left = max(0.0, (vp_left - preview_left) / zoom_scale)
         proj_top = max(0.0, (vp_top - preview_top) / zoom_scale)
 
+        # Tile menutup area proyek yang mengecil saat zoom membesar, sehingga
+        # sisi tile di layar (dan biaya render) tetap terbatas di semua zoom.
+        tile_size = tile_project_size(zoom_scale)
         tile_coords = visible_tile_coords(
             proj_left * zoom_scale,
             proj_top * zoom_scale,
@@ -533,11 +568,13 @@ class ViewportEditorWorkspaceView(CanvasStructureEditorWorkspaceView):
             canvas_w,
             canvas_h,
             zoom_scale,
+            tile_size=tile_size,
             overscan=1,
         )
 
         def _worker() -> None:
             tiles: list[tuple[int, int, Image.Image]] = []
+            failures = 0
             for tx, ty in tile_coords:
                 if generation != self._render_generation:
                     return  # stale — abort
@@ -552,11 +589,24 @@ class ViewportEditorWorkspaceView(CanvasStructureEditorWorkspaceView):
                         tile_y=ty,
                     )
                     tiles.append((tx, ty, img))
-                except Exception:  # noqa: BLE001
-                    pass
+                except (Exception, MemoryError):  # noqa: BLE001
+                    # Kegagalan di sini dulu ditelan diam-diam: hasilnya daftar
+                    # tile kosong dan kanvas jadi putih tanpa penjelasan apa
+                    # pun. Sekarang dicatat supaya bisa didiagnosis.
+                    failures += 1
+                    logging.getLogger(__name__).exception(
+                        "Render tile (%s, %s) gagal pada zoom %.3f", tx, ty, zoom_scale
+                    )
+            if failures:
+                logging.getLogger(__name__).warning(
+                    "%d dari %d tile gagal dirender pada zoom %.3f.",
+                    failures,
+                    len(tile_coords),
+                    zoom_scale,
+                )
             if generation == self._render_generation:
                 self.after(0, lambda: self._apply_tiles(
-                    tiles, zoom_scale, preview_left, preview_top, generation
+                    tiles, zoom_scale, preview_left, preview_top, generation, tile_size
                 ))
 
         thread = threading.Thread(target=_worker, daemon=True)
@@ -569,12 +619,25 @@ class ViewportEditorWorkspaceView(CanvasStructureEditorWorkspaceView):
         preview_left: float,
         preview_top: float,
         generation: int,
+        tile_size: int = TILE_SIZE,
     ) -> None:
         """Called on Tk main thread after worker completes."""
         if generation != self._render_generation:
             return  # stale result, ignore
 
-        tile_px = max(1, round(TILE_SIZE * zoom_scale))
+        # Tile lama memakai grid yang berbeda; buang dulu supaya tidak ada sisa
+        # gambar berskala lain yang menumpuk di bawah tile baru.
+        if tiles and getattr(self, "_active_tile_size", None) != tile_size:
+            for cid in self._tile_canvas_ids.values():
+                try:
+                    self.canvas.delete(cid)
+                except Exception:  # noqa: BLE001
+                    continue
+            self._tile_canvas_ids.clear()
+            self._tile_photos.clear()
+            self._active_tile_size = tile_size
+
+        tile_px = max(1, round(tile_size * zoom_scale))
         for tx, ty, img in tiles:
             canvas_x = preview_left + tx * tile_px
             canvas_y = preview_top + ty * tile_px
@@ -608,7 +671,9 @@ class ViewportEditorWorkspaceView(CanvasStructureEditorWorkspaceView):
 
         # Keep a full-resolution preview image for quick rescale on zoom
         # (stitch visible tiles into one image for _last_preview_pil)
-        self._stitch_preview_pil(tiles, zoom_scale, preview_left, preview_top)
+        self._stitch_preview_pil(
+            tiles, zoom_scale, preview_left, preview_top, tile_size
+        )
 
         # Baru sekarang lapisan pratinjau boleh dilepas: penggantinya sudah ada
         # di layar. Melepasnya lebih awal persis itulah kedipan yang terlihat.
@@ -625,10 +690,11 @@ class ViewportEditorWorkspaceView(CanvasStructureEditorWorkspaceView):
         zoom_scale: float,
         preview_left: float,
         preview_top: float,
+        tile_size: int = TILE_SIZE,
     ) -> None:
         if not tiles:
             return
-        tile_px = max(1, round(TILE_SIZE * zoom_scale))
+        tile_px = max(1, round(tile_size * zoom_scale))
         min_tx = min(tx for tx, _, _ in tiles)
         min_ty = min(ty for _, ty, _ in tiles)
         max_tx = max(tx for tx, _, _ in tiles)
@@ -645,8 +711,8 @@ class ViewportEditorWorkspaceView(CanvasStructureEditorWorkspaceView):
         # pratinjau zoom bisa diposisikan ulang dengan benar pada skala apa pun.
         self._last_preview_scale = zoom_scale
         self._last_preview_origin_proj = (
-            float(min_tx * TILE_SIZE),
-            float(min_ty * TILE_SIZE),
+            float(min_tx * tile_size),
+            float(min_ty * tile_size),
         )
 
     def _clear_tile_overlays(self) -> None:
@@ -657,6 +723,7 @@ class ViewportEditorWorkspaceView(CanvasStructureEditorWorkspaceView):
         self._hide_quick_preview()
         self._last_preview_pil = None
         self._last_preview_scale = 0.0
+        self._active_tile_size = TILE_SIZE
 
     # ------------------------------------------------------------------
     # Revision helpers

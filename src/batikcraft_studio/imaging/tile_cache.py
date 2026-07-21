@@ -32,6 +32,12 @@ from PIL import Image
 # ---------------------------------------------------------------------------
 
 TILE_SIZE = 512
+#: Batas atas sisi tile DALAM PIKSEL LAYAR. Ini yang menjaga biaya render tetap
+#: konstan di semua level zoom: tile menutup area proyek yang makin kecil saat
+#: zoom membesar, alih-alih membesar sendiri sampai ratusan MB.
+MAX_TILE_SCREEN_PX = 768
+#: Jangan pecah tile lebih kecil dari ini — terlalu banyak tile juga mahal.
+MIN_TILE_PROJECT_SIZE = 32
 _SCALE_BUCKETS = (0.125, 0.25, 0.5, 1.0, 2.0, 4.0, 8.0)
 _DEFAULT_TILE_LIMIT = 128 * 1024 * 1024   # 128 MiB
 _DEFAULT_OBJECT_LIMIT = 64 * 1024 * 1024  # 64 MiB
@@ -40,6 +46,28 @@ _DEFAULT_OBJECT_LIMIT = 64 * 1024 * 1024  # 64 MiB
 # ---------------------------------------------------------------------------
 # Scale bucketing
 # ---------------------------------------------------------------------------
+
+
+def tile_project_size(zoom_scale: float) -> int:
+    """Sisi tile dalam koordinat proyek untuk *zoom_scale*.
+
+    Sebelumnya tile selalu menutup 512 px proyek, sehingga sisi tile di layar
+    ikut membesar bersama zoom: 512 px pada 100%, 4096 px pada 800%. Satu tile
+    8x menjadi 64 MB dan satu layar penuh butuh ~576 MB — jauh melewati batas
+    cache, jadi setiap frame membuang isinya sendiri (thrash), dan pada titik
+    tertentu alokasinya gagal sama sekali sehingga kanvas jadi kosong.
+
+    Dengan membagi dua area proyek tiap kali sisi layarnya melewati
+    ``MAX_TILE_SCREEN_PX``, sisi tile di layar tetap terbatas. Biaya per tile
+    dan jumlah tile yang terlihat jadi kira-kira konstan di semua level zoom.
+    """
+
+    if zoom_scale <= 0:
+        return TILE_SIZE
+    size = TILE_SIZE
+    while size * zoom_scale > MAX_TILE_SCREEN_PX and size > MIN_TILE_PROJECT_SIZE:
+        size //= 2
+    return max(MIN_TILE_PROJECT_SIZE, size)
 
 
 def zoom_scale_bucket(zoom: float) -> float:
@@ -71,6 +99,7 @@ class TileCacheKey:
 
     project_revision: int
     zoom_bucket: float
+    tile_size: int  # sisi tile dalam koordinat proyek (berubah menurut zoom)
     tile_x: int
     tile_y: int
     canvas_background: str
@@ -459,7 +488,10 @@ def tile_project_bounds(
 
 
 __all__ = [
+    "MAX_TILE_SCREEN_PX",
+    "MIN_TILE_PROJECT_SIZE",
     "TILE_SIZE",
+    "tile_project_size",
     "ObjectRenderCache",
     "ObjectRenderCacheKey",
     "TileCache",
