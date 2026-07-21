@@ -142,3 +142,29 @@ def test_dtype_keyword_matches_each_library() -> None:
             assert "torch_dtype=" in line, line
         if any(name in line for name in transformers_classes):
             assert "torch_dtype=" not in line, line
+
+
+def test_packaging_runs_before_optional_inference_cells() -> None:
+    """Regresi: sel pengemasan berada di akhir, sedangkan sel uji di atasnya
+    memerlukan foto contoh. Bila foto tidak ada, Run All berhenti dan
+    pengguna hanya mendapat .safetensors — bukan .batikmodel."""
+
+    notebook = json.loads(NOTEBOOK.read_text(encoding="utf-8"))
+    sources = ["".join(cell.get("source", [])) for cell in notebook["cells"]]
+
+    package_index = next(
+        index for index, text in enumerate(sources) if "Bungkus menjadi paket" in text
+    )
+    inference_index = next(
+        index for index, text in enumerate(sources) if text.startswith("# 6) Uji cepat")
+    )
+    assert package_index < inference_index
+
+
+def test_optional_cells_skip_gracefully_without_sample_photo() -> None:
+    source = _sources()
+    # Sel uji memeriksa keberadaan foto dan melewati diri sendiri.
+    assert "sel uji dilewati" in source
+    assert "Paket .batikmodel tetap tersedia" in source
+    # Pembangun pasangan juga tidak boleh menggagalkan Run All.
+    assert "pembangunan pasangan dilewati" in source
