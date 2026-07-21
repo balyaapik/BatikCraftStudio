@@ -102,3 +102,18 @@ def test_copy_requires_a_selected_object() -> None:
     session.new_project(title="t", creator="t", width=100, height=100)
     with pytest.raises(ProjectSessionError):
         session.copy_object()
+
+
+def test_ai_output_is_reselected_explicitly_after_generation() -> None:
+    """Regresi: Ctrl+C menyalin objek sebelumnya karena penyegaran panel layer
+    memindahkan objek aktif setelah hasil AI disisipkan."""
+
+    import inspect
+
+    from batikcraft_studio.ui import context_tool_editor_hotfixes
+
+    source = inspect.getsource(context_tool_editor_hotfixes)
+    # Id hasil disimpan saat commit, lalu dipakai untuk memilih ulang.
+    assert "self._last_ai_output_id = output.object_id" in source
+    assert "def _select_ai_output" in source
+    assert "self.after_idle(lambda: self._select_ai_output(output_id))" in source

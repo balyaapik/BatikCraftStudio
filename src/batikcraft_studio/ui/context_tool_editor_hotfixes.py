@@ -877,6 +877,7 @@ class _HotfixV5(_HotfixV4):
         except ProjectSessionError as exc:
             self.set_status(str(exc))
             return
+        self._last_ai_output_id = output.object_id
         self.refresh_context()
         self.set_status(
             f"{output.name} dibuat dengan model pretrained tanpa training khusus."
@@ -1718,6 +1719,7 @@ class _HotfixV10(_HotfixV9):
         except ProjectSessionError as exc:
             self.set_status(str(exc))
             return
+        self._last_ai_output_id = output.object_id
         self.refresh_context()
         device = result.metadata.get("device", "-")
         self.set_status(
@@ -2718,11 +2720,34 @@ class _HotfixV14(_HotfixV13):
             return
         super()._finish_pretrained_ai_success(plan, selected)
 
-        project = self.session.project
-        if project is not None and project.active_object_id is not None:
-            self.session.set_selected_objects([project.active_object_id])
+        # Pilih HASIL AI secara eksplisit berdasarkan id-nya. Memakai
+        # active_object_id di sini tidak dapat diandalkan: penyegaran panel
+        # layer setelah commit dapat memindahkan objek aktif ke baris lain,
+        # sehingga Ctrl+C menyalin objek sebelumnya, bukan hasil AI.
+        output_id = getattr(self, "_last_ai_output_id", None)
+        if output_id is not None:
+            self._select_ai_output(output_id)
+            # Ulangi setelah antrean Tk selesai agar penyegaran panel layer
+            # tidak menimpa pilihan ini.
+            self.after_idle(lambda: self._select_ai_output(output_id))
         self.focus_set()
         self.set_status("Hasil AI aktif dan siap disalin dengan Ctrl+C / Ctrl+V.")
+
+    def _select_ai_output(self, object_id: str) -> None:
+        """Jadikan objek hasil AI sebagai objek aktif dan satu-satunya seleksi."""
+
+        project = self.session.project
+        if project is None:
+            return
+        try:
+            project.get_object(object_id)
+        except Exception:  # noqa: BLE001 - objek mungkin sudah dihapus
+            return
+        try:
+            self.session.set_selected_objects([object_id])
+            self._refresh_multi_selection()
+        except Exception:  # noqa: BLE001 - seleksi tidak boleh menggagalkan alur
+            pass
 
     def _finish_batikbrew_error(self, message: str) -> None:
         super()._finish_pretrained_ai_error(message)

@@ -97,6 +97,17 @@ class BatikCraftApplication:
         )
         file_menu.add_separator()
         file_menu.add_command(
+            label=tr("file.print"),
+            accelerator="Ctrl+P",
+            command=self.print_project,
+        )
+        file_menu.add_command(
+            label=tr("file.print_as"),
+            accelerator="Ctrl+Shift+P",
+            command=self.print_project_as,
+        )
+        file_menu.add_separator()
+        file_menu.add_command(
             label=tr("file.close_project"),
             accelerator="Ctrl+W",
             command=self.close_project,
@@ -275,6 +286,8 @@ class BatikCraftApplication:
             ("<Control-i>", self.main_window.editor_import_image),
             ("<Control-s>", self.save_project),
             ("<Control-Shift-S>", self.save_project_as),
+            ("<Control-p>", self.print_project),
+            ("<Control-Shift-P>", self.print_project_as),
             ("<Control-w>", self.close_project),
             ("<Control-z>", self.main_window.editor_undo),
             ("<Control-y>", self.main_window.editor_redo),
@@ -394,6 +407,60 @@ class BatikCraftApplication:
         self.main_window.refresh_project_context()
         self.main_window.flash_status(tr("status.project_saved", name=destination.name))
         return True
+
+    def print_project(self) -> None:
+        """Cetak proyek aktif ke printer bawaan sistem."""
+
+        from .printing import PrintError, send_to_printer
+
+        if not self.session.has_project:
+            self.main_window.flash_status(tr("status.no_open_project"))
+            return
+        self.main_window.set_busy(True, tr("status.printing"))
+        try:
+            send_to_printer(self.session.require_project(), self.session.assets)
+        except PrintError as exc:
+            self.main_window.set_busy(False)
+            messagebox.showerror(tr("file.print"), str(exc), parent=self.root)
+            return
+        self.main_window.set_busy(False)
+        self.main_window.flash_status(tr("status.print_sent"))
+
+    def print_project_as(self) -> None:
+        """Simpan hasil cetak sebagai PDF atau gambar pada lokasi pilihan."""
+
+        from .printing import PrintError, save_print_file
+
+        if not self.session.has_project:
+            self.main_window.flash_status(tr("status.no_open_project"))
+            return
+        snapshot = self.session.snapshot()
+        selected = filedialog.asksaveasfilename(
+            parent=self.root,
+            title=tr("file.print_as"),
+            defaultextension=".pdf",
+            initialfile=f"{snapshot.title or 'batikcraft'}.pdf",
+            filetypes=(
+                ("PDF", "*.pdf"),
+                ("PNG", "*.png"),
+                ("JPEG", "*.jpg"),
+            ),
+        )
+        if not selected:
+            return
+        self.main_window.set_busy(True, tr("status.printing"))
+        try:
+            destination = save_print_file(
+                self.session.require_project(), self.session.assets, selected
+            )
+        except PrintError as exc:
+            self.main_window.set_busy(False)
+            messagebox.showerror(tr("file.print_as"), str(exc), parent=self.root)
+            return
+        self.main_window.set_busy(False)
+        self.main_window.flash_status(
+            tr("status.print_saved", name=destination.name)
+        )
 
     def close_project(self) -> None:
         if not self.session.has_project:

@@ -1103,3 +1103,19 @@ _TRANSLATIONS["en"].update({
     "toolbox.hand": "Hand (Pan View)",
     "toolbox.hand_status": "Hand tool active — drag the canvas to pan the view.",
 })
+
+
+_TRANSLATIONS["id"].update({
+    "file.print": "Cetak…",
+    "file.print_as": "Cetak Sebagai…",
+    "status.printing": "Menyiapkan hasil cetak…",
+    "status.print_sent": "Hasil cetak dikirim ke printer.",
+    "status.print_saved": "Berkas cetak disimpan: {name}",
+})
+_TRANSLATIONS["en"].update({
+    "file.print": "Print…",
+    "file.print_as": "Print As…",
+    "status.printing": "Preparing the printout…",
+    "status.print_sent": "Printout sent to the printer.",
+    "status.print_saved": "Print file saved: {name}",
+})
