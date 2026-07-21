@@ -113,4 +113,70 @@ def guard_model_load(
         )
 
 
-__all__ = ["available_memory_gb", "guard_cpu_generation", "guard_model_load"]
+# Ambang mesin "sempit": RAM sistem kecil atau VRAM GPU kecil. Pada kondisi
+# ini pipeline dipasang dalam profil paling hemat dan dilepas setelah dipakai.
+_LOW_MEMORY_RAM_GB = 12.0
+_LOW_MEMORY_VRAM_GB = 8.0
+
+
+def total_memory_gb() -> float | None:
+    try:
+        import psutil
+
+        return float(psutil.virtual_memory().total) / (1024**3)
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def vram_total_gb(torch_module: object | None) -> float | None:
+    torch = torch_module
+    if torch is None:
+        return None
+    try:
+        properties = torch.cuda.get_device_properties(0)  # type: ignore[union-attr]
+        return float(properties.total_memory) / (1024**3)
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def low_memory_profile(device: str, torch_module: object | None = None) -> bool:
+    """True bila mesin perlu profil hemat memori agresif."""
+
+    total_ram = total_memory_gb()
+    if total_ram is not None and total_ram < _LOW_MEMORY_RAM_GB:
+        return True
+    free = available_memory_gb()
+    if free is not None and free < _LOW_MEMORY_RAM_GB:
+        return True
+    if device == "cuda":
+        vram = vram_total_gb(torch_module)
+        if vram is not None and vram < _LOW_MEMORY_VRAM_GB:
+            return True
+    return False
+
+
+def release_memory(torch_module: object | None = None) -> None:
+    """Kembalikan memori sesegera mungkin setelah generasi selesai."""
+
+    import gc
+
+    gc.collect()
+    torch = torch_module
+    if torch is None:
+        return
+    for release in ("empty_cache", "ipc_collect"):
+        try:
+            getattr(torch.cuda, release)()  # type: ignore[union-attr]
+        except Exception:  # noqa: BLE001
+            continue
+
+
+__all__ = [
+    "available_memory_gb",
+    "guard_cpu_generation",
+    "guard_model_load",
+    "low_memory_profile",
+    "release_memory",
+    "total_memory_gb",
+    "vram_total_gb",
+]

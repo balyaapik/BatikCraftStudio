@@ -342,6 +342,21 @@ class BatikBrewSDXLGenerationProvider:
                         metadata=metadata,
                     )
                 )
+        from batikcraft_studio.ai.memory_guard import (
+            low_memory_profile,
+            release_memory,
+        )
+
+        release_memory(torch)
+        if low_memory_profile(device, torch):
+            # Menahan pipeline di memori berarti menyandera ±7 GB sampai
+            # aplikasi ditutup. Pada mesin sempit, lepaskan segera; pemuatan
+            # berikutnya jauh lebih cepat karena berkas sudah ada di cache OS.
+            logging.getLogger(__name__).info(
+                "Profil hemat: melepas pipeline dari memori setelah generasi."
+            )
+            self.unload()
+            release_memory(torch)
         return tuple(results)
 
     def _load_pipeline(
@@ -622,14 +637,37 @@ def _default_sdxl_pipeline_factory(
             low_cpu_mem_usage=True,
         )
         logger.info("Bobot SDXL termuat; menyiapkan perangkat…")
+        from batikcraft_studio.ai.memory_guard import low_memory_profile
+
+        frugal = low_memory_profile(device, torch)
         offload_needed = settings.cpu_offload or _vram_is_tight(torch, device)
-        if offload_needed and device == "cuda" and hasattr(
+        if device == "cuda" and frugal and hasattr(
+            pipeline, "enable_sequential_cpu_offload"
+        ):
+            # Paling hemat: submodul dipindah satu per satu ke GPU sesuai
+            # kebutuhan. VRAM puncak turun drastis (cocok untuk 6 GB), dengan
+            # konsekuensi lebih lambat.
+            logger.info("Profil hemat: sequential CPU offload aktif.")
+            pipeline.enable_sequential_cpu_offload()
+        elif offload_needed and device == "cuda" and hasattr(
             pipeline, "enable_model_cpu_offload"
         ):
             logger.info("Mengaktifkan model CPU offload (VRAM terbatas).")
             pipeline.enable_model_cpu_offload()
         else:
             pipeline.to(device)
+        if frugal:
+            # Slicing/tiling menekan puncak aktivasi di semua perangkat.
+            for memory_feature in (
+                "enable_attention_slicing",
+                "enable_vae_slicing",
+                "enable_vae_tiling",
+            ):
+                try:
+                    getattr(pipeline, memory_feature)()
+                except Exception:  # noqa: BLE001
+                    continue
+            logger.info("Profil hemat memori aktif (slicing + tiling).")
         configure_pipeline_memory_features(pipeline)
         progress = getattr(pipeline, "set_progress_bar_config", None)
         if callable(progress):

@@ -256,6 +256,19 @@ class PretrainedImg2ImgBatificationProvider:
         output = BytesIO()
         combined.save(output, format="PNG", optimize=True)
         provider_id = f"pretrained-img2img:{settings.model_id_or_path}"
+
+        # Efisiensi memori: kembalikan RAM/VRAM segera; pada mesin sempit
+        # pipeline dilepas agar tidak menyandera ±7 GB sampai aplikasi ditutup.
+        from batikcraft_studio.ai.memory_guard import (
+            low_memory_profile,
+            release_memory,
+        )
+
+        release_memory(torch)
+        if low_memory_profile(device, torch):
+            self.unload()
+            release_memory(torch)
+
         return PretrainedAIBatificationResult(
             content=output.getvalue(),
             width=combined.width,

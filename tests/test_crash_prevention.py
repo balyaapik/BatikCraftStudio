@@ -151,3 +151,55 @@ def test_pipelines_stream_weights_and_offload_on_small_vram() -> None:
     # GPU laptop 6 GB (mis. RTX 4050) wajib offload untuk SDXL fp16.
     assert "_vram_is_tight" in pattern
     assert "total_gb < 8.0" in pattern
+
+
+def test_low_memory_profile_detects_constrained_machines(monkeypatch) -> None:
+    """Mesin 16 GB RAM dengan GPU 6 GB (mis. RTX 4050 laptop) harus memakai
+    profil hemat; workstation besar tidak perlu dihukum."""
+
+    from types import SimpleNamespace
+
+    from batikcraft_studio.ai import memory_guard
+
+    small_gpu = SimpleNamespace(
+        cuda=SimpleNamespace(
+            get_device_properties=lambda index: SimpleNamespace(
+                total_memory=6 * 1024**3
+            )
+        )
+    )
+    big_gpu = SimpleNamespace(
+        cuda=SimpleNamespace(
+            get_device_properties=lambda index: SimpleNamespace(
+                total_memory=24 * 1024**3
+            )
+        )
+    )
+
+    monkeypatch.setattr(memory_guard, "total_memory_gb", lambda: 15.7)
+    monkeypatch.setattr(memory_guard, "available_memory_gb", lambda: 2.0)
+    assert memory_guard.low_memory_profile("cuda", small_gpu) is True
+
+    monkeypatch.setattr(memory_guard, "total_memory_gb", lambda: 64.0)
+    monkeypatch.setattr(memory_guard, "available_memory_gb", lambda: 40.0)
+    assert memory_guard.low_memory_profile("cuda", big_gpu) is False
+    # VRAM kecil tetap memicu profil hemat walau RAM lega.
+    assert memory_guard.low_memory_profile("cuda", small_gpu) is True
+
+    assert memory_guard.vram_total_gb(big_gpu) == 24.0
+    memory_guard.release_memory(None)  # aman tanpa torch
+
+
+def test_generation_releases_memory_and_unloads_on_small_machines() -> None:
+    import inspect
+
+    from batikcraft_studio.ai import batikbrew_generation, pretrained_batification
+
+    pattern = inspect.getsource(batikbrew_generation)
+    canvas = inspect.getsource(pretrained_batification)
+    for source in (pattern, canvas):
+        assert "release_memory(torch)" in source
+        assert "low_memory_profile(device, torch)" in source
+        assert "self.unload()" in source
+    # Mode paling hemat untuk VRAM kecil.
+    assert "enable_sequential_cpu_offload" in pattern
