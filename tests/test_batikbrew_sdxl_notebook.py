@@ -77,7 +77,9 @@ def test_notebook_pins_match_application_requirements() -> None:
     import tomllib
 
     source = _sources()
-    assert "peft>=0.17" in source
+    # Pin eksak dipakai agar lingkungan Kaggle deterministik.
+    assert "peft==0.17.1" in source
+    assert "diffusers==0.39.0" in source
     assert "peft==0.12" not in source
     assert "transformers==4.44" not in source
 
