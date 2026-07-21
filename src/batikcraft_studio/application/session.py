@@ -163,12 +163,47 @@ class ProjectSession:
         ProjectArchive.save(self._path, project, self._assets)
         return self._path
 
-    def save_as(self, path: str | Path) -> Path:
+    def save_as(self, path: str | Path, *, new_identity: bool = True) -> Path:
+        """Simpan ke berkas lain sebagai karya yang berdiri sendiri.
+
+        Menyimpan proyek yang SUDAH pernah tersimpan ke nama berkas lain
+        menghasilkan karya baru: project_id diperbarui agar dua berkas tidak
+        berbagi identitas (penyebab unggahan ke BatikCraftWeb ditolak sebagai
+        duplikat). Judul hanya ikut berubah bila memang mengikuti nama berkas
+        lama atau masih kosong — judul yang sengaja ditulis pengguna
+        dipertahankan.
+        """
+
         project = self.require_project()
         destination = Path(path)
+        previous = self._path
+        is_copy = (
+            new_identity
+            and previous is not None
+            and previous.resolve() != destination.resolve()
+        )
+        if is_copy:
+            project.adopt_new_identity(
+                title=self._derived_title(project.metadata.title, previous, destination)
+            )
         ProjectArchive.save(destination, project, self._assets)
         self._path = destination
         return destination
+
+    @staticmethod
+    def _derived_title(
+        current: str,
+        previous: Path,
+        destination: Path,
+    ) -> str | None:
+        """Judul baru bila judul lama hanya mengikuti nama berkas, else None."""
+
+        cleaned = str(current).strip()
+        placeholder = cleaned.casefold() in {"", "untitled", "tanpa judul"}
+        follows_filename = cleaned.casefold() == previous.stem.casefold()
+        if placeholder or follows_filename:
+            return destination.stem
+        return None
 
     def close_project(self) -> None:
         self._project = None

@@ -147,6 +147,22 @@ class Project:
     def mark_saved(self) -> None:
         self._saved_revision = self._revision
 
+    def adopt_new_identity(self, *, title: str | None = None) -> str:
+        """Berikan project_id baru (dan judul baru bila diberikan).
+
+        Dipakai oleh Save As: berkas hasil "simpan sebagai" adalah karya yang
+        berdiri sendiri. Tanpa identitas baru, unggahan ke BatikCraftWeb
+        ditolak karena source_project_id-nya sama dengan berkas asal.
+        """
+
+        self._project_id = str(uuid4())
+        if title is not None:
+            clean = str(title).strip()
+            if clean:
+                self.update_metadata(title=clean[:160])
+        self._record_change()
+        return self._project_id
+
     def update_metadata(
         self,
         *,
