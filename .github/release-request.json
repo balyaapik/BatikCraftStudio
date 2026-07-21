@@ -1,5 +1,5 @@
 {
-  "release_tag": "v0.5.2",
-  "requested_at": "2026-07-21T15:00:00Z",
-  "reason": "Publish BatikCraft Studio 0.5.2: BatikBrew now detects when the configured base model is Stable Diffusion 1.5 instead of SDXL and reports an actionable message before loading weights, replacing the confusing 'unsupported operand type(s) for *: NoneType and int' failure from diffusers."
+  "release_tag": "v0.5.3",
+  "requested_at": "2026-07-21T17:00:00Z",
+  "reason": "Publish BatikCraft Studio 0.5.3: BatikBrew now detects the LoRA family from the .batikmodel manifest and safetensors header and runs Stable Diffusion 1.5 LoRAs on an SD 1.5 pipeline instead of forcing SDXL, fixing the 'unsupported operand type(s) for *: NoneType and int' failure, and reports LoRA/base-model mismatches before loading weights."
 }
