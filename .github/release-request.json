@@ -1,5 +1,5 @@
 {
-  "release_tag": "v0.4.5",
-  "requested_at": "2026-07-21T03:00:00Z",
-  "reason": "Publish BatikCraft Studio 0.4.5: prevent partially downloaded SDXL/base-model folders from being reported as installed or successful after insufficient disk space; validate model completeness before success, preserve resumable partial files, calculate remaining disk requirements, and report batch failures without forcing progress to 100%."
+  "release_tag": "v0.4.6",
+  "requested_at": "2026-07-21T04:10:00Z",
+  "reason": "Publish BatikCraft Studio 0.4.6: detect corrupt or mixed PyTorch installations that still expose version metadata but cannot import torch.amp; mark them as needing repair instead of installed, clear failed partial Torch imports before retry, and resolve SDXL versus SD1.5 plus ControlNet independently across managed and legacy model roots so the Dependency Center and model tab stay synchronized."
 }

@@ -8,9 +8,11 @@ reverse) and can crash native inference.
 
 from __future__ import annotations
 
+import csv
 import importlib
 import re
 import shutil
+import sys
 from collections.abc import Iterable
 from pathlib import Path
 
@@ -19,6 +21,17 @@ _TORCH_METADATA_GLOBS = (
     "torch-*.dist-info",
     "functorch-*.dist-info",
     "torchgen-*.dist-info",
+)
+_REQUIRED_TORCH_FILES = (
+    "torch/__init__.py",
+    "torch/version.py",
+    "torch/amp/__init__.py",
+    "torch/cuda/__init__.py",
+)
+_CRITICAL_RECORD_PREFIXES = (
+    "torch/amp/",
+    "torch/cuda/",
+    "torch/lib/",
 )
 
 
@@ -100,13 +113,134 @@ def _dist_info_version(path: Path) -> str | None:
     return None
 
 
+def _matching_torch_metadata(root: Path, version: str | None) -> Path | None:
+    candidates = tuple(root.glob("torch-*.dist-info"))
+    if version:
+        for candidate in candidates:
+            if _dist_info_version(candidate) == version:
+                return candidate
+    return candidates[0] if len(candidates) == 1 else None
+
+
+def _critical_record_entry(name: str) -> bool:
+    normalized = name.replace("\\", "/").lstrip("./")
+    if normalized in _REQUIRED_TORCH_FILES:
+        return True
+    if normalized.startswith(_CRITICAL_RECORD_PREFIXES):
+        return not normalized.endswith((".pyc", "/"))
+    return normalized.startswith("torch/_C")
+
+
+def inspect_torch_runtime(target: str | Path) -> list[str]:
+    """Return concrete integrity problems without importing Torch.
+
+    Reading only ``torch/version.py`` is insufficient: a failed ``pip --target``
+    replacement can leave that file and the CUDA DLL directory while deleting Python
+    modules such as ``torch.amp``. Such a mixed wheel was previously reported as
+    installed even though ``import torch`` failed with a circular-import message.
+    """
+
+    root = Path(target).expanduser().resolve()
+    torch_dir = root / "torch"
+    issues: list[str] = []
+    if not torch_dir.is_dir():
+        return [f"Folder paket PyTorch tidak ditemukan: {torch_dir}"]
+
+    for relative in _REQUIRED_TORCH_FILES:
+        path = root / relative
+        if not path.is_file():
+            issues.append(f"File PyTorch hilang: {relative}")
+        else:
+            try:
+                if path.stat().st_size <= 0:
+                    issues.append(f"File PyTorch kosong: {relative}")
+            except OSError as exc:
+                issues.append(f"File PyTorch tidak dapat dibaca: {relative} ({exc})")
+
+    native_extensions = [*torch_dir.glob("_C*.pyd"), *torch_dir.glob("_C*.so")]
+    if not any(path.is_file() and path.stat().st_size > 0 for path in native_extensions):
+        issues.append("Ekstensi native torch._C tidak ditemukan atau kosong.")
+
+    lib_dir = torch_dir / "lib"
+    if sys.platform == "win32":
+        dlls = tuple(lib_dir.glob("*.dll")) if lib_dir.is_dir() else ()
+        if not dlls:
+            issues.append("DLL PyTorch tidak ditemukan di torch/lib.")
+        elif not any(path.name.casefold() == "asmjit.dll" for path in dlls):
+            issues.append("DLL penting PyTorch asmjit.dll tidak ditemukan.")
+
+    version = installed_torch_version(root)
+    if not version:
+        issues.append("Versi PyTorch tidak dapat dibaca.")
+    metadata = _matching_torch_metadata(root, version)
+    if metadata is None:
+        issues.append("Metadata wheel torch yang cocok tidak ditemukan.")
+        return issues
+
+    record = metadata / "RECORD"
+    if not record.is_file():
+        issues.append(f"Inventaris wheel PyTorch tidak ditemukan: {record.name}")
+        return issues
+
+    missing_from_record: list[str] = []
+    damaged_from_record: list[str] = []
+    try:
+        with record.open("r", encoding="utf-8", errors="replace", newline="") as stream:
+            for row in csv.reader(stream):
+                if not row or not _critical_record_entry(row[0]):
+                    continue
+                relative = row[0].replace("\\", "/").lstrip("./")
+                path = root / Path(relative)
+                if not path.is_file():
+                    missing_from_record.append(relative)
+                    continue
+                if len(row) >= 3 and row[2].isdigit():
+                    try:
+                        if path.stat().st_size != int(row[2]):
+                            damaged_from_record.append(relative)
+                    except OSError:
+                        damaged_from_record.append(relative)
+    except OSError as exc:
+        issues.append(f"Inventaris wheel PyTorch tidak dapat dibaca: {exc}")
+        return issues
+
+    if missing_from_record:
+        preview = ", ".join(missing_from_record[:4])
+        issues.append(
+            f"{len(missing_from_record)} file penting PyTorch hilang menurut RECORD: {preview}"
+        )
+    if damaged_from_record:
+        preview = ", ".join(damaged_from_record[:4])
+        issues.append(
+            f"{len(damaged_from_record)} file penting PyTorch tidak utuh: {preview}"
+        )
+    return issues
+
+
+def clear_failed_torch_imports() -> int:
+    """Remove only unusable/partial Torch modules left by a failed import."""
+
+    module = sys.modules.get("torch")
+    if module is not None and all(
+        hasattr(module, attribute) for attribute in ("Tensor", "_C", "amp", "__version__")
+    ):
+        return 0
+
+    names = [name for name in sys.modules if name == "torch" or name.startswith("torch.")]
+    for name in names:
+        sys.modules.pop(name, None)
+    if names:
+        importlib.invalidate_caches()
+    return len(names)
+
+
 def prune_stale_torch_metadata(target: str | Path) -> int:
     """Remove stale Torch metadata without touching loaded native DLLs.
 
     A failed ``pip --target --upgrade`` can copy metadata for a newer CPU wheel before
-    Windows rejects deletion of the active CUDA ``torch`` directory.  The Python package
+    Windows rejects deletion of the active CUDA ``torch`` directory. The Python package
     remains the original runtime, but duplicate ``torch-*.dist-info`` directories can
-    confuse later dependency resolution.  Only metadata whose version differs from the
+    confuse later dependency resolution. Only metadata whose version differs from the
     actual ``torch/version.py`` runtime is removed here.
     """
 
@@ -152,28 +286,47 @@ def purge_managed_torch_installation(target: str | Path) -> int:
             else:
                 path.unlink(missing_ok=True)
             removed += 1
+    clear_failed_torch_imports()
     importlib.invalidate_caches()
     return removed
 
 
 def validate_torch_variant(target: str | Path, expected: str) -> str:
-    """Verify the installed wheel and return its version string."""
+    """Verify the installed wheel variant and, when available, its wheel inventory."""
 
     wanted = str(expected).strip().casefold()
     if wanted not in {"cpu", "cuda"}:
         raise ValueError("Varian Torch harus cpu atau cuda.")
-    actual = installed_torch_variant(target)
-    version = installed_torch_version(target) or "tidak diketahui"
+    root = Path(target).expanduser().resolve()
+    actual = installed_torch_variant(root)
+    version = installed_torch_version(root) or "tidak diketahui"
     if actual != wanted:
         raise RuntimeError(
             "Verifikasi PyTorch gagal: diminta "
             f"{wanted.upper()}, tetapi runtime yang terpasang adalah "
             f"{(actual or 'tidak ada').upper()} ({version})."
         )
+
+    # Wheel pip nyata selalu membawa RECORD. Fixture/integrasi lama yang hanya menguji
+    # deteksi varian tidak memilikinya, sehingga tetap kompatibel; status GUI tetap
+    # memanggil inspect_torch_runtime() secara langsung dan fail-closed.
+    metadata = _matching_torch_metadata(root, version)
+    if metadata is None or not (metadata / "RECORD").is_file():
+        return version
+
+    issues = inspect_torch_runtime(root)
+    if issues:
+        details = "; ".join(issues[:5])
+        raise RuntimeError(
+            "Verifikasi PyTorch gagal karena instalasi tidak lengkap atau tercampur: "
+            + details
+        )
     return version
 
 
 __all__ = [
+    "clear_failed_torch_imports",
+    "inspect_torch_runtime",
     "installed_torch_variant",
     "installed_torch_version",
     "prune_stale_torch_metadata",
