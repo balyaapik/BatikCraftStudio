@@ -96,3 +96,23 @@ def test_notebook_adapts_resolution_to_available_vram() -> None:
     source = _sources()
     assert "vram_gb < 16" in source
     assert "768" in source
+
+
+def test_notebook_removes_incompatible_kaggle_torchao() -> None:
+    """Kaggle memasang torchao 0.10 yang membuat PEFT melempar ImportError
+    saat LoRA di-inject: 'Found an incompatible version of torchao'."""
+
+    source = _sources()
+    assert "remove_incompatible_torchao" in source
+    assert "TORCHAO_MINIMUM" in source
+    assert "uninstall" in source and "torchao" in source
+    # Notebook lama memakai pendekatan yang sama; keduanya harus konsisten.
+    legacy = json.loads(
+        (ROOT / "notebooks" / "kaggle_train_batik_style_any_object.ipynb").read_text(
+            encoding="utf-8"
+        )
+    )
+    legacy_source = "\n".join(
+        "".join(cell.get("source", [])) for cell in legacy["cells"]
+    )
+    assert "torchao" in legacy_source
