@@ -1,5 +1,5 @@
 {
-  "release_tag": "v0.5.5",
-  "requested_at": "2026-07-21T21:00:00Z",
-  "reason": "Publish BatikCraft Studio 0.5.5: AI-generated images can be copied and pasted with Ctrl+C / Ctrl+V again. Pasting objects whose properties contain nested dictionaries no longer fails with 'unhashable type: dict', nested asset references are remapped, and unexpected clipboard failures are surfaced instead of being swallowed."
+  "release_tag": "v0.5.6",
+  "requested_at": "2026-07-21T23:00:00Z",
+  "reason": "Publish BatikCraft Studio 0.5.6: Save As now creates a genuinely separate project (new project id, filename-derived title when the old title merely followed the filename), so each saved file can be published to BatikCraftWeb without being rejected as a duplicate."
 }
