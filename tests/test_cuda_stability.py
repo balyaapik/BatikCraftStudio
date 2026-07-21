@@ -6,6 +6,8 @@ import pytest
 
 from batikcraft_studio.ai import cuda_stability
 
+_ORIGINAL_STATE_DIR = cuda_stability._state_dir
+
 
 @pytest.fixture(autouse=True)
 def _isolated_state(tmp_path, monkeypatch):
@@ -107,3 +109,60 @@ def test_apply_cuda_safety_mematikan_autotune():
 
 def test_apply_cuda_safety_aman_untuk_torch_tanpa_backends():
     assert cuda_stability.apply_cuda_safety(object())
+
+
+def test_folder_status_tidak_bisa_ditulis_tidak_menggagalkan_generasi(monkeypatch):
+    """Regresi 0.5.8: WinError 5 pada C:\\Program Files\\BatikCraft Studio\\log.
+
+    Pengaman crash GPU tidak boleh pernah menggagalkan generasi; kalau folder
+    statusnya tidak bisa ditulis, fitur menonaktifkan diri diam-diam.
+    """
+
+    monkeypatch.setattr(cuda_stability, "_state_dir", lambda: None)
+
+    cuda_stability.begin_gpu_attempt("cuda", "model")
+    cuda_stability.end_gpu_attempt("cuda", succeeded=True)
+    cuda_stability.clear_gpu_crash_history()
+
+    assert cuda_stability.sentinel_path() is None
+    assert cuda_stability.crash_record_path() is None
+    assert cuda_stability.detect_previous_gpu_crash() is None
+    assert cuda_stability.guard_device("cuda") == ("cuda", None)
+
+
+def test_state_dir_menelan_permission_error(monkeypatch):
+    from batikcraft_studio import logging_setup
+
+    def _denied() -> object:
+        raise PermissionError(5, "Access is denied")
+
+    monkeypatch.setattr(logging_setup, "default_log_dir", _denied)
+
+    assert _ORIGINAL_STATE_DIR() is None
+
+
+def test_default_log_dir_jatuh_ke_folder_per_user(monkeypatch, tmp_path):
+    """Folder di samping exe yang tidak bisa ditulis harus dilewati."""
+
+    from batikcraft_studio import dependency_bootstrap, logging_setup
+
+    program_files = tmp_path / "Program Files" / "BatikCraft Studio"
+    per_user = tmp_path / "LocalAppData" / "BatikCraftStudio"
+
+    monkeypatch.setattr(
+        dependency_bootstrap,
+        "default_managed_dependency_root",
+        lambda: program_files / "dependencies",
+    )
+    monkeypatch.setattr(
+        dependency_bootstrap,
+        "_per_user_application_data_root",
+        lambda: per_user,
+    )
+    monkeypatch.setattr(
+        dependency_bootstrap,
+        "_directory_is_writable",
+        lambda directory: per_user in directory.parents or directory == per_user,
+    )
+
+    assert logging_setup.default_log_dir() == per_user / "log"

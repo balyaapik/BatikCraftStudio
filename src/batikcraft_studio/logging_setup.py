@@ -26,13 +26,35 @@ _INSTALLED = False
 
 
 def default_log_dir() -> Path:
-    """Folder ``log/`` di samping folder dependencies (data per-user/app)."""
+    """Folder ``log/`` yang dijamin bisa ditulis.
+
+    Lokasi pilihan pertama adalah di samping folder dependencies. Pada instalasi
+    Windows per-mesin, ``C:\\Program Files\\BatikCraft Studio`` tidak bisa ditulis
+    (WinError 5) walaupun subfolder ``dependencies`` kebetulan diberi izin oleh
+    installer. Karena itu lokasi diuji tulis dulu, lalu jatuh ke data per-user,
+    dan terakhir ke folder temporer — folder log tidak boleh sampai membuat
+    fitur lain gagal.
+    """
 
     from batikcraft_studio.dependency_bootstrap import (
+        _directory_is_writable,
+        _per_user_application_data_root,
         default_managed_dependency_root,
     )
 
-    return default_managed_dependency_root().parent / "log"
+    candidates = [
+        default_managed_dependency_root().parent / "log",
+        _per_user_application_data_root() / "log",
+    ]
+    for candidate in candidates:
+        try:
+            if _directory_is_writable(candidate):
+                return candidate
+        except OSError:
+            continue
+    import tempfile
+
+    return Path(tempfile.gettempdir()) / "BatikCraftStudio" / "log"
 
 
 def install_file_logging() -> Path:

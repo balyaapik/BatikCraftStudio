@@ -1,5 +1,5 @@
 {
-  "release_tag": "v0.5.8",
-  "requested_at": "2026-07-21T15:20:00Z",
-  "reason": "Publish BatikCraft Studio 0.5.8: fixes the 0.5.7 hard crash (0xC0000409 in nvcuda64.dll). BatikBrew now marks GPU generation with a sentinel, detects a driver-level crash from the previous run, disables cuDNN autotune and TF32 on CUDA, and automatically falls back to CPU after repeated GPU crashes instead of closing the app."
+  "release_tag": "v0.5.9",
+  "requested_at": "2026-07-21T16:05:00Z",
+  "reason": "Publish BatikCraft Studio 0.5.9: fixes the WinError 5 regression from 0.5.8 where the new GPU crash guard tried to create its log folder inside C:\\Program Files and aborted BatikBrew generation. The log folder is now write-probed with a per-user fallback, and the crash guard disables itself silently when no writable folder exists."
 }

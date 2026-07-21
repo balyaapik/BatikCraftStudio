@@ -56,37 +56,56 @@ class GpuCrashRecord:
         return self.count >= MAX_GPU_CRASHES
 
 
-def _state_dir() -> Path:
-    from batikcraft_studio.logging_setup import default_log_dir
+def _state_dir() -> Path | None:
+    """Folder penyimpan sentinel, atau ``None`` bila tidak ada yang bisa ditulis.
 
-    directory = default_log_dir()
-    directory.mkdir(parents=True, exist_ok=True)
-    return directory
+    Pengaman crash tidak boleh pernah menggagalkan generasi. Kalau foldernya
+    tidak bisa dibuat (mis. instalasi di ``C:\\Program Files`` tanpa izin
+    tulis), fitur ini menonaktifkan diri diam-diam.
+    """
+
+    try:
+        from batikcraft_studio.logging_setup import default_log_dir
+
+        directory = default_log_dir()
+        directory.mkdir(parents=True, exist_ok=True)
+        return directory
+    except (OSError, ImportError):
+        logger.debug("Folder status GPU tidak tersedia.", exc_info=True)
+        return None
 
 
-def sentinel_path() -> Path:
-    return _state_dir() / _SENTINEL_NAME
+def sentinel_path() -> Path | None:
+    directory = _state_dir()
+    return None if directory is None else directory / _SENTINEL_NAME
 
 
-def crash_record_path() -> Path:
-    return _state_dir() / _CRASH_NAME
+def crash_record_path() -> Path | None:
+    directory = _state_dir()
+    return None if directory is None else directory / _CRASH_NAME
 
 
-def _read_json(path: Path) -> dict[str, Any]:
+def _read_json(path: Path | None) -> dict[str, Any]:
+    if path is None:
+        return {}
     try:
         return json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return {}
 
 
-def _write_json(path: Path, payload: dict[str, Any]) -> None:
+def _write_json(path: Path | None, payload: dict[str, Any]) -> None:
+    if path is None:
+        return
     try:
         path.write_text(json.dumps(payload), encoding="utf-8")
     except OSError:  # pragma: no cover - disk penuh / read-only
         logger.debug("Gagal menulis %s", path, exc_info=True)
 
 
-def _unlink(path: Path) -> None:
+def _unlink(path: Path | None) -> None:
+    if path is None:
+        return
     try:
         path.unlink()
     except OSError:
@@ -101,6 +120,8 @@ def detect_previous_gpu_crash() -> GpuCrashRecord | None:
     """
 
     sentinel = sentinel_path()
+    if sentinel is None:
+        return None
     if not sentinel.exists():
         stored = _read_json(crash_record_path())
         if not stored:
@@ -143,24 +164,33 @@ def detect_previous_gpu_crash() -> GpuCrashRecord | None:
 def clear_gpu_crash_history() -> None:
     """Reset riwayat setelah generasi GPU berhasil."""
 
-    _unlink(crash_record_path())
+    try:
+        _unlink(crash_record_path())
+    except Exception:  # noqa: BLE001
+        logger.debug("Gagal menghapus riwayat crash GPU.", exc_info=True)
 
 
 def begin_gpu_attempt(device: str, model: str = "") -> None:
     if device != "cuda":
         return
-    _write_json(
-        sentinel_path(),
-        {"device": device, "model": model, "started_at": time.time()},
-    )
+    try:
+        _write_json(
+            sentinel_path(),
+            {"device": device, "model": model, "started_at": time.time()},
+        )
+    except Exception:  # noqa: BLE001 - pengaman tidak boleh menggagalkan generasi
+        logger.debug("Gagal menulis sentinel GPU.", exc_info=True)
 
 
 def end_gpu_attempt(device: str, *, succeeded: bool) -> None:
     if device != "cuda":
         return
-    _unlink(sentinel_path())
-    if succeeded:
-        clear_gpu_crash_history()
+    try:
+        _unlink(sentinel_path())
+        if succeeded:
+            clear_gpu_crash_history()
+    except Exception:  # noqa: BLE001
+        logger.debug("Gagal membersihkan sentinel GPU.", exc_info=True)
 
 
 def guard_device(device: str) -> tuple[str, str | None]:
@@ -171,7 +201,11 @@ def guard_device(device: str) -> tuple[str, str | None]:
 
     if device != "cuda":
         return device, None
-    record = detect_previous_gpu_crash()
+    try:
+        record = detect_previous_gpu_crash()
+    except Exception:  # noqa: BLE001 - lebih baik jalan tanpa pengaman
+        logger.debug("Deteksi crash GPU gagal.", exc_info=True)
+        return device, None
     if record is None or not record.should_force_cpu:
         return device, None
     return "cpu", _CPU_FALLBACK_MESSAGE
