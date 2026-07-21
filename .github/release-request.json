@@ -1,5 +1,5 @@
 {
-  "release_tag": "v0.6.0",
-  "requested_at": "2026-07-21T20:15:00Z",
-  "reason": "Publish BatikCraft Studio 0.6.0: canvas rendering rework. Tiles are now screen-space bounded so memory stays flat (24 MB) from 100% to 800% zoom instead of ballooning to 576 MB and failing silently at 200%+. Object render sizes are clamped, tile render failures are logged instead of swallowed, and a per-layer spatial index replaces the full object scan per tile, making canvases with many objects about 11x faster to render."
+  "release_tag": "v0.6.1",
+  "requested_at": "2026-07-21T21:40:00Z",
+  "reason": "Publish BatikCraft Studio 0.6.1: tiles are now cached by their actual content instead of a global project revision, so drawing one stroke invalidates only the 1-2 tiles that contain it rather than all 64. Also fixes a 0.6.0 bug where tiles were rendered at the exact zoom while cached under the bucket key."
 }

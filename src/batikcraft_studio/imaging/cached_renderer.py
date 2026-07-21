@@ -76,6 +76,36 @@ _INDEX_CELL = 512
 _MAX_CELLS_PER_OBJECT = 64
 
 
+def _object_signature(item: LayerObject) -> tuple[Any, ...]:
+    """Ringkasan sifat objek yang memengaruhi hasil gambarnya.
+
+    Dipakai untuk menyusun kunci cache per tile. ``asset_ref`` sudah cukup
+    mewakili isi rasternya: aset di aplikasi ini tidak pernah ditimpa, konten
+    baru selalu mendapat ref baru — asumsi yang sama yang dipakai memoisasi
+    ``_asset_digest``.
+    """
+
+    transform = item.transform
+    gradient = item.properties.get("gradient")
+    return (
+        item.object_id,
+        item.kind,
+        item.visible,
+        item.opacity,
+        item.asset_ref,
+        item.bounds.width,
+        item.bounds.height,
+        transform.x,
+        transform.y,
+        transform.scale_x,
+        transform.scale_y,
+        transform.rotation_degrees,
+        object_shear(item),
+        str(item.properties.get("fill_mode", "solid")),
+        _gradient_hash(dict(gradient) if gradient else None),
+    )
+
+
 class _LayerSpatialIndex:
     """Indeks spasial sederhana atas objek satu layer.
 
@@ -90,11 +120,13 @@ class _LayerSpatialIndex:
     Setiap tile hanya memeriksa objek di sel yang bersinggungan dengannya.
     """
 
-    __slots__ = ("bounds", "buckets", "oversized")
+    __slots__ = ("bounds", "buckets", "oversized", "signatures")
 
     def __init__(self, layer: Layer) -> None:
         self.bounds: list[tuple[float, float, float, float]] = []
         self.buckets: dict[tuple[int, int], list[int]] = {}
+        # Tanda tangan isi per objek, dipakai untuk kunci cache tile.
+        self.signatures: list[tuple[Any, ...]] = []
         # Objek yang membentang sangat luas akan memenuhi terlalu banyak sel;
         # menyimpannya terpisah lebih murah daripada meledakkan indeks.
         self.oversized: list[int] = []
@@ -102,6 +134,7 @@ class _LayerSpatialIndex:
         for index, item in enumerate(layer.objects):
             box = object_axis_aligned_bounds(item)
             self.bounds.append(box)
+            self.signatures.append(_object_signature(item))
             if not item.visible:
                 continue
             gx0 = int(math.floor(box[0] / _INDEX_CELL))
@@ -217,8 +250,16 @@ class CachedViewportRenderer:
         """
         bucket = zoom_scale_bucket(zoom_scale)
         tile_size = tile_project_size(zoom_scale)
+        # Kunci berdasarkan ISI tile, bukan revisi global proyek. Dengan revisi
+        # global, satu goresan pena mengubah revisi dan SELURUH tile kehilangan
+        # cache-nya — itulah kenapa kanvas terasa dirender ulang dari nol setiap
+        # kali menggambar. Dengan tanda tangan isi, hanya tile yang benar-benar
+        # memuat objek yang berubah yang perlu digambar ulang.
+        content_revision = self._tile_content_revision(
+            project, tile_x, tile_y, tile_size, project_revision
+        )
         key = TileCacheKey(
-            project_revision=project_revision,
+            project_revision=content_revision,
             zoom_bucket=bucket,
             tile_size=tile_size,
             tile_x=tile_x,
@@ -230,13 +271,13 @@ class CachedViewportRenderer:
         if cached is not None:
             return cached
 
-        # Penting: render pada zoom_scale sebenarnya, bukan bucket. Sisi tile
-        # sudah dibatasi tile_size, jadi tidak ada lagi alasan membulatkan ke
-        # bucket besar yang membuat alokasinya meledak.
+        # Render HARUS memakai skala yang sama dengan yang ada di kunci cache.
+        # Kalau tidak, tile pertama pada satu bucket menentukan skala semua
+        # tile berikutnya di bucket itu.
         tile_image = self._render_tile(
             project,
             assets,
-            zoom_scale=zoom_scale,
+            zoom_scale=bucket,
             tile_x=tile_x,
             tile_y=tile_y,
             tile_size=tile_size,
@@ -244,6 +285,40 @@ class CachedViewportRenderer:
         )
         self._tile_cache.put(key, tile_image)
         return tile_image
+
+    def _tile_content_revision(
+        self,
+        project: Project,
+        tile_x: int,
+        tile_y: int,
+        tile_size: int,
+        project_revision: int,
+    ) -> int:
+        """Hash isi satu tile: objek apa saja yang tampil di sana, dan bagaimana.
+
+        Biayanya kecil karena hanya menyentuh objek yang benar-benar bersinggungan
+        dengan tile (lewat indeks spasial), dan tanda tangannya sudah dihitung
+        sekali saat indeks dibangun.
+        """
+
+        proj_bounds = tile_project_bounds(tile_x, tile_y, tile_size)
+        parts: list[Any] = [project.canvas.background_color]
+        for layer in project.layers:
+            if layer.node_kind is LayerNodeKind.GROUP:
+                continue
+            if not project.is_layer_effectively_visible(layer.layer_id):
+                continue
+            if not layer.objects:
+                # Layer legacy: jatuh kembali ke revisi global agar tetap aman.
+                parts.append(("legacy", layer.layer_id, project_revision))
+                continue
+            index = self._get_layer_index(layer, project_revision)
+            parts.append(("layer", layer.layer_id, _effective_layer_opacity(project, layer)))
+            for position in index.candidates(proj_bounds):
+                if not bounds_intersect(index.bounds[position], proj_bounds):
+                    continue
+                parts.append(index.signatures[position])
+        return hash(tuple(parts)) & 0x7FFF_FFFF
 
     def _get_layer_index(self, layer: Layer, project_revision: int) -> _LayerSpatialIndex:
         """Indeks spasial layer, dibangun ulang hanya saat proyek berubah."""
