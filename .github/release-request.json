@@ -1,5 +1,5 @@
 {
-  "release_tag": "v0.6.5",
-  "requested_at": "2026-07-22T02:10:00Z",
-  "reason": "Publish BatikCraft Studio 0.6.5: fixes a regression introduced in 0.6.0 where every tile render raised TypeError because the Inkscape canvas monkey-patch did not accept the new project_revision argument. The error was swallowed by the render worker, leaving tiles unrendered. Also skips layers with no objects in a tile, which alone wasted up to 436 ms per render on a 20-layer document."
+  "release_tag": "v0.7.0",
+  "requested_at": "2026-07-22T04:00:00Z",
+  "reason": "Publish BatikCraft Studio 0.7.0: adopts Inkscape's progressive canvas painting. Tiles are now rendered outwards from the mouse pointer and pushed to the screen one at a time instead of all at once, so the area under the cursor appears roughly 24x sooner. Total work is unchanged; the ordering and delivery are what changed."
 }

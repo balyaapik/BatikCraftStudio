@@ -237,6 +237,14 @@ def _clamp_render_size(width: int, height: int) -> tuple[int, int]:
     return max(1, int(width * ratio)), max(1, int(height * ratio))
 
 
+# Catatan hasil pengukuran (meniru "cache score" Inkscape, lalu DITOLAK):
+# Inkscape sengaja tidak menyimpan item murah agar anggaran cache-nya tersisa
+# untuk item mahal. Diuji di sini dan hasilnya justru merugikan: mengambil dari
+# cache 0,06 us sedangkan menggambar ulang objek 48x48 butuh 7,78 us, jadi
+# melewatkan cache menambah 7,7 ms (1000 objek) sampai 23,2 ms (3000 objek) per
+# render — demi menghemat memori yang memang belum pernah penuh (3000 objek
+# sepele hanya 26 MB dari anggaran 64 MB). Semua objek tetap disimpan.
+
 def _resize_for_display(image: Image.Image, width: int, height: int) -> Image.Image:
     """Skalakan sumber yang sudah dipilih ke ukuran layar.
 

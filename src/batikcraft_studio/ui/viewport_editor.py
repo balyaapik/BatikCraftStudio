@@ -604,10 +604,31 @@ class ViewportEditorWorkspaceView(CanvasStructureEditorWorkspaceView):
             visibility_revision=visibility_revision,
         )
 
+        # Urutkan tile dari yang paling dekat kursor ke luar — teknik yang
+        # dipakai Inkscape: mata pengguna ada di sekitar penunjuk, jadi bagian
+        # itulah yang harus tampil lebih dulu.
+        pointer = self._last_pointer_screen
+        if pointer is not None:
+            focus_x = (self.canvas.canvasx(pointer[0]) - preview_left) / max(
+                zoom_scale, 1e-6
+            )
+            focus_y = (self.canvas.canvasy(pointer[1]) - preview_top) / max(
+                zoom_scale, 1e-6
+            )
+        else:
+            focus_x = proj_left + vp_w / (2 * max(zoom_scale, 1e-6))
+            focus_y = proj_top + vp_h / (2 * max(zoom_scale, 1e-6))
+        focus_tx = focus_x / max(tile_size, 1)
+        focus_ty = focus_y / max(tile_size, 1)
+        ordered_coords = sorted(
+            tile_coords,
+            key=lambda c: (c[0] + 0.5 - focus_tx) ** 2 + (c[1] + 0.5 - focus_ty) ** 2,
+        )
+
         def _worker() -> None:
             tiles: list[tuple[int, int, Image.Image]] = []
             failures = 0
-            for tx, ty in tile_coords:
+            for tx, ty in ordered_coords:
                 if generation != self._render_generation:
                     return  # stale — abort
                 try:
@@ -621,6 +642,22 @@ class ViewportEditorWorkspaceView(CanvasStructureEditorWorkspaceView):
                         tile_y=ty,
                     )
                     tiles.append((tx, ty, img))
+                    # Kirim SEKARANG, jangan tunggu seluruh layar selesai.
+                    # Inkscape juga mengecat bertahap dan menyerahkan kendali
+                    # ke main loop di sela-selanya; piksel pertama muncul
+                    # hampir seketika alih-alih setelah semua tile rampung.
+                    self.after(
+                        0,
+                        lambda ready=(tx, ty, img): self._apply_tiles(
+                            [ready],
+                            zoom_scale,
+                            preview_left,
+                            preview_top,
+                            generation,
+                            tile_size,
+                            False,
+                        ),
+                    )
                 except (Exception, MemoryError):  # noqa: BLE001
                     # Kegagalan di sini dulu ditelan diam-diam: hasilnya daftar
                     # tile kosong dan kanvas jadi putih tanpa penjelasan apa
@@ -637,8 +674,16 @@ class ViewportEditorWorkspaceView(CanvasStructureEditorWorkspaceView):
                     zoom_scale,
                 )
             if generation == self._render_generation:
+                # Lintasan penutup: jahit pratinjau, lepas lapisan sementara,
+                # gambar chrome. Hanya sekali, bukan per tile.
                 self.after(0, lambda: self._apply_tiles(
-                    tiles, zoom_scale, preview_left, preview_top, generation, tile_size
+                    tiles,
+                    zoom_scale,
+                    preview_left,
+                    preview_top,
+                    generation,
+                    tile_size,
+                    True,
                 ))
 
         thread = threading.Thread(target=_worker, daemon=True)
@@ -660,6 +705,19 @@ class ViewportEditorWorkspaceView(CanvasStructureEditorWorkspaceView):
 
         renderer = self._cached_renderer
         tile_px = max(1, round(tile_size * zoom_scale))
+        # Kalau grid tile berubah, buang item grid lama DI SINI — bukan nanti di
+        # _apply_tiles. Sejak tile dikirim bertahap, pembersihan yang terlambat
+        # akan menghapus lapisan sementara yang baru saja dipasang.
+        if getattr(self, "_active_tile_size", None) != tile_size:
+            for cid in self._tile_canvas_ids.values():
+                try:
+                    self.canvas.delete(cid)
+                except Exception:  # noqa: BLE001
+                    continue
+            self._tile_canvas_ids.clear()
+            self._tile_photos.clear()
+            self._placeholder_photos.clear()
+            self._active_tile_size = tile_size
         for tx, ty in tile_coords:
             try:
                 approximate = renderer.find_approximate_tile(
@@ -711,22 +769,17 @@ class ViewportEditorWorkspaceView(CanvasStructureEditorWorkspaceView):
         preview_top: float,
         generation: int,
         tile_size: int = TILE_SIZE,
+        final: bool = True,
     ) -> None:
-        """Called on Tk main thread after worker completes."""
+        """Pasang tile ke kanvas (thread utama).
+
+        ``final=False`` dipakai untuk tile yang datang bertahap: hanya gambarnya
+        yang dipasang. Penjahitan pratinjau, pelepasan lapisan sementara, dan
+        penggambaran chrome dikerjakan sekali di lintasan penutup.
+        """
+
         if generation != self._render_generation:
             return  # stale result, ignore
-
-        # Tile lama memakai grid yang berbeda; buang dulu supaya tidak ada sisa
-        # gambar berskala lain yang menumpuk di bawah tile baru.
-        if tiles and getattr(self, "_active_tile_size", None) != tile_size:
-            for cid in self._tile_canvas_ids.values():
-                try:
-                    self.canvas.delete(cid)
-                except Exception:  # noqa: BLE001
-                    continue
-            self._tile_canvas_ids.clear()
-            self._tile_photos.clear()
-            self._active_tile_size = tile_size
 
         tile_px = max(1, round(tile_size * zoom_scale))
         for tx, ty, img in tiles:
@@ -764,6 +817,9 @@ class ViewportEditorWorkspaceView(CanvasStructureEditorWorkspaceView):
                     tags="project-tile",
                 )
                 self._tile_canvas_ids[(tx, ty)] = cid
+
+        if not final:
+            return
 
         # Keep a full-resolution preview image for quick rescale on zoom
         # (stitch visible tiles into one image for _last_preview_pil)
