@@ -65,6 +65,14 @@ class ContextToolApplication(_ProgressApplication):
         _remove_commands_containing(ai_menu, "Library Model")
         _remove_commands_containing(ai_menu, "Publish Motif")
         _remove_commands_containing(ai_menu, "Publish Model")
+        # Alur baru: batifikasi tidak lagi bergantung pada objek terpilih di
+        # kanvas. Gambar diseret langsung ke jendela studio.
+        ai_menu.insert_command(
+            0,
+            label="Studio Batifikasi BatikBrew…",
+            command=self.open_batikbrew_studio,
+        )
+        ai_menu.insert_separator(1)
         _normalize_separators(ai_menu)
 
         self._remove_nft_export_from_file(menu_bar)
@@ -195,6 +203,41 @@ class ContextToolApplication(_ProgressApplication):
             command=self.open_ai_runtime_settings,
         )
         _insert_before_help(menu_bar, "Settings", settings_menu)
+
+    def open_batikbrew_studio(self) -> None:
+        """Buka jendela batifikasi mandiri (seret gambar, bukan pilih objek)."""
+
+        from .ui.batikbrew_studio_window import BatikBrewStudioWindow
+
+        existing = getattr(self, "_batikbrew_studio", None)
+        if existing is not None and existing.winfo_exists():
+            existing.deiconify()
+            existing.lift()
+            existing.focus_force()
+            return
+        self._batikbrew_studio = BatikBrewStudioWindow(
+            self.root, on_insert=self._insert_batification_results
+        )
+
+    def _insert_batification_results(self, results: object) -> None:
+        """Masukkan hasil batifikasi ke kanvas.
+
+        Memakai jalur impor yang sama dengan drag-and-drop ke kanvas, jadi hasil
+        studio diperlakukan persis seperti gambar dari luar aplikasi.
+        """
+
+        editor = self.main_window._editor()
+        importer = getattr(editor, "_import_external_payloads", None)
+        if not callable(importer):
+            raise RuntimeError(
+                "Editor kanvas belum mendukung penyisipan gambar dari studio."
+            )
+        payloads = tuple(
+            (result.label, result.content) for result in results  # type: ignore[union-attr]
+        )
+        if not payloads:
+            return
+        importer(payloads, position=None, source_label="studio batifikasi")
 
     def _remove_nft_export_from_file(self, menu_bar: tk.Menu) -> None:
         try:
