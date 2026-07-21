@@ -91,6 +91,13 @@ def main() -> int:
 
     install_sdxl_runtime_integrity()
 
+    # SDXL and SD 1.5 may have been installed by different application versions into
+    # different writable/legacy roots. Resolve each family independently before any
+    # model manager or repair module captures path helpers.
+    from .ai.runtime_family_resolution import install_runtime_family_resolution
+
+    install_runtime_family_resolution()
+
     # Online repair must reconcile every local SDXL file against repository metadata.
     # Names or exit codes alone are never accepted as proof of a complete download.
     from .ai.sdxl_repository_repair import install_sdxl_repository_repair
@@ -151,6 +158,9 @@ def main() -> int:
     )
     from .ui.dependency_integrity_patch import install_dependency_integrity_patch
     from .ui.dependency_profiles_patch import install_dependency_profiles_patch
+    from .ui.dependency_runtime_truth_patch import (
+        install_dependency_runtime_truth_patch,
+    )
     from .ui.inkscape_canvas_patch import install_inkscape_canvas_patch
     from .ui.inkscape_pointer_hotpath import install_inkscape_pointer_hotpath
     from .ui.inkscape_renderer_compat import install_inkscape_renderer_compat
@@ -165,6 +175,7 @@ def main() -> int:
 
     install_marketplace_model_progress()
     install_dependency_integrity_patch()
+    install_dependency_runtime_truth_patch()
     install_dependency_cuda_selection_patch()
     install_model_connectivity_settings_patch()
     install_dependency_profiles_patch()
