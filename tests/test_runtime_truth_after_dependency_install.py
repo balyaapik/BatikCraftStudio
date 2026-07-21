@@ -139,8 +139,10 @@ def test_model_families_resolve_independently_across_roots(
 
     # Root selection is the subject of this test. The strict production SDXL size
     # validator has separate coverage and intentionally rejects these tiny fixtures.
-    def validate_sdxl_path(paths: object) -> None:
-        base_model = Path(getattr(paths, "base_model"))
+    def validate_sdxl_path(
+        paths: runtime_model_installer.BatikBrewRuntimePaths,
+    ) -> None:
+        base_model = Path(paths.base_model)
         if not (base_model / "model_index.json").is_file():
             raise runtime_model_installer.RuntimeModelInstallError("SDXL tidak tersedia")
 
