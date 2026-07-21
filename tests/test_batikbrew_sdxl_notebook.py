@@ -118,3 +118,27 @@ def test_notebook_removes_incompatible_kaggle_torchao() -> None:
         "".join(cell.get("source", [])) for cell in legacy["cells"]
     )
     assert "torchao" in legacy_source
+
+
+def test_dtype_keyword_matches_each_library() -> None:
+    """Kelas diffusers memakai torch_dtype; hanya kelas transformers yang
+    menerima `dtype`. Mencampurnya menyebabkan
+    'AutoencoderKL.__init__() got an unexpected keyword argument dtype'."""
+
+    source = _sources()
+    diffusers_classes = (
+        "AutoencoderKL",
+        "UNet2DConditionModel",
+        "ControlNetModel",
+        "StableDiffusionXLControlNetImg2ImgPipeline",
+        "AutoPipelineForImage2Image",
+    )
+    transformers_classes = ("CLIPTextModel", "CLIPTextModelWithProjection")
+
+    for line in source.splitlines():
+        if ".from_pretrained(" not in line or "dtype" not in line:
+            continue
+        if any(name in line for name in diffusers_classes):
+            assert "torch_dtype=" in line, line
+        if any(name in line for name in transformers_classes):
+            assert "torch_dtype=" not in line, line
