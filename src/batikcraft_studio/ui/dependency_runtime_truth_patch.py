@@ -8,7 +8,6 @@ model tab, import-error message, and post-install refresh use the same validated
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
 
 _INSTALLED = False
 
