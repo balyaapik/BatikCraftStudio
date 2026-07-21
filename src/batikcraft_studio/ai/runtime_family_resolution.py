@@ -7,8 +7,9 @@ incorrect when SDXL lives in one location and SD 1.5 + ControlNet lives in the o
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 _INSTALLED = False
 
