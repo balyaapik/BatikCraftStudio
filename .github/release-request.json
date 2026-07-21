@@ -1,5 +1,5 @@
 {
-  "release_tag": "v0.4.4",
-  "requested_at": "2026-07-20T20:30:00Z",
-  "reason": "Publish BatikCraft Studio 0.4.4: preserve the installed PyTorch CPU/CUDA runtime while installing Accelerate, PEFT, and other companion dependencies; prevent pip --target --upgrade from replacing loaded torch DLLs such as asmjit.dll; pin dependency resolution to the existing Torch version and clean stale metadata left by failed upgrades."
+  "release_tag": "v0.4.5",
+  "requested_at": "2026-07-21T03:00:00Z",
+  "reason": "Publish BatikCraft Studio 0.4.5: prevent partially downloaded SDXL/base-model folders from being reported as installed or successful after insufficient disk space; validate model completeness before success, preserve resumable partial files, calculate remaining disk requirements, and report batch failures without forcing progress to 100%."
 }
