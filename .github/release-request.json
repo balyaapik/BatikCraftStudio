@@ -1,5 +1,5 @@
 {
-  "release_tag": "v0.4.7",
-  "requested_at": "2026-07-21T05:00:00Z",
-  "reason": "Publish BatikCraft Studio 0.4.7: offline mode is now scoped to local pipeline loading so SDXL component repair and model downloads work again (fixes 'Mode Offline aktif' blocking tokenizer_2/text_encoder_2 repair and the GPU never being used), and the dependency table reports incomplete models as PERLU REPARASI instead of Terpasang."
+  "release_tag": "v0.4.8",
+  "requested_at": "2026-07-21T07:00:00Z",
+  "reason": "Publish BatikCraft Studio 0.4.8: prevent the application from being killed by the OS while loading SDXL. Weights now stream with low_cpu_mem_usage, free RAM is checked before loading with an actionable message, GPUs with less than 8 GB VRAM enable model CPU offload automatically, and every loading stage is logged."
 }
