@@ -114,3 +114,40 @@ def test_cpu_paths_halve_memory_and_guard_both_providers() -> None:
         assert "_cpu_friendly_dtype" in source
         assert "guard_cpu_generation" in source
     assert "enable_vae_tiling" in canvas_source
+
+
+def test_model_load_is_guarded_before_weights_are_read(monkeypatch) -> None:
+    """Kasus lapangan: RAM 13.6/15.7 GB terpakai (sisa ~2 GB) lalu aplikasi
+    tertutup sendiri saat Generate BatikBrew. Pemuatan bobot adalah puncak
+    pemakaian RAM dan harus diperiksa sebelum dimulai."""
+
+    from batikcraft_studio.ai import memory_guard
+
+    monkeypatch.setattr(memory_guard, "available_memory_gb", lambda: 2.0)
+    with pytest.raises(MemoryError, match="RAM bebas"):
+        memory_guard.guard_model_load(device="cuda", dtype_name="torch.float16")
+
+    monkeypatch.setattr(memory_guard, "available_memory_gb", lambda: 24.0)
+    memory_guard.guard_model_load(device="cuda", dtype_name="torch.float16")
+
+    # float32 memerlukan dua kali lipat dibanding float16.
+    monkeypatch.setattr(memory_guard, "available_memory_gb", lambda: 10.0)
+    memory_guard.guard_model_load(device="cpu", dtype_name="torch.float16")
+    with pytest.raises(MemoryError):
+        memory_guard.guard_model_load(device="cpu", dtype_name="torch.float32")
+
+
+def test_pipelines_stream_weights_and_offload_on_small_vram() -> None:
+    import inspect
+
+    from batikcraft_studio.ai import batikbrew_generation, pretrained_batification
+
+    pattern = inspect.getsource(batikbrew_generation)
+    canvas = inspect.getsource(pretrained_batification)
+    # low_cpu_mem_usage memangkas puncak RAM saat memuat dari ~2x menjadi ~1x.
+    assert "low_cpu_mem_usage=True" in pattern
+    assert "low_cpu_mem_usage=True" in canvas
+    assert "guard_model_load" in pattern and "guard_model_load" in canvas
+    # GPU laptop 6 GB (mis. RTX 4050) wajib offload untuk SDXL fp16.
+    assert "_vram_is_tight" in pattern
+    assert "total_gb < 8.0" in pattern

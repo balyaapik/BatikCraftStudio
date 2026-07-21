@@ -595,6 +595,19 @@ def _default_sdxl_pipeline_factory(
     source = settings.model_id_or_path
     local = Path(source).expanduser()
     model_source = str(local.resolve()) if local.exists() else source
+    # Pemuatan model adalah puncak pemakaian RAM — dan penyebab paling umum
+    # aplikasi "tertutup sendiri" (proses dibunuh OS, tanpa dialog).
+    from batikcraft_studio.ai.memory_guard import guard_model_load
+
+    logger = logging.getLogger(__name__)
+    logger.info(
+        "Memuat SDXL: perangkat=%s, dtype=%s, sumber=%s", device, dtype, model_source
+    )
+    try:
+        guard_model_load(device=device, dtype_name=str(dtype), torch_module=torch)
+    except MemoryError as exc:
+        raise BatificationError(str(exc)) from exc
+
     try:
         pipeline = StableDiffusionXLPipeline.from_pretrained(
             model_source,
@@ -603,10 +616,17 @@ def _default_sdxl_pipeline_factory(
             variant="fp16" if dtype == torch.float16 and not local.exists() else None,
             local_files_only=settings.local_files_only,
             cache_dir=settings.cache_dir,
+            # Streaming bobot langsung ke tensor tujuan: puncak RAM turun dari
+            # ±2x ukuran model menjadi ±1x. Tanpa ini, mesin dengan RAM sisa
+            # sedikit dimatikan OS saat memuat SDXL.
+            low_cpu_mem_usage=True,
         )
-        if settings.cpu_offload and device == "cuda" and hasattr(
+        logger.info("Bobot SDXL termuat; menyiapkan perangkat…")
+        offload_needed = settings.cpu_offload or _vram_is_tight(torch, device)
+        if offload_needed and device == "cuda" and hasattr(
             pipeline, "enable_model_cpu_offload"
         ):
+            logger.info("Mengaktifkan model CPU offload (VRAM terbatas).")
             pipeline.enable_model_cpu_offload()
         else:
             pipeline.to(device)
@@ -647,6 +667,24 @@ def _resolve_device(torch: Any, requested: str) -> str:
     from batikcraft_studio.ai.device_resolution import resolve_torch_device
 
     return resolve_torch_device(torch, requested)
+
+
+def _vram_is_tight(torch: Any, device: str) -> bool:
+    """True bila VRAM GPU < 8 GB — SDXL fp16 butuh ±10 GB tanpa offload.
+
+    RTX kelas laptop (mis. 4050 dengan 6 GB) wajib memakai model CPU offload;
+    tanpa itu pemuatan gagal atau proses mati.
+    """
+
+    if device != "cuda":
+        return False
+    try:
+        properties = torch.cuda.get_device_properties(0)
+        total_gb = float(properties.total_memory) / (1024**3)
+    except Exception:  # noqa: BLE001
+        return False
+    logging.getLogger(__name__).info("VRAM terdeteksi: %.1f GB", total_gb)
+    return total_gb < 8.0
 
 
 def _cpu_friendly_dtype(torch: Any, requested: Any) -> Any:

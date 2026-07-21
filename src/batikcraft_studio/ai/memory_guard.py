@@ -70,4 +70,47 @@ def guard_cpu_generation(resolution: int) -> tuple[int, str | None]:
     return resolution, None
 
 
-__all__ = ["available_memory_gb", "guard_cpu_generation"]
+# Pemuatan SDXL memerlukan RAM sebesar model walau target akhirnya GPU:
+# bobot dibaca ke RAM dulu sebelum dipindah ke VRAM.
+_MODEL_LOAD_NEED_GB = {"float16": 7.5, "bfloat16": 7.5, "float32": 14.0}
+_MODEL_LOAD_HEADROOM_GB = 1.5
+
+
+def guard_model_load(
+    *,
+    device: str,
+    dtype_name: str,
+    torch_module: object | None = None,
+) -> None:
+    """Tolak pemuatan model bila RAM jelas tidak cukup.
+
+    Tanpa pemeriksaan ini, OS membunuh proses saat bobot dibaca dan aplikasi
+    tampak "tertutup sendiri" tanpa pesan apa pun.
+    """
+
+    free_gb = available_memory_gb()
+    if free_gb is None:
+        return
+    key = "float32"
+    for name in ("float16", "bfloat16"):
+        if name in dtype_name:
+            key = name
+            break
+    needed = _MODEL_LOAD_NEED_GB.get(key, 14.0) + _MODEL_LOAD_HEADROOM_GB
+    _LOGGER.info(
+        "Pemeriksaan RAM sebelum memuat model: bebas %.1f GB, dibutuhkan ±%.1f GB (%s, %s)",
+        free_gb,
+        needed,
+        device,
+        key,
+    )
+    if free_gb < needed:
+        raise MemoryError(
+            f"RAM bebas hanya {free_gb:.1f} GB, sedangkan memuat model "
+            f"membutuhkan ±{needed:.1f} GB. Tutup aplikasi lain (browser biasanya "
+            "paling boros), lalu coba lagi. Alternatif: pakai provider cloud "
+            "(OpenAI/Gemini/watsonx) yang tidak memakai memori komputer."
+        )
+
+
+__all__ = ["available_memory_gb", "guard_cpu_generation", "guard_model_load"]

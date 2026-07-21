@@ -319,6 +319,12 @@ def _default_pipeline_factory(
 
     device = _resolve_device(torch, settings.device)
     dtype = _resolve_dtype(torch, device, settings.precision)
+    from batikcraft_studio.ai.memory_guard import guard_model_load
+
+    try:
+        guard_model_load(device=device, dtype_name=str(dtype), torch_module=torch)
+    except MemoryError as exc:
+        raise BatificationError(str(exc)) from exc
     if device == "cpu" and settings.precision in ("auto", "float32"):
         from batikcraft_studio.ai.batikbrew_generation import _cpu_friendly_dtype
 
@@ -332,6 +338,7 @@ def _default_pipeline_factory(
             torch_dtype=dtype,
             local_files_only=settings.local_files_only,
             cache_dir=settings.cache_dir,
+            low_cpu_mem_usage=True,
         )
         if settings.cpu_offload and device == "cuda" and hasattr(
             pipeline,
