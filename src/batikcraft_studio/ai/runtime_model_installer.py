@@ -446,6 +446,14 @@ def _allow_hub_network() -> None:
         "HF_DATASETS_OFFLINE",
     ):
         os.environ.pop(name, None)
+    try:  # bersihkan pula penanda offline milik aplikasi
+        from batikcraft_studio.ai.offline_runtime import (
+            clear_app_applied_offline_environment,
+        )
+
+        clear_app_applied_offline_environment()
+    except Exception:  # noqa: BLE001
+        pass
     try:  # konstanta dibaca saat import; paksa nonaktif juga di runtime
         from huggingface_hub import constants as _hub_constants
 

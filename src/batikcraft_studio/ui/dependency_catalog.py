@@ -181,7 +181,12 @@ def is_installed(item: DependencyItem) -> bool:
 
     if item.kind == KIND_MODEL:
         folder = managed_runtime_root() / item.folder
-        return folder.is_dir() and any(folder.iterdir())
+        if not (folder.is_dir() and any(folder.iterdir())):
+            return False
+        # Folder berisi bukan berarti lengkap: unduhan terputus meninggalkan
+        # komponen hilang (mis. tokenizer_2/text_encoder_2) yang membuat
+        # generasi gagal padahal tabel sempat menulis "Terpasang".
+        return not missing_model_components(item)
     packages = default_managed_ai_package_dir()
     module_root = item.module.split(".")[0]
     if item.variant:
@@ -191,6 +196,49 @@ def is_installed(item: DependencyItem) -> bool:
     if (packages / module_root).is_dir():
         return True
     return any(packages.glob(f"{module_root}-*.dist-info")) if packages.is_dir() else False
+
+
+_REQUIRED_DIFFUSERS_COMPONENTS = {
+    "sdxl": (
+        "model_index.json",
+        "scheduler",
+        "text_encoder",
+        "text_encoder_2",
+        "tokenizer",
+        "tokenizer_2",
+        "unet",
+        "vae",
+    ),
+    "sd15": (
+        "model_index.json",
+        "scheduler",
+        "text_encoder",
+        "tokenizer",
+        "unet",
+        "vae",
+    ),
+}
+
+
+def missing_model_components(item: DependencyItem) -> tuple[str, ...]:
+    """Komponen wajib yang belum ada / kosong pada folder model."""
+
+    required = _REQUIRED_DIFFUSERS_COMPONENTS.get(item.key)
+    if not required:
+        return ()
+    folder = managed_runtime_root() / item.folder
+    if not folder.is_dir():
+        return required
+    missing: list[str] = []
+    for name in required:
+        target = folder / name
+        if name.endswith(".json"):
+            if not target.is_file() or target.stat().st_size == 0:
+                missing.append(name)
+            continue
+        if not target.is_dir() or not any(target.iterdir()):
+            missing.append(name)
+    return tuple(missing)
 
 
 def installed_fraction(item: DependencyItem) -> float:
@@ -219,6 +267,15 @@ def integrity_status(item: DependencyItem) -> tuple[str, str]:
     itu terlihat langsung di tabel.
     """
 
+    missing = missing_model_components(item)
+    if missing:
+        folder = managed_runtime_root() / item.folder
+        if folder.is_dir() and any(folder.iterdir()):
+            return (
+                "PERLU REPARASI",
+                "komponen hilang: " + ", ".join(missing[:4]),
+            )
+        return "Belum terpasang", ""
     if not is_installed(item):
         return "Belum terpasang", ""
     if item.key != "sdxl":
@@ -291,6 +348,7 @@ __all__ = [
     "integrity_status",
     "installed_fraction",
     "installed_torch_variant",
+    "missing_model_components",
     "is_installed",
     "managed_runtime_root",
     "refresh_installed_state",

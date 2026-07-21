@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 from io import BytesIO
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
@@ -80,7 +81,6 @@ class OfflineLoraBatificationProvider:
         self.provider_id = f"offline-lora:{model.model_id}"
         self._pipeline: Any | None = None
         self._torch: Any | None = None
-        _enable_offline_environment()
 
     @property
     def is_loaded(self) -> bool:
@@ -168,6 +168,10 @@ class OfflineLoraBatificationProvider:
     def _load_pipeline(self) -> tuple[Any, Any, str]:
         if self._pipeline is not None and self._torch is not None:
             return self._pipeline, self._torch, _resolve_device(self._torch, self.config)
+        with offline_environment():
+            return self._load_pipeline_offline()
+
+    def _load_pipeline_offline(self) -> tuple[Any, Any, str]:
         try:
             import torch
             from diffusers import (
@@ -231,11 +235,76 @@ class OfflineLoraBatificationProvider:
         return pipeline, torch, device
 
 
+# Penanda: nilai offline di bawah dipasang oleh aplikasi sendiri, bukan oleh
+# pengguna. Tanpa penanda ini, reparasi model menyangka pengguna memaksa mode
+# offline lalu menolak mengunduh komponen yang hilang.
+APP_OFFLINE_SENTINEL = "BATIKCRAFT_OFFLINE_APPLIED"
+
+
+@contextmanager
+def offline_environment():
+    """Mode offline HANYA selama pemuatan runtime lokal, lalu dipulihkan.
+
+    Sebelumnya variabel offline dipasang permanen pada proses, sehingga sekali
+    runtime LoRA lokal dipakai, pengunduh dan reparasi model ikut terkunci
+    ("Mode Offline aktif") walau pengguna sudah mengizinkan online.
+    """
+
+    names = ("HF_HUB_OFFLINE", "TRANSFORMERS_OFFLINE", "DIFFUSERS_OFFLINE")
+    previous = {name: os.environ.get(name) for name in names}
+    try:
+        _enable_offline_environment()
+        yield
+    finally:
+        for name, value in previous.items():
+            if value is None:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = value
+        clear_app_applied_offline_environment()
+
+
 def _enable_offline_environment() -> None:
-    os.environ["HF_HUB_OFFLINE"] = "1"
-    os.environ["TRANSFORMERS_OFFLINE"] = "1"
-    os.environ["DIFFUSERS_OFFLINE"] = "1"
+    """Aktifkan mode offline HANYA untuk pemuatan runtime LoRA lokal.
+
+    Sebelumnya variabel ini dipasang permanen untuk seluruh proses, sehingga
+    setelah runtime offline sekali dipakai, pengunduh dan reparasi model ikut
+    terkunci ("Mode Offline aktif") walau pengguna sudah mengizinkan online.
+    """
+
+    for name in ("HF_HUB_OFFLINE", "TRANSFORMERS_OFFLINE", "DIFFUSERS_OFFLINE"):
+        if not os.environ.get(name):
+            os.environ[name] = "1"
+            _mark_app_applied(name)
     os.environ.setdefault("HF_HUB_DISABLE_TELEMETRY", "1")
+
+
+def _mark_app_applied(name: str) -> None:
+    applied = {
+        value
+        for value in os.environ.get(APP_OFFLINE_SENTINEL, "").split(",")
+        if value
+    }
+    applied.add(name)
+    os.environ[APP_OFFLINE_SENTINEL] = ",".join(sorted(applied))
+
+
+def app_applied_offline_names() -> frozenset[str]:
+    """Variabel offline yang dipasang aplikasi (bukan permintaan pengguna)."""
+
+    return frozenset(
+        value
+        for value in os.environ.get(APP_OFFLINE_SENTINEL, "").split(",")
+        if value
+    )
+
+
+def clear_app_applied_offline_environment() -> None:
+    """Lepas kunci offline yang dipasang aplikasi agar unduhan bisa berjalan."""
+
+    for name in app_applied_offline_names():
+        os.environ.pop(name, None)
+    os.environ.pop(APP_OFFLINE_SENTINEL, None)
 
 
 def _existing_local_directory(value: Path | str, label: str) -> Path:

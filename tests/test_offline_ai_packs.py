@@ -144,7 +144,7 @@ def test_model_pack_rejects_path_traversal(tmp_path: Path) -> None:
         OfflineModelLibrary(tmp_path / "models").install(archive)
 
 
-def test_offline_provider_sets_offline_environment_without_loading_weights(
+def test_offline_provider_scopes_offline_environment_to_pipeline_load(
     tmp_path: Path,
 ) -> None:
     base = tmp_path / "base"
@@ -185,9 +185,23 @@ def test_offline_provider_sets_offline_environment_without_loading_weights(
 
     assert provider.provider_id == "offline-lora:offline"
     assert not provider.is_loaded
-    assert os.environ["HF_HUB_OFFLINE"] == "1"
-    assert os.environ["TRANSFORMERS_OFFLINE"] == "1"
-    assert os.environ["DIFFUSERS_OFFLINE"] == "1"
+
+    # Kebijakan baru: mode offline TIDAK dipasang permanen saat provider dibuat.
+    # Nilai permanen membuat pengunduh dan reparasi model ikut terkunci
+    # ("Mode Offline aktif") walau pengguna sudah mengizinkan online.
+    for name in ("HF_HUB_OFFLINE", "TRANSFORMERS_OFFLINE", "DIFFUSERS_OFFLINE"):
+        os.environ.pop(name, None)
+
+    from batikcraft_studio.ai.offline_runtime import offline_environment
+
+    with offline_environment():
+        assert os.environ["HF_HUB_OFFLINE"] == "1"
+        assert os.environ["TRANSFORMERS_OFFLINE"] == "1"
+        assert os.environ["DIFFUSERS_OFFLINE"] == "1"
+
+    # Setelah pemuatan selesai, environment kembali seperti semula.
+    for name in ("HF_HUB_OFFLINE", "TRANSFORMERS_OFFLINE", "DIFFUSERS_OFFLINE"):
+        assert os.environ.get(name) is None
 
 
 def test_runtime_rejects_relative_or_missing_model_directories(tmp_path: Path) -> None:

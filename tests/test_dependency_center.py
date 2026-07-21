@@ -201,3 +201,59 @@ def test_log_tab_offers_save_and_clear() -> None:
     assert "Simpan Log…" in source
     assert "Bersihkan" in source
     assert "Buka Folder Log" in source
+
+
+def test_incomplete_model_is_not_reported_as_installed(tmp_path, monkeypatch) -> None:
+    """Kasus lapangan: folder SDXL ada tetapi tokenizer_2/text_encoder_2 hilang.
+    Tabel sempat menulis 'Terpasang 100%' sehingga pengguna tidak tahu harus
+    mereparasi, lalu generasi gagal dan GPU tidak pernah terpakai."""
+
+    monkeypatch.setattr(catalog, "managed_runtime_root", lambda: tmp_path / "runtime")
+    sdxl = next(item for item in catalog.CATALOG if item.key == "sdxl")
+    folder = tmp_path / "runtime" / sdxl.folder
+    folder.mkdir(parents=True)
+    (folder / "model_index.json").write_text("{}", encoding="utf-8")
+    for name in ("scheduler", "text_encoder", "tokenizer", "unet", "vae"):
+        component = folder / name
+        component.mkdir()
+        (component / "config.json").write_text("{}", encoding="utf-8")
+
+    assert catalog.missing_model_components(sdxl) == ("text_encoder_2", "tokenizer_2")
+    assert catalog.is_installed(sdxl) is False
+    status, detail = catalog.integrity_status(sdxl)
+    assert status == "PERLU REPARASI"
+    assert "text_encoder_2" in detail
+
+    # Setelah komponen dilengkapi, status kembali normal.
+    for name in ("text_encoder_2", "tokenizer_2"):
+        component = folder / name
+        component.mkdir()
+        (component / "config.json").write_text("{}", encoding="utf-8")
+    assert catalog.missing_model_components(sdxl) == ()
+    assert catalog.is_installed(sdxl) is True
+
+
+def test_app_applied_offline_mode_does_not_block_repairs(monkeypatch) -> None:
+    """Runtime LoRA lokal menyetel HF_HUB_OFFLINE untuk dirinya sendiri.
+    Nilai itu tidak boleh dianggap 'pengguna memaksa offline', karena membuat
+    reparasi komponen SDXL menolak mengunduh."""
+
+    import os
+
+    from batikcraft_studio.ai import offline_runtime, sdxl_online_component_repair
+
+    for name in ("HF_HUB_OFFLINE", "TRANSFORMERS_OFFLINE", "DIFFUSERS_OFFLINE"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.delenv(offline_runtime.APP_OFFLINE_SENTINEL, raising=False)
+
+    offline_runtime._enable_offline_environment()
+    assert os.environ["HF_HUB_OFFLINE"] == "1"
+    assert "HF_HUB_OFFLINE" in offline_runtime.app_applied_offline_names()
+    assert sdxl_online_component_repair._explicit_offline_environment() is False
+
+    offline_runtime.clear_app_applied_offline_environment()
+    assert os.environ.get("HF_HUB_OFFLINE") is None
+
+    # Offline yang benar-benar diminta pengguna tetap dihormati.
+    monkeypatch.setenv("HF_HUB_OFFLINE", "1")
+    assert sdxl_online_component_repair._explicit_offline_environment() is True

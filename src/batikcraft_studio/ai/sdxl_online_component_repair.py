@@ -135,7 +135,23 @@ def _migrate_hidden_local_only_setting() -> None:
 
 
 def _explicit_offline_environment() -> bool:
-    return any(_truthy_environment(os.environ.get(name)) for name in _OFFLINE_ENV_NAMES)
+    """True hanya bila PENGGUNA yang meminta mode offline lewat environment.
+
+    Nilai yang dipasang aplikasi saat memuat runtime LoRA lokal tidak dihitung;
+    kalau dihitung, reparasi komponen SDXL akan menolak mengunduh padahal
+    pengguna sudah mencentang 'Izinkan Download & Reparasi Model (Online)'.
+    """
+
+    try:
+        from batikcraft_studio.ai.offline_runtime import app_applied_offline_names
+
+        applied = app_applied_offline_names()
+    except Exception:  # noqa: BLE001
+        applied = frozenset()
+    return any(
+        name not in applied and _truthy_environment(os.environ.get(name))
+        for name in _OFFLINE_ENV_NAMES
+    )
 
 
 def _truthy_environment(value: str | None) -> bool:
