@@ -48,3 +48,23 @@ def test_documentation_explains_family_requirement() -> None:
     assert "BatikBrew" in doc
     assert "sdxl" in doc
     assert "Pasang .batikmodel" in doc
+
+
+def test_notebook_locks_silhouette_with_controlnet() -> None:
+    """'Botol tetap botol' berasal dari ControlNet Canny + strength rendah,
+    bukan dari pasangan gambar di dataset."""
+
+    source = _sources()
+    assert "controlnet-canny-sdxl-1.0" in source
+    assert "StableDiffusionXLControlNetImg2ImgPipeline" in source
+    assert "controlnet_conditioning_scale" in source
+    assert "cv2.Canny" in source
+
+
+def test_notebook_explains_absence_of_paired_dataset() -> None:
+    source = _sources()
+    assert "style transfer" in source.lower()
+    assert "tidak ada pasangan" in source.lower()
+    # Tersedia pembangun pasangan asli<->batik untuk kurasi (opsional).
+    assert "pairs.json" in source
+    assert "perbandingan" in source

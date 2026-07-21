@@ -21,6 +21,27 @@ BatikBrew memuat pipeline SDXL. LoRA `sd15` tidak dapat dipakai di sana (dan
 sebaliknya) — sejak 0.5.3 aplikasi mendeteksi ketidakcocokan ini dan
 menjalankan LoRA SD 1.5 pada pipeline SD 1.5.
 
+## Di mana pasangan "botol → botol gaya batik"?
+
+Tidak ada di dataset, dan memang tidak diperlukan. Ini *style transfer*, bukan
+*paired translation*:
+
+| Tahap | Sumber **bentuk** | Sumber **gaya** |
+| --- | --- | --- |
+| Latih | tidak ada objek | gambar batik + kata pemicu |
+| Inferensi | foto objek Anda (img2img + ControlNet Canny) | LoRA hasil latihan |
+
+Botol tetap berbentuk botol karena dua hal: `strength` img2img yang rendah
+(0,40–0,55) dan **ControlNet Canny** yang mengunci siluet dari tepi gambar
+sumber. Karena bentuk tidak dipelajari, satu LoRA berlaku untuk objek apa pun —
+termasuk objek yang tidak pernah ada di dataset.
+
+Pelatihan berpasangan (ratusan pasang foto asli + versi batiknya) baru masuk akal
+bila Anda menginginkan transformasi yang sangat spesifik dan seragam. Biayanya
+besar dan hasilnya justru kurang umum; sel 5c pada notebook cukup untuk
+menghasilkan pasangan asli↔batik sebagai bahan kurasi, contoh marketplace, atau
+penyempurnaan lanjutan.
+
 ## Kebutuhan Kaggle
 
 - Accelerator **GPU T4 ×2** atau **P100** (butuh ±15 GB VRAM).
@@ -56,4 +77,5 @@ akan menampilkan `Keluarga base model: Stable Diffusion XL` dan
 | Bentuk objek berubah terlalu jauh | turunkan `strength` (0,40–0,50) |
 | Gaya batik kurang kuat | naikkan `strength` (0,65–0,75) atau bobot LoRA |
 | Motif terlalu ramai | kurangi `max_steps`, atau perkaya caption dataset |
+| Siluet objek tidak terjaga | naikkan `controlnet_conditioning_scale` (0,8–1,0) |
 | Warna meleset dari palet batik | tambah gambar bernuansa soga/indigo ke dataset |
