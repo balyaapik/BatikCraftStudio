@@ -1,5 +1,5 @@
 {
-  "release_tag": "v0.4.8",
-  "requested_at": "2026-07-21T07:00:00Z",
-  "reason": "Publish BatikCraft Studio 0.4.8: prevent the application from being killed by the OS while loading SDXL. Weights now stream with low_cpu_mem_usage, free RAM is checked before loading with an actionable message, GPUs with less than 8 GB VRAM enable model CPU offload automatically, and every loading stage is logged."
+  "release_tag": "v0.4.9",
+  "requested_at": "2026-07-21T09:00:00Z",
+  "reason": "Publish BatikCraft Studio 0.4.9: automatic low-memory profile for constrained machines (sequential CPU offload, attention/VAE slicing and tiling), immediate memory release after every generation, and pipeline unloading on small machines so several gigabytes are not held until the application closes."
 }
