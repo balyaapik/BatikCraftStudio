@@ -275,24 +275,55 @@ class BatikBrewSDXLGenerationProvider:
             if note:
                 logging.getLogger(__name__).warning(note)
 
+        from batikcraft_studio.ai.generation_trace import trace as _trace_setup
+
+        # Beberapa folder SDXL hasil unduhan/reparasi memiliki
+        # unet/config.json dengan "sample_size": null. Diffusers memakai nilai
+        # itu pada `height or default_sample_size * vae_scale_factor`, sehingga
+        # generasi gagal dengan "unsupported operand type(s) for *: 'NoneType'
+        # and 'int'". Pulihkan ke nilai baku SDXL (128 * 8 = 1024 px).
+        if getattr(pipeline, "default_sample_size", None) is None:
+            try:
+                pipeline.default_sample_size = 128
+                _trace_setup(
+                    "Konfigurasi model tidak menyertakan sample_size; "
+                    "memakai nilai baku SDXL (1024 px)."
+                )
+            except Exception:  # noqa: BLE001
+                pass
+        if not getattr(pipeline, "vae_scale_factor", None):
+            try:
+                pipeline.vae_scale_factor = 8
+            except Exception:  # noqa: BLE001
+                pass
+
+        # Nilai numerik dinormalkan agar tidak ada None yang lolos ke pipeline.
+        render_resolution = int(render_resolution or 1024)
+        steps = max(1, int(options.inference_steps or 30))
+        guidance = float(options.guidance_scale if options.guidance_scale is not None else 7.5)
+        variation_total = max(1, int(options.variation_count or 1))
+        _trace_setup(
+            f"Parameter: {render_resolution}px · {steps} langkah · "
+            f"guidance {guidance} · {variation_total} variasi"
+        )
+
         results: list[PretrainedAIBatificationResult] = []
 
         with self._inference_lock:
-            for index in range(options.variation_count):
+            for index in range(variation_total):
                 seed = (base_seed + index) & 0x7FFFFFFF
                 generator = torch.Generator(device=generator_device).manual_seed(seed)
                 from batikcraft_studio.ai.generation_trace import trace as _trace
 
                 _trace(
-                    f"Variasi {index + 1}/{options.variation_count} "
-                    f"(seed {seed}, {render_resolution}px, "
-                    f"{options.inference_steps} langkah) dimulai"
+                    f"Variasi {index + 1}/{variation_total} "
+                    f"(seed {seed}, {render_resolution}px, {steps} langkah) dimulai"
                 )
 
                 def _step_callback(
                     _pipe: Any, step: int, _timestep: Any, callback_kwargs: dict
                 ) -> dict:
-                    total_steps = max(1, int(options.inference_steps))
+                    total_steps = steps
                     if step == 0 or (step + 1) % 5 == 0 or step + 1 >= total_steps:
                         _trace(f"  langkah {step + 1}/{total_steps}")
                     return callback_kwargs
@@ -303,13 +334,23 @@ class BatikBrewSDXLGenerationProvider:
                         negative_prompt=analysis.negative_prompt,
                         width=render_resolution,
                         height=render_resolution,
-                        num_inference_steps=options.inference_steps,
-                        guidance_scale=options.guidance_scale,
+                        num_inference_steps=steps,
+                        guidance_scale=guidance,
                         generator=generator,
                         **_step_callback_kwargs(pipeline, _step_callback),
                     )
                 except Exception as exc:
-                    raise BatificationError(f"Generasi SDXL BatikBrew gagal: {exc}") from exc
+                    import traceback
+
+                    detail = traceback.format_exc()
+                    logging.getLogger(__name__).error(
+                        "Generasi SDXL gagal:\n%s", detail
+                    )
+                    for line in detail.strip().splitlines()[-8:]:
+                        _trace(f"  {line}")
+                    raise BatificationError(
+                        f"Generasi SDXL BatikBrew gagal: {type(exc).__name__}: {exc}"
+                    ) from exc
                 images = getattr(response, "images", None)
                 if not images:
                     raise BatificationError("SDXL BatikBrew tidak menghasilkan gambar.")

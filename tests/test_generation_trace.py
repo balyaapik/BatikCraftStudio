@@ -87,3 +87,31 @@ def test_batikbrew_worker_streams_steps_into_the_dialog() -> None:
     ui = inspect.getsource(context_tool_editor_hotfixes)
     assert "set_trace_sink(sink)" in ui
     assert "set_trace_sink(None)" in ui
+
+
+def test_incomplete_unet_config_no_longer_breaks_generation() -> None:
+    """Regresi: folder SDXL dengan unet/config.json 'sample_size': null
+    membuat diffusers menghitung `height or default_sample_size * vae_scale_factor`
+    sehingga muncul "unsupported operand type(s) for *: 'NoneType' and 'int'"."""
+
+    from batikcraft_studio.ai import batikbrew_generation
+
+    source = inspect.getsource(batikbrew_generation)
+    # Nilai baku SDXL dipulihkan sebelum pipeline dipanggil.
+    assert "pipeline.default_sample_size = 128" in source
+    assert "pipeline.vae_scale_factor = 8" in source
+    # Semua angka dinormalkan; tidak ada None yang lolos ke pipeline.
+    assert "render_resolution = int(render_resolution or 1024)" in source
+    assert "steps = max(1, int(options.inference_steps or 30))" in source
+    assert "num_inference_steps=steps," in source
+    assert "guidance_scale=guidance," in source
+
+
+def test_generation_failures_report_full_traceback() -> None:
+    """Pesan singkat menyembunyikan penyebab; traceback harus masuk log."""
+
+    from batikcraft_studio.ai import batikbrew_generation
+
+    source = inspect.getsource(batikbrew_generation)
+    assert "traceback.format_exc()" in source
+    assert "type(exc).__name__" in source
