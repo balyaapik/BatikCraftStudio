@@ -137,6 +137,19 @@ def test_model_families_resolve_independently_across_roots(
         lambda: legacy_dependency_root,
     )
 
+    # Root selection is the subject of this test. The strict production SDXL size
+    # validator has separate coverage and intentionally rejects these tiny fixtures.
+    def validate_sdxl_path(paths: object) -> None:
+        base_model = Path(getattr(paths, "base_model"))
+        if not (base_model / "model_index.json").is_file():
+            raise runtime_model_installer.RuntimeModelInstallError("SDXL tidak tersedia")
+
+    monkeypatch.setattr(
+        runtime_model_installer,
+        "validate_batikbrew_runtime",
+        validate_sdxl_path,
+    )
+
     install_runtime_family_resolution()
 
     sd15 = runtime_model_installer.find_installed_runtime_models()
