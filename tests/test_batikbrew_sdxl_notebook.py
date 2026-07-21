@@ -68,3 +68,31 @@ def test_notebook_explains_absence_of_paired_dataset() -> None:
     # Tersedia pembangun pasangan asli<->batik untuk kurasi (opsional).
     assert "pairs.json" in source
     assert "perbandingan" in source
+
+
+def test_notebook_pins_match_application_requirements() -> None:
+    """Regresi Kaggle: diffusers 0.39 mensyaratkan peft >= 0.17. Pin lama
+    (peft==0.12.0) menggagalkan impor dengan ImportError."""
+
+    import tomllib
+
+    source = _sources()
+    assert "peft>=0.17" in source
+    assert "peft==0.12" not in source
+    assert "transformers==4.44" not in source
+
+    # Versi notebook harus sejalan dengan dependensi aplikasi.
+    with (ROOT / "pyproject.toml").open("rb") as stream:
+        project = tomllib.load(stream)
+    ai_local = " ".join(project["project"]["optional-dependencies"]["ai-local"])
+    for package in ("diffusers", "transformers", "peft"):
+        assert package in ai_local and package in source
+
+
+def test_notebook_adapts_resolution_to_available_vram() -> None:
+    """T4 (15 GB) tidak cukup untuk SDXL 1024 px; notebook harus menurunkan
+    resolusi otomatis alih-alih kehabisan VRAM di tengah pelatihan."""
+
+    source = _sources()
+    assert "vram_gb < 16" in source
+    assert "768" in source
