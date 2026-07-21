@@ -1,5 +1,5 @@
 {
-  "release_tag": "v0.4.6",
-  "requested_at": "2026-07-21T04:10:00Z",
-  "reason": "Publish BatikCraft Studio 0.4.6: detect corrupt or mixed PyTorch installations that still expose version metadata but cannot import torch.amp; mark them as needing repair instead of installed, clear failed partial Torch imports before retry, and resolve SDXL versus SD1.5 plus ControlNet independently across managed and legacy model roots so the Dependency Center and model tab stay synchronized."
+  "release_tag": "v0.4.7",
+  "requested_at": "2026-07-21T05:00:00Z",
+  "reason": "Publish BatikCraft Studio 0.4.7: offline mode is now scoped to local pipeline loading so SDXL component repair and model downloads work again (fixes 'Mode Offline aktif' blocking tokenizer_2/text_encoder_2 repair and the GPU never being used), and the dependency table reports incomplete models as PERLU REPARASI instead of Terpasang."
 }
