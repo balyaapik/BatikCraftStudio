@@ -58,7 +58,7 @@ from .canvas_structure_editor import (
 from .theme import COLORS
 
 _MIN_ZOOM = 0.10
-_MAX_ZOOM = 8.0
+_MAX_ZOOM = 1.50
 _ZOOM_LEVELS = (
     0.10,
     0.125,
@@ -72,11 +72,6 @@ _ZOOM_LEVELS = (
     1.0,
     1.25,
     1.50,
-    2.0,
-    3.0,
-    4.0,
-    6.0,
-    8.0,
 )
 _VIEW_PADDING = 28
 _GRID_BASE = 25.0
