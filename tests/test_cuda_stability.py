@@ -1,0 +1,109 @@
+"""Regresi crash driver CUDA (0xC0000409 di nvcuda64.dll, laporan v0.5.7)."""
+
+from __future__ import annotations
+
+import pytest
+
+from batikcraft_studio.ai import cuda_stability
+
+
+@pytest.fixture(autouse=True)
+def _isolated_state(tmp_path, monkeypatch):
+    monkeypatch.setattr(cuda_stability, "_state_dir", lambda: tmp_path)
+    return tmp_path
+
+
+def test_sentinel_hanya_ditulis_untuk_cuda():
+    cuda_stability.begin_gpu_attempt("cpu", "model")
+    assert not cuda_stability.sentinel_path().exists()
+
+    cuda_stability.begin_gpu_attempt("cuda", "model")
+    assert cuda_stability.sentinel_path().exists()
+
+
+def test_generasi_sukses_membersihkan_sentinel_dan_riwayat():
+    cuda_stability.begin_gpu_attempt("cuda", "model")
+    cuda_stability.end_gpu_attempt("cuda", succeeded=True)
+
+    assert not cuda_stability.sentinel_path().exists()
+    assert not cuda_stability.crash_record_path().exists()
+    assert cuda_stability.detect_previous_gpu_crash() is None
+
+
+def test_sentinel_tertinggal_dihitung_sebagai_crash():
+    cuda_stability.begin_gpu_attempt("cuda", "model-a")
+    # Proses "mati" tanpa sempat memanggil end_gpu_attempt.
+
+    record = cuda_stability.detect_previous_gpu_crash()
+    assert record is not None
+    assert record.count == 1
+    assert record.device == "cuda"
+    assert record.model == "model-a"
+    assert not record.should_force_cpu
+    assert not cuda_stability.sentinel_path().exists()
+
+
+def test_crash_berulang_menurunkan_perangkat_ke_cpu():
+    for _ in range(cuda_stability.MAX_GPU_CRASHES):
+        cuda_stability.begin_gpu_attempt("cuda", "model-a")
+        cuda_stability.detect_previous_gpu_crash()
+
+    device, warning = cuda_stability.guard_device("cuda")
+    assert device == "cpu"
+    assert warning and "driver NVIDIA" in warning
+
+
+def test_crash_tunggal_masih_mengizinkan_gpu():
+    cuda_stability.begin_gpu_attempt("cuda", "model-a")
+
+    device, warning = cuda_stability.guard_device("cuda")
+    assert device == "cuda"
+    assert warning is None
+
+
+def test_guard_device_tidak_menyentuh_cpu():
+    assert cuda_stability.guard_device("cpu") == ("cpu", None)
+
+
+def test_riwayat_direset_setelah_generasi_gpu_berhasil():
+    cuda_stability.begin_gpu_attempt("cuda", "model-a")
+    cuda_stability.detect_previous_gpu_crash()
+    assert cuda_stability.crash_record_path().exists()
+
+    cuda_stability.begin_gpu_attempt("cuda", "model-a")
+    cuda_stability.end_gpu_attempt("cuda", succeeded=True)
+
+    assert cuda_stability.guard_device("cuda") == ("cuda", None)
+
+
+def test_apply_cuda_safety_mematikan_autotune():
+    class _Cudnn:
+        benchmark = True
+        allow_tf32 = True
+
+    class _Matmul:
+        allow_tf32 = True
+
+    cudnn = _Cudnn()
+    matmul = _Matmul()
+
+    class _Backends:
+        pass
+
+    backends = _Backends()
+    backends.cudnn = cudnn
+    backends.cuda = type("C", (), {})()
+    backends.cuda.matmul = matmul
+    torch = type("T", (), {})()
+    torch.backends = backends
+
+    applied = cuda_stability.apply_cuda_safety(torch)
+
+    assert cudnn.benchmark is False
+    assert cudnn.allow_tf32 is False
+    assert matmul.allow_tf32 is False
+    assert any("cudnn.benchmark" in item for item in applied)
+
+
+def test_apply_cuda_safety_aman_untuk_torch_tanpa_backends():
+    assert cuda_stability.apply_cuda_safety(object())

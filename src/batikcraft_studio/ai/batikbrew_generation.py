@@ -309,97 +309,110 @@ class BatikBrewSDXLGenerationProvider:
 
         results: list[PretrainedAIBatificationResult] = []
 
-        with self._inference_lock:
-            for index in range(variation_total):
-                seed = (base_seed + index) & 0x7FFFFFFF
-                generator = torch.Generator(device=generator_device).manual_seed(seed)
-                from batikcraft_studio.ai.generation_trace import trace as _trace
+        # Crash driver CUDA mematikan proses tanpa exception. Tandai dulu
+        # supaya sesi berikutnya tahu generasi GPU tidak pernah selesai.
+        from batikcraft_studio.ai.cuda_stability import (
+            begin_gpu_attempt,
+            end_gpu_attempt,
+        )
 
-                _trace(
-                    f"Variasi {index + 1}/{variation_total} "
-                    f"(seed {seed}, {render_resolution}px, {steps} langkah) dimulai"
-                )
+        begin_gpu_attempt(device, str(options.model_id_or_path))
+        generation_succeeded = False
+        try:
+            with self._inference_lock:
+                for index in range(variation_total):
+                    seed = (base_seed + index) & 0x7FFFFFFF
+                    generator = torch.Generator(device=generator_device).manual_seed(seed)
+                    from batikcraft_studio.ai.generation_trace import trace as _trace
 
-                def _step_callback(
-                    _pipe: Any, step: int, _timestep: Any, callback_kwargs: dict
-                ) -> dict:
-                    total_steps = steps
-                    if step == 0 or (step + 1) % 5 == 0 or step + 1 >= total_steps:
-                        _trace(f"  langkah {step + 1}/{total_steps}")
-                    return callback_kwargs
-
-                try:
-                    response = pipeline(
-                        prompt=analysis.positive_prompt,
-                        negative_prompt=analysis.negative_prompt,
-                        width=render_resolution,
-                        height=render_resolution,
-                        num_inference_steps=steps,
-                        guidance_scale=guidance,
-                        generator=generator,
-                        **_step_callback_kwargs(pipeline, _step_callback),
+                    _trace(
+                        f"Variasi {index + 1}/{variation_total} "
+                        f"(seed {seed}, {render_resolution}px, {steps} langkah) dimulai"
                     )
-                except Exception as exc:
-                    import traceback
 
-                    detail = traceback.format_exc()
-                    logging.getLogger(__name__).error(
-                        "Generasi SDXL gagal:\n%s", detail
+                    def _step_callback(
+                        _pipe: Any, step: int, _timestep: Any, callback_kwargs: dict
+                    ) -> dict:
+                        total_steps = steps
+                        if step == 0 or (step + 1) % 5 == 0 or step + 1 >= total_steps:
+                            _trace(f"  langkah {step + 1}/{total_steps}")
+                        return callback_kwargs
+
+                    try:
+                        response = pipeline(
+                            prompt=analysis.positive_prompt,
+                            negative_prompt=analysis.negative_prompt,
+                            width=render_resolution,
+                            height=render_resolution,
+                            num_inference_steps=steps,
+                            guidance_scale=guidance,
+                            generator=generator,
+                            **_step_callback_kwargs(pipeline, _step_callback),
+                        )
+                    except Exception as exc:
+                        import traceback
+
+                        detail = traceback.format_exc()
+                        logging.getLogger(__name__).error(
+                            "Generasi SDXL gagal:\n%s", detail
+                        )
+                        for line in detail.strip().splitlines()[-8:]:
+                            _trace(f"  {line}")
+                        raise BatificationError(
+                            f"Generasi SDXL BatikBrew gagal: {type(exc).__name__}: {exc}"
+                        ) from exc
+                    images = getattr(response, "images", None)
+                    if not images:
+                        raise BatificationError("SDXL BatikBrew tidak menghasilkan gambar.")
+                    image = images[0].convert("RGB")
+                    if options.tileable:
+                        image = make_tileable(image)
+                    encoded = BytesIO()
+                    image.save(encoded, format="PNG", optimize=True)
+                    metadata = {
+                        "generation_mode": "batikbrew_sdxl_text_to_image",
+                        "generation_engine": "batikbrew-sdxl-notebook",
+                        "notebook_parity": True,
+                        "source_used_as_inspiration": True,
+                        "source_used_as_img2img": False,
+                        "motif_fill_only": False,
+                        "base_model": options.model_id_or_path,
+                        "lora_path": options.lora_path,
+                        "lora_weight": options.lora_weight,
+                        "lora_trigger_words": list(options.lora_trigger_words),
+                        "variation_index": index,
+                        "variation_count": options.variation_count,
+                        "seed": seed,
+                        "base_seed": base_seed,
+                        "prompt_hash": prompt_hash,
+                        "inference_steps": options.inference_steps,
+                        "guidance_scale": options.guidance_scale,
+                        "tileable": options.tileable,
+                        "palette_names": list(analysis.palette_names),
+                        "palette_hex": list(analysis.palette_hex),
+                        "edge_density": analysis.edge_density,
+                        "theme_keywords": list(analysis.theme_keywords),
+                        "style_hints": list(analysis.style_hints),
+                        "composition_hint": analysis.composition_hint,
+                        "prompt": analysis.positive_prompt,
+                        "negative_prompt": analysis.negative_prompt,
+                        "device": device,
+                    }
+                    results.append(
+                        PretrainedAIBatificationResult(
+                            content=encoded.getvalue(),
+                            width=image.width,
+                            height=image.height,
+                            provider_id=(
+                                f"batikbrew-sdxl:{options.model_id_or_path}"
+                                f"+lora:{Path(options.lora_path).stem}"
+                            ),
+                            metadata=metadata,
+                        )
                     )
-                    for line in detail.strip().splitlines()[-8:]:
-                        _trace(f"  {line}")
-                    raise BatificationError(
-                        f"Generasi SDXL BatikBrew gagal: {type(exc).__name__}: {exc}"
-                    ) from exc
-                images = getattr(response, "images", None)
-                if not images:
-                    raise BatificationError("SDXL BatikBrew tidak menghasilkan gambar.")
-                image = images[0].convert("RGB")
-                if options.tileable:
-                    image = make_tileable(image)
-                encoded = BytesIO()
-                image.save(encoded, format="PNG", optimize=True)
-                metadata = {
-                    "generation_mode": "batikbrew_sdxl_text_to_image",
-                    "generation_engine": "batikbrew-sdxl-notebook",
-                    "notebook_parity": True,
-                    "source_used_as_inspiration": True,
-                    "source_used_as_img2img": False,
-                    "motif_fill_only": False,
-                    "base_model": options.model_id_or_path,
-                    "lora_path": options.lora_path,
-                    "lora_weight": options.lora_weight,
-                    "lora_trigger_words": list(options.lora_trigger_words),
-                    "variation_index": index,
-                    "variation_count": options.variation_count,
-                    "seed": seed,
-                    "base_seed": base_seed,
-                    "prompt_hash": prompt_hash,
-                    "inference_steps": options.inference_steps,
-                    "guidance_scale": options.guidance_scale,
-                    "tileable": options.tileable,
-                    "palette_names": list(analysis.palette_names),
-                    "palette_hex": list(analysis.palette_hex),
-                    "edge_density": analysis.edge_density,
-                    "theme_keywords": list(analysis.theme_keywords),
-                    "style_hints": list(analysis.style_hints),
-                    "composition_hint": analysis.composition_hint,
-                    "prompt": analysis.positive_prompt,
-                    "negative_prompt": analysis.negative_prompt,
-                    "device": device,
-                }
-                results.append(
-                    PretrainedAIBatificationResult(
-                        content=encoded.getvalue(),
-                        width=image.width,
-                        height=image.height,
-                        provider_id=(
-                            f"batikbrew-sdxl:{options.model_id_or_path}"
-                            f"+lora:{Path(options.lora_path).stem}"
-                        ),
-                        metadata=metadata,
-                    )
-                )
+            generation_succeeded = True
+        finally:
+            end_gpu_attempt(device, succeeded=generation_succeeded)
         from batikcraft_studio.ai.memory_guard import (
             low_memory_profile,
             release_memory,
@@ -662,6 +675,15 @@ def _default_sdxl_pipeline_factory(
         raise BatificationError(describe_ai_import_error(exc)) from exc
 
     device = _resolve_device(torch, settings.device)
+    # Kalau generasi GPU sebelumnya mematikan aplikasi (crash driver), jangan
+    # ulangi kesalahan yang sama: turunkan ke CPU dan beri tahu penggunanya.
+    from batikcraft_studio.ai.cuda_stability import apply_cuda_safety, guard_device
+
+    device, gpu_warning = guard_device(device)
+    if gpu_warning:
+        logging.getLogger(__name__).warning(gpu_warning)
+    if device == "cuda":
+        apply_cuda_safety(torch)
     dtype = _resolve_dtype(torch, device, settings.precision)
     if device == "cpu" and settings.precision in ("auto", "float32"):
         dtype = _cpu_friendly_dtype(torch, dtype)
@@ -680,6 +702,8 @@ def _default_sdxl_pipeline_factory(
 
     for line in describe_compute_environment(torch):
         trace(line)
+    if gpu_warning:
+        trace(gpu_warning)
     trace(f"Perangkat dipakai: {device} · presisi {dtype}")
     trace(f"Memuat model: {model_source}")
     logger.info(

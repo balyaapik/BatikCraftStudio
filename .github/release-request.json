@@ -1,5 +1,5 @@
 {
-  "release_tag": "v0.5.7",
-  "requested_at": "2026-07-22T01:00:00Z",
-  "reason": "Publish BatikCraft Studio 0.5.7: copying right after an AI generation now copies the generated image instead of the previous object, and the File menu gains Print (Ctrl+P) and Print As (Ctrl+Shift+P) with A4-fitted PDF output."
+  "release_tag": "v0.5.8",
+  "requested_at": "2026-07-21T15:20:00Z",
+  "reason": "Publish BatikCraft Studio 0.5.8: fixes the 0.5.7 hard crash (0xC0000409 in nvcuda64.dll). BatikBrew now marks GPU generation with a sentinel, detects a driver-level crash from the previous run, disables cuDNN autotune and TF32 on CUDA, and automatically falls back to CPU after repeated GPU crashes instead of closing the app."
 }
