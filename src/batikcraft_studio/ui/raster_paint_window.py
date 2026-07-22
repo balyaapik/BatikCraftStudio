@@ -25,6 +25,7 @@ from batikcraft_studio.persistence.raster_archive import (
     RasterArchiveError,
     load_raster_document,
     save_raster_document,
+    write_png_atomic,
 )
 from batikcraft_studio.ui.raster_canvas_widget import RasterCanvasWidget
 
@@ -232,11 +233,11 @@ class RasterPaintWindow(tk.Toplevel):
         if not path:
             return
         try:
-            self.document.flatten().save(path)
-        except OSError as exc:
+            saved = write_png_atomic(path, self.document.flatten())
+        except (OSError, RasterArchiveError, ValueError) as exc:
             messagebox.showerror("Gagal mengekspor", str(exc), parent=self)
             return
-        self.set_status(f"Diekspor: {Path(path).name}")
+        self.set_status(f"Diekspor: {saved.name}")
 
     def save_to_library(self) -> None:
         """Ratakan dokumen penuh dan simpan sebagai satu aset ke pustaka.

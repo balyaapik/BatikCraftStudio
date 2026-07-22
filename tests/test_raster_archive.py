@@ -82,3 +82,47 @@ def test_simpan_atomik_tidak_merusak_berkas_lama(tmp_path):
     loaded = load_raster_document(target)
     assert (loaded.width, loaded.height) == (100, 100)
     assert ukuran_awal > 0
+
+
+def test_ekspor_png_atomik_valid(tmp_path):
+    """Regresi: ekspor PNG sempat menghasilkan berkas 0-byte/rusak."""
+
+    from PIL import Image
+
+    from batikcraft_studio.persistence.raster_archive import write_png_atomic
+
+    image = Image.new("RGB", (100, 80), (200, 50, 50))
+    saved = write_png_atomic(tmp_path / "ererer", image)
+
+    assert saved.suffix == ".png"
+    assert saved.stat().st_size > 0
+    reopened = Image.open(saved)
+    reopened.load()
+    assert reopened.size == (100, 80)
+
+
+def test_ekspor_png_gagal_tidak_meninggalkan_berkas(tmp_path):
+    from batikcraft_studio.persistence.raster_archive import (
+        RasterArchiveError,
+        write_png_atomic,
+    )
+
+    class _Boom:
+        def save(self, *_a, **_k):
+            raise ValueError("encode gagal")
+
+    before = set(p.name for p in tmp_path.iterdir())
+    with pytest.raises((ValueError, RasterArchiveError)):
+        write_png_atomic(tmp_path / "gagal.png", _Boom())
+
+    assert set(p.name for p in tmp_path.iterdir()) == before
+
+
+def test_ekspor_png_tidak_meninggalkan_tmp(tmp_path):
+    from PIL import Image
+
+    from batikcraft_studio.persistence.raster_archive import write_png_atomic
+
+    write_png_atomic(tmp_path / "a.png", Image.new("RGB", (10, 10)))
+
+    assert not any(p.name.startswith("tmp") for p in tmp_path.iterdir())

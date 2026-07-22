@@ -1,5 +1,5 @@
 {
-  "release_tag": "v0.8.6",
-  "requested_at": "2026-07-22T17:30:00Z",
-  "reason": "Publish BatikCraft Studio 0.8.6: stage 2 step 5. The library can now be built from a full raster document instead of per-object. Save to Asset Library flattens the whole document to a single PNG and stores it in a chosen user library (which must be created first, as before), reusing the existing import pipeline."
+  "release_tag": "v0.8.7",
+  "requested_at": "2026-07-22T18:40:00Z",
+  "reason": "Publish BatikCraft Studio 0.8.7: fixes exported PNGs that could not be opened (Windows cannot find the file). PNG export now encodes to memory, verifies the data is non-empty, then writes atomically with fsync and os.replace, so a partial or 0-byte file can never be left on disk. On failure no file is created at all."
 }

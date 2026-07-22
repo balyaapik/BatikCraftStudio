@@ -137,9 +137,42 @@ def _validate_manifest(manifest: object) -> None:
             raise RasterArchiveError("Entri layer tidak lengkap.")
 
 
+
+def write_png_atomic(path: str | Path, image) -> Path:
+    """Tulis PNG secara ATOMIK: encode dulu di memori, verifikasi, lalu ganti.
+
+    Menghindari berkas 0-byte atau tertulis separuh -- gejala 'Windows cannot
+    find' pada berkas yang justru terlihat di folder. Kalau encode gagal, tidak
+    ada berkas yang dibuat sama sekali.
+    """
+
+    import io
+
+    destination = Path(path)
+    if destination.suffix.casefold() != ".png":
+        destination = destination.with_suffix(".png")
+    buffer = io.BytesIO()
+    image.save(buffer, format="PNG")
+    data = buffer.getvalue()
+    if not data:
+        raise RasterArchiveError("Encoding PNG menghasilkan data kosong.")
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    handle, tmp_name = tempfile.mkstemp(suffix=".png", dir=str(destination.parent))
+    try:
+        with os.fdopen(handle, "wb") as fh:
+            fh.write(data)
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.replace(tmp_name, destination)
+    except Exception as exc:  # noqa: BLE001
+        Path(tmp_name).unlink(missing_ok=True)
+        raise RasterArchiveError(f"Gagal menulis PNG: {exc}") from exc
+    return destination
+
 __all__ = [
     "PAINT_EXTENSION",
     "RasterArchiveError",
     "load_raster_document",
     "save_raster_document",
+    "write_png_atomic",
 ]
