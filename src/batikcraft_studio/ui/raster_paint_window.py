@@ -20,6 +20,11 @@ from batikcraft_studio.imaging.canvas_presets import (
     preset_by_key,
 )
 from batikcraft_studio.imaging.raster_document import RasterDocument
+from batikcraft_studio.persistence.export_location import (
+    is_cloud_synced_path,
+    reveal_in_file_manager,
+    safe_default_export_dir,
+)
 from batikcraft_studio.persistence.raster_archive import (
     PAINT_EXTENSION,
     RasterArchiveError,
@@ -228,16 +233,37 @@ class RasterPaintWindow(tk.Toplevel):
             parent=self,
             title="Ekspor gambar rata",
             defaultextension=".png",
+            initialdir=str(safe_default_export_dir()),
             filetypes=[("Gambar PNG", "*.png")],
         )
         if not path:
             return
+        # Peringatkan SEBELUM menulis kalau tujuannya folder tersinkron cloud:
+        # OneDrive dsb. bisa mengubah berkas jadi placeholder online-only setelah
+        # ditulis, sehingga terlihat di folder tapi gagal dibuka.
+        if is_cloud_synced_path(path):
+            lanjut = messagebox.askyesno(
+                "Folder tersinkron cloud",
+                "Folder tujuan tampaknya dikelola OneDrive/cloud. Berkas bisa "
+                "berubah jadi placeholder online sehingga sulit dibuka.\n\n"
+                "Tetap simpan di sini? (Pilih 'No' untuk memilih folder lain.)",
+                parent=self,
+            )
+            if not lanjut:
+                return
         try:
             saved = write_png_atomic(path, self.document.flatten())
         except (OSError, RasterArchiveError, ValueError) as exc:
             messagebox.showerror("Gagal mengekspor", str(exc), parent=self)
             return
         self.set_status(f"Diekspor & diverifikasi: {saved}")
+        if messagebox.askyesno(
+            "Ekspor selesai",
+            f"Tersimpan ({saved.stat().st_size // 1024} KB):\n{saved}\n\n"
+            "Buka lokasinya di File Explorer?",
+            parent=self,
+        ):
+            reveal_in_file_manager(saved)
 
     def save_to_library(self) -> None:
         """Ratakan dokumen penuh dan simpan sebagai satu aset ke pustaka.

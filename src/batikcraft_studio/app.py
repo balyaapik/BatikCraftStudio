@@ -448,6 +448,17 @@ class BatikCraftApplication:
         )
         if not selected:
             return
+        from batikcraft_studio.persistence.export_location import is_cloud_synced_path
+
+        if is_cloud_synced_path(selected):
+            if not messagebox.askyesno(
+                tr("file.print_as"),
+                "Folder tujuan tampaknya dikelola OneDrive/cloud. Berkas bisa "
+                "berubah jadi placeholder online sehingga sulit dibuka. Tetap "
+                "simpan di sini?",
+                parent=self.root,
+            ):
+                return
         self.main_window.set_busy(True, tr("status.printing"))
         try:
             destination = save_print_file(
