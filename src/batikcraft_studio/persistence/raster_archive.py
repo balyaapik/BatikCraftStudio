@@ -156,6 +156,11 @@ def write_png_atomic(path: str | Path, image) -> Path:
     data = buffer.getvalue()
     if not data:
         raise RasterArchiveError("Encoding PNG menghasilkan data kosong.")
+    # Verifikasi data yang DIENCODE benar-benar PNG yang bisa dibuka SEBELUM
+    # menyentuh disk. Kalau encode-nya sendiri cacat, ketahuan di sini, bukan
+    # nanti saat pengguna gagal membukanya.
+    _verify_png_bytes(data)
+
     destination.parent.mkdir(parents=True, exist_ok=True)
     handle, tmp_name = tempfile.mkstemp(suffix=".png", dir=str(destination.parent))
     try:
@@ -167,7 +172,37 @@ def write_png_atomic(path: str | Path, image) -> Path:
     except Exception as exc:  # noqa: BLE001
         Path(tmp_name).unlink(missing_ok=True)
         raise RasterArchiveError(f"Gagal menulis PNG: {exc}") from exc
+
+    # Baca ULANG dari disk dan verifikasi. Kalau berkas di disk berbeda dari
+    # yang ditulis (sinkronisasi cloud/antivirus mengubahnya, disk bermasalah),
+    # ekspor GAGAL secara jujur alih-alih membiarkan berkas rusak lolos.
+    try:
+        on_disk = destination.read_bytes()
+    except OSError as exc:
+        raise RasterArchiveError(f"Berkas PNG tidak terbaca setelah ditulis: {exc}") from exc
+    if on_disk != data:
+        raise RasterArchiveError(
+            "Berkas PNG di disk berbeda dari yang ditulis — kemungkinan diubah "
+            "oleh sinkronisasi cloud atau antivirus. Coba simpan ke folder lain."
+        )
+    _verify_png_bytes(on_disk)
     return destination
+
+
+def _verify_png_bytes(data: bytes) -> None:
+    """Pastikan *data* adalah PNG yang benar-benar bisa didekode."""
+
+    import io
+
+    if not data.startswith(b"\x89PNG\r\n\x1a\n"):
+        raise RasterArchiveError("Data bukan PNG yang sah (tanda tangan salah).")
+    try:
+        from PIL import Image
+
+        with Image.open(io.BytesIO(data)) as probe:
+            probe.verify()
+    except Exception as exc:  # noqa: BLE001
+        raise RasterArchiveError(f"PNG gagal diverifikasi: {exc}") from exc
 
 __all__ = [
     "PAINT_EXTENSION",

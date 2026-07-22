@@ -126,3 +126,42 @@ def test_ekspor_png_tidak_meninggalkan_tmp(tmp_path):
     write_png_atomic(tmp_path / "a.png", Image.new("RGB", (10, 10)))
 
     assert not any(p.name.startswith("tmp") for p in tmp_path.iterdir())
+
+
+def test_verifikasi_menolak_bukan_png():
+    from batikcraft_studio.persistence.raster_archive import (
+        RasterArchiveError,
+        _verify_png_bytes,
+    )
+
+    with pytest.raises(RasterArchiveError):
+        _verify_png_bytes(b"NOTPNG")
+
+
+def test_verifikasi_menolak_png_terpotong():
+    import io
+
+    from PIL import Image
+
+    from batikcraft_studio.persistence.raster_archive import (
+        RasterArchiveError,
+        _verify_png_bytes,
+    )
+
+    buffer = io.BytesIO()
+    Image.new("RGB", (8, 8)).save(buffer, format="PNG")
+
+    with pytest.raises(RasterArchiveError):
+        _verify_png_bytes(buffer.getvalue()[:24])
+
+
+def test_ekspor_terverifikasi_bisa_dibuka(tmp_path):
+    from PIL import Image
+
+    from batikcraft_studio.persistence.raster_archive import write_png_atomic
+
+    saved = write_png_atomic(tmp_path / "aset", Image.new("RGB", (80, 60), (0, 180, 0)))
+
+    reopened = Image.open(saved)
+    reopened.load()
+    assert reopened.size == (80, 60)

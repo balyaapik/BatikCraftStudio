@@ -237,7 +237,7 @@ class RasterPaintWindow(tk.Toplevel):
         except (OSError, RasterArchiveError, ValueError) as exc:
             messagebox.showerror("Gagal mengekspor", str(exc), parent=self)
             return
-        self.set_status(f"Diekspor: {saved.name}")
+        self.set_status(f"Diekspor & diverifikasi: {saved}")
 
     def save_to_library(self) -> None:
         """Ratakan dokumen penuh dan simpan sebagai satu aset ke pustaka.

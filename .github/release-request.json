@@ -1,5 +1,5 @@
 {
-  "release_tag": "v0.8.7",
-  "requested_at": "2026-07-22T18:40:00Z",
-  "reason": "Publish BatikCraft Studio 0.8.7: fixes exported PNGs that could not be opened (Windows cannot find the file). PNG export now encodes to memory, verifies the data is non-empty, then writes atomically with fsync and os.replace, so a partial or 0-byte file can never be left on disk. On failure no file is created at all."
+  "release_tag": "v0.8.8",
+  "requested_at": "2026-07-22T20:00:00Z",
+  "reason": "Publish BatikCraft Studio 0.8.8: PNG export now verifies the file is a genuinely decodable PNG before AND after writing to disk, and reads the file back to confirm it matches. If a cloud-sync client or antivirus alters the file, or the encode is faulty, the export fails honestly with a clear message instead of leaving an unopenable file. Library-stored flattened assets are verified the same way. The status line now shows the full export path."
 }
