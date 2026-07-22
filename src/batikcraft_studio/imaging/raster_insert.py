@@ -85,8 +85,48 @@ def insert_image_as_layer(
     return layer
 
 
+def prepare_floating_image(
+    content: bytes, canvas_width: int, canvas_height: int
+) -> Image.Image:
+    """Decode + perkecil agar muat; kembalikan gambar RGBA untuk diapungkan."""
+
+    return fit_within(_decode_rgba(content), canvas_width, canvas_height)
+
+
+def centered_position(
+    image: Image.Image, canvas_width: int, canvas_height: int
+) -> tuple[int, int]:
+    return (
+        (canvas_width - image.width) // 2,
+        (canvas_height - image.height) // 2,
+    )
+
+
+def point_in_floating(
+    px: float, py: float, image: Image.Image, position: tuple[int, int]
+) -> bool:
+    """Apakah titik proyek (px, py) berada di dalam gambar mengambang?"""
+
+    left, top = position
+    return left <= px < left + image.width and top <= py < top + image.height
+
+
+def commit_floating_to_layer(
+    layer: RasterLayer, image: Image.Image, position: tuple[int, int]
+) -> tuple[int, int, int, int]:
+    """Leburkan gambar mengambang ke bitmap layer. Kembalikan kotak terdampak."""
+
+    left, top = position
+    layer.composite(image, (left, top))
+    return (left, top, left + image.width, top + image.height)
+
+
 __all__ = [
     "build_layer_from_image",
+    "centered_position",
+    "commit_floating_to_layer",
     "fit_within",
     "insert_image_as_layer",
+    "point_in_floating",
+    "prepare_floating_image",
 ]

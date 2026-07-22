@@ -23,7 +23,12 @@ from batikcraft_studio.imaging.raster_viewport import (
     RasterViewportRenderer,
     ViewportRequest,
 )
-from batikcraft_studio.imaging.raster_insert import insert_image_as_layer
+from batikcraft_studio.imaging.raster_insert import (
+    centered_position,
+    commit_floating_to_layer,
+    point_in_floating,
+    prepare_floating_image,
+)
 from batikcraft_studio.imaging.undo_history import UndoStack
 
 _MIN_ZOOM = 0.1
@@ -83,6 +88,12 @@ class RasterCanvasWidget(ttk.Frame):
         self._active_engine: BrushEngine | None = None
         self._undo = UndoStack()
         self._stroke_before: "Image.Image | None" = None
+        # Gambar mengambang: bisa digeser dulu sebelum dileburkan ke layer.
+        self._floating: Image.Image | None = None
+        self._floating_pos: tuple[int, int] = (0, 0)
+        self._floating_photo: ImageTk.PhotoImage | None = None
+        self._floating_drag_offset: tuple[float, float] | None = None
+        self._floating_name: str = "Gambar"
         self._photo: ImageTk.PhotoImage | None = None
         self._render_after: str | None = None
 
@@ -176,6 +187,16 @@ class RasterCanvasWidget(ttk.Frame):
     # ------------------------------------------------------------------
 
     def _on_press(self, event: tk.Event) -> None:
+        if self._floating is not None:
+            proj = self._project_point(event.x, event.y)
+            if point_in_floating(proj[0], proj[1], self._floating, self._floating_pos):
+                self._floating_drag_offset = (
+                    proj[0] - self._floating_pos[0],
+                    proj[1] - self._floating_pos[1],
+                )
+            else:
+                self._floating_drag_offset = None
+            return
         # Engine dibangun SEKALI per goresan. Membangunnya tiap gerakan mouse
         # (termasuk blur tepi) adalah salah satu sumber lag versi sebelumnya.
         self._active_engine = self._engine()
@@ -189,6 +210,16 @@ class RasterCanvasWidget(ttk.Frame):
         self._draw_preview_dot(self._last_view_point)
 
     def _on_drag(self, event: tk.Event) -> None:
+        if self._floating is not None:
+            if self._floating_drag_offset is None:
+                return
+            proj = self._project_point(event.x, event.y)
+            self._floating_pos = (
+                int(proj[0] - self._floating_drag_offset[0]),
+                int(proj[1] - self._floating_drag_offset[1]),
+            )
+            self._position_floating_overlay()
+            return
         if self._last_point is None or self._active_engine is None:
             return
         proj = self._project_point(event.x, event.y)
@@ -203,6 +234,9 @@ class RasterCanvasWidget(ttk.Frame):
         self._last_view_point = view_point
 
     def _on_release(self, _event: tk.Event) -> None:
+        if self._floating is not None:
+            self._floating_drag_offset = None
+            return
         self._last_point = None
         self._last_view_point = None
         self._active_engine = None
@@ -310,6 +344,48 @@ class RasterCanvasWidget(ttk.Frame):
         draw_x = max(self._offset[0], 0.0)
         draw_y = max(self._offset[1], 0.0)
         self.canvas.create_image(draw_x, draw_y, image=self._photo, anchor="nw", tags="raster")
+        self._draw_floating_overlay()
+
+    def _draw_floating_overlay(self) -> None:
+        self.canvas.delete("floating")
+        if self._floating is None:
+            return
+        scaled = self._floating
+        target_w = max(1, round(self._floating.width * self._zoom))
+        target_h = max(1, round(self._floating.height * self._zoom))
+        if (target_w, target_h) != self._floating.size:
+            resample = (
+                Image.Resampling.NEAREST if self._zoom >= 1.0 else Image.Resampling.BILINEAR
+            )
+            scaled = self._floating.resize((target_w, target_h), resample)
+        self._floating_photo = ImageTk.PhotoImage(scaled)
+        cx, cy = self._floating_canvas_xy()
+        self.canvas.create_image(cx, cy, image=self._floating_photo, anchor="nw", tags="floating")
+        # Bingkai putus-putus menandai gambar masih mengambang.
+        self.canvas.create_rectangle(
+            cx, cy, cx + target_w, cy + target_h,
+            outline="#2A7DE1", dash=(4, 3), width=1, tags="floating",
+        )
+
+    def _floating_canvas_xy(self) -> tuple[float, float]:
+        return (
+            self._offset[0] + self._floating_pos[0] * self._zoom,
+            self._offset[1] + self._floating_pos[1] * self._zoom,
+        )
+
+    def _position_floating_overlay(self) -> None:
+        """Geser overlay tanpa render ulang penuh — mulus saat menyeret."""
+
+        cx, cy = self._floating_canvas_xy()
+        items = self.canvas.find_withtag("floating")
+        if not items or self._floating is None:
+            self._draw_floating_overlay()
+            return
+        target_w = max(1, round(self._floating.width * self._zoom))
+        target_h = max(1, round(self._floating.height * self._zoom))
+        self.canvas.coords(items[0], cx, cy)
+        if len(items) > 1:
+            self.canvas.coords(items[1], cx, cy, cx + target_w, cy + target_h)
 
     def refresh(self) -> None:
         self.renderer.invalidate()
@@ -336,21 +412,78 @@ class RasterCanvasWidget(ttk.Frame):
             self._status(f"Gagal membaca gambar: {exc}")
 
     def insert_image_bytes(self, content: bytes, *, name: str = "Gambar") -> None:
-        """Sisipkan gambar sebagai layer baru dan segarkan tampilan."""
+        """Sisipkan gambar sebagai objek MENGAMBANG yang bisa digeser dulu.
+
+        Gambar belum melebur ke layer: pengguna bisa memindahkannya, lalu
+        menekan 'Terapkan' (atau Enter) untuk meleburkannya, atau 'Batal'
+        (Escape) untuk membuangnya. Kalau ada gambar mengambang sebelumnya,
+        gambar itu dileburkan dulu.
+        """
 
         from batikcraft_studio.imaging.raster_layer import RasterLayerError
 
         try:
-            insert_image_as_layer(self.document, content, name=name)
+            floating = prepare_floating_image(
+                content, self.document.width, self.document.height
+            )
         except RasterLayerError as exc:
             self._status(str(exc))
             return
-        # Menyisipkan layer mengubah struktur -> latar & panel harus disegarkan.
+        self.commit_floating()  # leburkan yang lama bila ada
+        self._floating = floating
+        self._floating_pos = centered_position(
+            floating, self.document.width, self.document.height
+        )
+        self._floating_name = name
+        self._show_float_controls()
+        self._render()
+        self._status(
+            f"Gambar '{name}' mengambang — geser lalu Terapkan (Enter), "
+            "atau Batal (Esc)."
+        )
+
+    def commit_floating(self) -> None:
+        """Leburkan gambar mengambang ke layer aktif, dengan undo."""
+
+        if self._floating is None:
+            return
+        layer = self.document.active_layer
+        before = layer.image.copy()
+        commit_floating_to_layer(layer, self._floating, self._floating_pos)
+        self._undo.record_layer_change(layer.layer_id, before, layer.image)
+        self._floating = None
+        self._floating_photo = None
+        self._hide_float_controls()
         self.refresh()
-        panel = getattr(self, "_layer_panel", None)
-        if panel is not None:
-            panel.refresh()
-        self._status(f"Gambar '{name}' disisipkan sebagai layer baru.")
+        self._status("Gambar diterapkan ke layer.")
+
+    def cancel_floating(self) -> None:
+        if self._floating is None:
+            return
+        self._floating = None
+        self._floating_photo = None
+        self._hide_float_controls()
+        self._render()
+        self._status("Gambar mengambang dibatalkan.")
+
+    def _show_float_controls(self) -> None:
+        bar = getattr(self, "_float_bar", None)
+        if bar is not None and bar.winfo_exists():
+            return
+        self._float_bar = ttk.Frame(self)
+        ttk.Label(self._float_bar, text="Gambar mengambang:").pack(side="left", padx=4)
+        ttk.Button(self._float_bar, text="Terapkan (Enter)", command=self.commit_floating).pack(side="left")
+        ttk.Button(self._float_bar, text="Batal (Esc)", command=self.cancel_floating).pack(side="left", padx=4)
+        self._float_bar.place(relx=0.5, rely=0.02, anchor="n")
+        self.bind_all("<Return>", lambda _e: self.commit_floating())
+        self.bind_all("<Escape>", lambda _e: self.cancel_floating())
+
+    def _hide_float_controls(self) -> None:
+        bar = getattr(self, "_float_bar", None)
+        if bar is not None and bar.winfo_exists():
+            bar.destroy()
+        self.unbind_all("<Return>")
+        self.unbind_all("<Escape>")
 
     def _register_drop_target(self) -> bool:
         try:

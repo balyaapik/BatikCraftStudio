@@ -1,5 +1,5 @@
 {
-  "release_tag": "v0.9.2",
-  "requested_at": "2026-07-23T02:30:00Z",
-  "reason": "Publish BatikCraft Studio 0.9.2: the raster canvas can now receive images. Insert Image (button or drag-and-drop) places a picture as a new layer, so it stays movable and removable as a unit; oversized images are scaled to fit. BatikBrew results can be inserted straight into the paint document as new layers."
+  "release_tag": "v0.9.3",
+  "requested_at": "2026-07-23T04:00:00Z",
+  "reason": "Publish BatikCraft Studio 0.9.3: inserted images now float and can be dragged into position before they melt into the raster, like paste-and-move in MS Paint. Drag to position, then Apply (Enter) to flatten onto the active layer (undoable) or Cancel (Esc) to discard. Dragging moves a lightweight overlay so it stays smooth."
 }
