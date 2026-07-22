@@ -1,5 +1,5 @@
 {
-  "release_tag": "v0.9.0",
-  "requested_at": "2026-07-22T23:00:00Z",
-  "reason": "Publish BatikCraft Studio 0.9.0: addresses unopenable exported PNGs whose root cause is the OneDrive-synced Downloads folder rather than the app. Since 0.8.9 verifies the file byte-for-byte after writing, a file that still cannot be opened was altered by the cloud client afterwards. The app now detects cloud-synced destinations and warns before saving, defaults the export dialog to a non-synced folder, and offers to reveal the saved file in Explorer (which also hydrates OneDrive placeholders)."
+  "release_tag": "v0.9.1",
+  "requested_at": "2026-07-23T01:00:00Z",
+  "reason": "Publish BatikCraft Studio 0.9.1: stage 2 adds undo/redo to the raster canvas, a prerequisite for making it the main canvas. Undo is region-based: each stroke stores only the changed rectangle's before/after pixels (a 20x20 edit on a 1000x1000 layer costs ~3 KB, not the whole layer), with a bounded memory history. Bound to Ctrl+Z / Ctrl+Y / Ctrl+Shift+Z plus toolbar buttons."
 }

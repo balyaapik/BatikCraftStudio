@@ -15,7 +15,7 @@ import tkinter as tk
 from tkinter import colorchooser, simpledialog, ttk
 from typing import Callable
 
-from PIL import ImageTk
+from PIL import Image, ImageTk
 
 from batikcraft_studio.imaging.brush_engine import BrushEngine, BrushSettings
 from batikcraft_studio.imaging.raster_document import RasterDocument
@@ -23,6 +23,7 @@ from batikcraft_studio.imaging.raster_viewport import (
     RasterViewportRenderer,
     ViewportRequest,
 )
+from batikcraft_studio.imaging.undo_history import UndoStack
 
 _MIN_ZOOM = 0.1
 _MAX_ZOOM = 1.5
@@ -73,6 +74,8 @@ class RasterCanvasWidget(ttk.Frame):
         self._last_point: tuple[float, float] | None = None
         self._last_view_point: tuple[float, float] | None = None
         self._active_engine: BrushEngine | None = None
+        self._undo = UndoStack()
+        self._stroke_before: "Image.Image | None" = None
         self._photo: ImageTk.PhotoImage | None = None
         self._render_after: str | None = None
 
@@ -102,6 +105,8 @@ class RasterCanvasWidget(ttk.Frame):
         ttk.Button(toolbar, text="Warna", command=self.choose_color).pack(side="left", padx=8)
         self._color_swatch = tk.Label(toolbar, width=3, bg=self._brush.color)
         self._color_swatch.pack(side="left")
+        ttk.Button(toolbar, text="↶ Undo", command=self.undo).pack(side="left", padx=(12, 2))
+        ttk.Button(toolbar, text="↷ Redo", command=self.redo).pack(side="left")
 
         self.canvas = tk.Canvas(self, background="#3A3A3A", highlightthickness=0)
         self.canvas.grid(row=1, column=0, sticky="nsew")
@@ -110,6 +115,10 @@ class RasterCanvasWidget(ttk.Frame):
         self.canvas.bind("<ButtonRelease-1>", self._on_release)
         self.canvas.bind("<Configure>", lambda _e: self._schedule_render())
         self.canvas.bind("<Control-MouseWheel>", self._on_zoom)
+        # Undo/redo di-bind di level widget agar aktif walau fokus di kanvas.
+        self.bind_all("<Control-z>", lambda _e: self.undo())
+        self.bind_all("<Control-y>", lambda _e: self.redo())
+        self.bind_all("<Control-Z>", lambda _e: self.redo())  # Ctrl+Shift+Z
 
         self._layer_panel = _LayerPanel(self, self)
         self._layer_panel.grid(row=1, column=1, sticky="ns", padx=(6, 0))
@@ -159,6 +168,9 @@ class RasterCanvasWidget(ttk.Frame):
         # Engine dibangun SEKALI per goresan. Membangunnya tiap gerakan mouse
         # (termasuk blur tepi) adalah salah satu sumber lag versi sebelumnya.
         self._active_engine = self._engine()
+        # Salinan penuh sementara untuk membandingkan wilayah yang berubah saat
+        # goresan selesai. Hidup hanya selama satu goresan.
+        self._stroke_before = self.document.active_layer.image.copy()
         proj = self._project_point(event.x, event.y)
         self._last_point = proj
         self._last_view_point = (self.canvas.canvasx(event.x), self.canvas.canvasy(event.y))
@@ -183,9 +195,26 @@ class RasterCanvasWidget(ttk.Frame):
         self._last_point = None
         self._last_view_point = None
         self._active_engine = None
+        if self._stroke_before is not None:
+            self._undo.record_layer_change(
+                self.document.active_layer.layer_id,
+                self._stroke_before,
+                self.document.active_layer.image,
+            )
+            self._stroke_before = None
         # Render penuh sekali: gambar pratinjau native diganti piksel asli.
         self._render()
         self.canvas.delete("stroke-preview")
+
+    def undo(self) -> None:
+        if self._undo.undo(self.document) is not None:
+            self.refresh()
+            self._status("Undo.")
+
+    def redo(self) -> None:
+        if self._undo.redo(self.document) is not None:
+            self.refresh()
+            self._status("Redo.")
 
     def _preview_style(self) -> tuple[str, float]:
         color = "#FFFFFF" if self._tool == "eraser" else self._brush.color
