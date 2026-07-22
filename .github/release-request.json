@@ -1,5 +1,5 @@
 {
-  "release_tag": "v0.8.2",
-  "requested_at": "2026-07-22T11:30:00Z",
-  "reason": "Publish BatikCraft Studio 0.8.2: stage 2 step 1 of the canvas rework. Adds the RasterDocument model (ordered raster layers, active layer, canvas resize preserving pixels) and a viewport renderer that crops the visible region and scales it instead of looping objects. Render cost is flat regardless of stroke count: rendering a 1600x900 viewport from a 4096 canvas holding 50000 strokes takes about 4 ms. Still groundwork, not yet wired into the live canvas UI."
+  "release_tag": "v0.8.3",
+  "requested_at": "2026-07-22T13:00:00Z",
+  "reason": "Publish BatikCraft Studio 0.8.3: stage 2 steps 2-3. Adds a working raster paint canvas with brush and eraser tools that write directly to the active layer, a layer panel (add/remove/move/switch), and New Document / Resize Canvas dialogs with size presets. Opened from the AI menu as a preview window so the MS Paint style workflow can be tried before the main canvas is swapped over."
 }

@@ -1,0 +1,174 @@
+"""Jendela lukis raster mandiri — pratinjau kanvas gaya MS Paint per layer.
+
+Membungkus RasterCanvasWidget dengan dialog Dokumen Baru / Ubah Ukuran Kanvas
+memakai preset. Dipasang sebagai jendela terpisah lebih dulu supaya alur baru
+bisa dicoba tanpa mengganggu kanvas utama, sesuai rencana bertahap.
+"""
+
+from __future__ import annotations
+
+import tkinter as tk
+from tkinter import messagebox, ttk
+from typing import Callable
+
+from batikcraft_studio.imaging.canvas_presets import (
+    CANVAS_PRESETS,
+    DEFAULT_PRESET_KEY,
+    clamp_dimension,
+    estimate_document_megabytes,
+    preset_by_key,
+)
+from batikcraft_studio.imaging.raster_document import RasterDocument
+from batikcraft_studio.ui.raster_canvas_widget import RasterCanvasWidget
+
+
+class CanvasSizeDialog(tk.Toplevel):
+    """Pilih ukuran kanvas: preset atau ukuran bebas."""
+
+    def __init__(
+        self,
+        master: tk.Misc,
+        *,
+        title: str = "Ukuran Kanvas",
+        initial: tuple[int, int] | None = None,
+    ) -> None:
+        super().__init__(master)
+        self.title(title)
+        self.resizable(False, False)
+        self.result: tuple[int, int] | None = None
+
+        frame = ttk.Frame(self, padding=16)
+        frame.pack(fill="both", expand=True)
+
+        ttk.Label(frame, text="Preset").grid(row=0, column=0, sticky="w")
+        self._preset_var = tk.StringVar(value=DEFAULT_PRESET_KEY)
+        preset_box = ttk.Combobox(
+            frame, state="readonly", textvariable=self._preset_var, width=32,
+            values=[preset.label for preset in CANVAS_PRESETS],
+        )
+        preset_box.grid(row=0, column=1, columnspan=2, sticky="ew", pady=4)
+        preset_box.bind("<<ComboboxSelected>>", self._on_preset)
+
+        ttk.Label(frame, text="Lebar").grid(row=1, column=0, sticky="w")
+        self._w_var = tk.IntVar(value=(initial or (2048, 2048))[0])
+        ttk.Spinbox(frame, from_=1, to=8192, textvariable=self._w_var, width=8).grid(
+            row=1, column=1, sticky="w", pady=2
+        )
+        ttk.Label(frame, text="Tinggi").grid(row=2, column=0, sticky="w")
+        self._h_var = tk.IntVar(value=(initial or (2048, 2048))[1])
+        ttk.Spinbox(frame, from_=1, to=8192, textvariable=self._h_var, width=8).grid(
+            row=2, column=1, sticky="w", pady=2
+        )
+
+        self._memory_label = ttk.Label(frame, text="")
+        self._memory_label.grid(row=3, column=0, columnspan=3, sticky="w", pady=(8, 0))
+        for var in (self._w_var, self._h_var):
+            var.trace_add("write", lambda *_a: self._update_memory())
+
+        actions = ttk.Frame(frame)
+        actions.grid(row=4, column=0, columnspan=3, sticky="e", pady=(12, 0))
+        ttk.Button(actions, text="Batal", command=self._cancel).pack(side="right")
+        ttk.Button(actions, text="OK", command=self._ok).pack(side="right", padx=6)
+
+        if initial is None:
+            self._on_preset()
+        self._update_memory()
+        self.transient(master)
+        self.grab_set()
+
+    def _on_preset(self, _event: object = None) -> None:
+        label = self._preset_var.get()
+        for preset in CANVAS_PRESETS:
+            if preset.label == label:
+                self._w_var.set(preset.width)
+                self._h_var.set(preset.height)
+                return
+
+    def _update_memory(self) -> None:
+        try:
+            width = clamp_dimension(self._w_var.get())
+            height = clamp_dimension(self._h_var.get())
+        except tk.TclError:
+            return
+        megabytes = estimate_document_megabytes(width, height, 1)
+        note = f"± {megabytes:.0f} MB per layer"
+        if megabytes > 100:
+            note += "  (besar — hati-hati dengan banyak layer)"
+        self._memory_label.configure(text=note)
+
+    def _ok(self) -> None:
+        self.result = (
+            clamp_dimension(self._w_var.get()),
+            clamp_dimension(self._h_var.get()),
+        )
+        self.destroy()
+
+    def _cancel(self) -> None:
+        self.result = None
+        self.destroy()
+
+
+class RasterPaintWindow(tk.Toplevel):
+    """Jendela lukis raster lengkap dengan menu dokumen."""
+
+    def __init__(
+        self,
+        master: tk.Misc,
+        *,
+        on_status: Callable[[str], None] | None = None,
+        document: RasterDocument | None = None,
+    ) -> None:
+        super().__init__(master)
+        self.title("Kanvas Lukis (Raster) — pratinjau")
+        self.geometry("1180x820")
+        self.minsize(900, 640)
+        self._on_status = on_status
+        self.document = document or RasterDocument(width=2048, height=2048)
+
+        self._build_menu()
+        self._status = ttk.Label(self, text="Siap.", anchor="w")
+        self._status.pack(side="bottom", fill="x")
+        self._widget = RasterCanvasWidget(self, self.document, on_status=self.set_status)
+        self._widget.pack(fill="both", expand=True)
+
+    def _build_menu(self) -> None:
+        menu_bar = tk.Menu(self)
+        doc_menu = tk.Menu(menu_bar, tearoff=False)
+        doc_menu.add_command(label="Dokumen Baru…", command=self.new_document)
+        doc_menu.add_command(label="Ubah Ukuran Kanvas…", command=self.resize_canvas)
+        menu_bar.add_cascade(label="Dokumen", menu=doc_menu)
+        self.configure(menu=menu_bar)
+
+    def new_document(self) -> None:
+        dialog = CanvasSizeDialog(self, title="Dokumen Baru")
+        self.wait_window(dialog)
+        if dialog.result is None:
+            return
+        width, height = dialog.result
+        self.document = RasterDocument(width=width, height=height)
+        self._widget.destroy()
+        self._widget = RasterCanvasWidget(self, self.document, on_status=self.set_status)
+        self._widget.pack(fill="both", expand=True)
+        self.set_status(f"Dokumen baru {width}×{height}.")
+
+    def resize_canvas(self) -> None:
+        dialog = CanvasSizeDialog(
+            self,
+            title="Ubah Ukuran Kanvas",
+            initial=(self.document.width, self.document.height),
+        )
+        self.wait_window(dialog)
+        if dialog.result is None:
+            return
+        width, height = dialog.result
+        self.document.resize_canvas(width, height, anchor="nw")
+        self._widget.refresh()
+        self.set_status(f"Kanvas diubah ke {width}×{height} (gambar dipertahankan).")
+
+    def set_status(self, message: str) -> None:
+        self._status.configure(text=message)
+        if self._on_status is not None:
+            self._on_status(message)
+
+
+__all__ = ["CanvasSizeDialog", "RasterPaintWindow"]

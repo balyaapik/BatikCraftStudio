@@ -72,7 +72,12 @@ class ContextToolApplication(_ProgressApplication):
             label="Studio Batifikasi BatikBrew…",
             command=self.open_batikbrew_studio,
         )
-        ai_menu.insert_separator(1)
+        ai_menu.insert_command(
+            1,
+            label="Kanvas Lukis (Raster) — pratinjau…",
+            command=self.open_raster_paint,
+        )
+        ai_menu.insert_separator(2)
         _normalize_separators(ai_menu)
 
         self._remove_nft_export_from_file(menu_bar)
@@ -203,6 +208,19 @@ class ContextToolApplication(_ProgressApplication):
             command=self.open_ai_runtime_settings,
         )
         _insert_before_help(menu_bar, "Settings", settings_menu)
+
+    def open_raster_paint(self) -> None:
+        """Buka jendela lukis raster gaya MS Paint (pratinjau tahap 2)."""
+
+        from .ui.raster_paint_window import RasterPaintWindow
+
+        existing = getattr(self, "_raster_paint_window", None)
+        if existing is not None and existing.winfo_exists():
+            existing.deiconify()
+            existing.lift()
+            existing.focus_force()
+            return
+        self._raster_paint_window = RasterPaintWindow(self.root)
 
     def open_batikbrew_studio(self) -> None:
         """Buka jendela batifikasi mandiri (seret gambar, bukan pilih objek)."""
