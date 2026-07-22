@@ -294,6 +294,19 @@ class RasterPaintWindow(tk.Toplevel):
         self._widget = RasterCanvasWidget(self, self.document, on_status=self.set_status)
         self._widget.pack(fill="both", expand=True)
 
+    def insert_result_images(self, results: object) -> None:
+        """Terima hasil batifikasi (dari studio SDXL) sebagai layer baru."""
+
+        count = 0
+        for result in results:  # type: ignore[union-attr]
+            label = getattr(result, "label", "Batik")
+            content = getattr(result, "content", None)
+            if content is None:
+                continue
+            self._widget.insert_image_bytes(content, name=str(label))
+            count += 1
+        self.set_status(f"{count} hasil batifikasi disisipkan sebagai layer.")
+
     def set_status(self, message: str) -> None:
         self._status.configure(text=message)
         if self._on_status is not None:

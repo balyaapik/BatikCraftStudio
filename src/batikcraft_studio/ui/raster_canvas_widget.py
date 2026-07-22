@@ -23,6 +23,7 @@ from batikcraft_studio.imaging.raster_viewport import (
     RasterViewportRenderer,
     ViewportRequest,
 )
+from batikcraft_studio.imaging.raster_insert import insert_image_as_layer
 from batikcraft_studio.imaging.undo_history import UndoStack
 
 _MIN_ZOOM = 0.1
@@ -42,6 +43,12 @@ def project_to_view(
     proj_x: float, proj_y: float, offset_x: float, offset_y: float, zoom: float
 ) -> tuple[float, float]:
     return proj_x * zoom + offset_x, proj_y * zoom + offset_y
+
+
+def _stem(path: str) -> str:
+    from pathlib import Path
+
+    return Path(path).stem or "Gambar"
 
 
 def fit_zoom(doc_w: int, doc_h: int, view_w: int, view_h: int, padding: int = 20) -> float:
@@ -80,6 +87,7 @@ class RasterCanvasWidget(ttk.Frame):
         self._render_after: str | None = None
 
         self._build()
+        self._register_drop_target()
         self.after(50, self._fit_and_render)
 
     # ------------------------------------------------------------------
@@ -107,6 +115,9 @@ class RasterCanvasWidget(ttk.Frame):
         self._color_swatch.pack(side="left")
         ttk.Button(toolbar, text="↶ Undo", command=self.undo).pack(side="left", padx=(12, 2))
         ttk.Button(toolbar, text="↷ Redo", command=self.redo).pack(side="left")
+        ttk.Button(toolbar, text="Sisipkan Gambar…", command=self.insert_image_dialog).pack(
+            side="left", padx=(12, 0)
+        )
 
         self.canvas = tk.Canvas(self, background="#3A3A3A", highlightthickness=0)
         self.canvas.grid(row=1, column=0, sticky="nsew")
@@ -303,6 +314,74 @@ class RasterCanvasWidget(ttk.Frame):
     def refresh(self) -> None:
         self.renderer.invalidate()
         self._render()
+
+    def insert_image_dialog(self) -> None:
+        from tkinter import filedialog
+
+        path = filedialog.askopenfilename(
+            parent=self,
+            title="Sisipkan gambar sebagai layer",
+            filetypes=[
+                ("Gambar", "*.png *.jpg *.jpeg *.webp *.bmp *.tif *.tiff"),
+                ("Semua berkas", "*.*"),
+            ],
+        )
+        if not path:
+            return
+        try:
+            with open(path, "rb") as handle:
+                content = handle.read()
+            self.insert_image_bytes(content, name=_stem(path))
+        except OSError as exc:
+            self._status(f"Gagal membaca gambar: {exc}")
+
+    def insert_image_bytes(self, content: bytes, *, name: str = "Gambar") -> None:
+        """Sisipkan gambar sebagai layer baru dan segarkan tampilan."""
+
+        from batikcraft_studio.imaging.raster_layer import RasterLayerError
+
+        try:
+            insert_image_as_layer(self.document, content, name=name)
+        except RasterLayerError as exc:
+            self._status(str(exc))
+            return
+        # Menyisipkan layer mengubah struktur -> latar & panel harus disegarkan.
+        self.refresh()
+        panel = getattr(self, "_layer_panel", None)
+        if panel is not None:
+            panel.refresh()
+        self._status(f"Gambar '{name}' disisipkan sebagai layer baru.")
+
+    def _register_drop_target(self) -> bool:
+        try:
+            from tkinterdnd2 import DND_FILES
+        except ImportError:
+            return False
+        register = getattr(self.canvas, "drop_target_register", None)
+        bind = getattr(self.canvas, "dnd_bind", None)
+        if not callable(register) or not callable(bind):
+            return False
+        try:
+            register(DND_FILES)
+            bind("<<Drop>>", self._on_drop)
+        except tk.TclError:
+            return False
+        return True
+
+    def _on_drop(self, event: tk.Event) -> str:
+        from batikcraft_studio.ui.batikbrew_studio_window import (
+            is_supported_image,
+            parse_dropped_paths,
+        )
+
+        for path in parse_dropped_paths(getattr(event, "data", "")):
+            if not is_supported_image(path):
+                continue
+            try:
+                self.insert_image_bytes(path.read_bytes(), name=path.stem)
+            except OSError:
+                continue
+        return "copy"
 
     def _status(self, message: str) -> None:
         if self._on_status is not None:
