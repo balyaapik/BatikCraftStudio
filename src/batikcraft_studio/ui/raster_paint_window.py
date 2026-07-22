@@ -124,8 +124,10 @@ class RasterPaintWindow(tk.Toplevel):
         *,
         on_status: Callable[[str], None] | None = None,
         document: RasterDocument | None = None,
+        library_saver: "Callable[[RasterDocument], str] | None" = None,
     ) -> None:
         super().__init__(master)
+        self._library_saver = library_saver
         self.title("Kanvas Lukis (Raster) — pratinjau")
         self.geometry("1180x820")
         self.minsize(900, 640)
@@ -149,6 +151,10 @@ class RasterPaintWindow(tk.Toplevel):
         doc_menu.add_command(label="Ubah Ukuran Kanvas…", command=self.resize_canvas)
         doc_menu.add_separator()
         doc_menu.add_command(label="Ekspor gambar rata (PNG)…", command=self.export_flat)
+        doc_menu.add_separator()
+        doc_menu.add_command(
+            label="Simpan ke Pustaka Aset…", command=self.save_to_library
+        )
         menu_bar.add_cascade(label="Dokumen", menu=doc_menu)
         self.configure(menu=menu_bar)
 
@@ -231,6 +237,30 @@ class RasterPaintWindow(tk.Toplevel):
             messagebox.showerror("Gagal mengekspor", str(exc), parent=self)
             return
         self.set_status(f"Diekspor: {Path(path).name}")
+
+    def save_to_library(self) -> None:
+        """Ratakan dokumen penuh dan simpan sebagai satu aset ke pustaka.
+
+        Pustaka berasal dari dokumen PENUH, bukan objek per objek. Penyimpanan
+        sesungguhnya (pemilihan pustaka tujuan) didelegasikan ke aplikasi induk
+        lewat ``library_saver`` supaya jendela ini tidak perlu tahu detail
+        pustaka/akun.
+        """
+
+        if self._library_saver is None:
+            messagebox.showinfo(
+                "Pustaka tidak tersedia",
+                "Buka kanvas raster dari aplikasi utama untuk menyimpan ke pustaka.",
+                parent=self,
+            )
+            return
+        try:
+            message = self._library_saver(self.document)
+        except Exception as exc:  # noqa: BLE001
+            messagebox.showerror("Gagal menyimpan ke pustaka", str(exc), parent=self)
+            return
+        if message:
+            self.set_status(message)
 
     def _swap_widget(self) -> None:
         self._widget.destroy()

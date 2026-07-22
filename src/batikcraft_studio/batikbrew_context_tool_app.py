@@ -220,7 +220,56 @@ class ContextToolApplication(_ProgressApplication):
             existing.lift()
             existing.focus_force()
             return
-        self._raster_paint_window = RasterPaintWindow(self.root)
+        self._raster_paint_window = RasterPaintWindow(
+            self.root, library_saver=self._save_raster_document_to_library
+        )
+
+    def _save_raster_document_to_library(self, document: object) -> str:
+        """Ratakan dokumen raster penuh dan simpan sebagai satu aset pustaka."""
+
+        from tkinter import simpledialog
+
+        from batikcraft_studio.assets.personal_store import list_user_libraries
+        from batikcraft_studio.assets.raster_document_library import (
+            add_document_to_library,
+        )
+
+        library = self._asset_library()
+        libraries = list_user_libraries(library)
+        if not libraries:
+            messagebox.showinfo(
+                "Belum ada pustaka",
+                "Buat wadah pustaka dulu lewat menu Asset → Buat Pustaka Aset Baru.",
+                parent=self.root,
+            )
+            return ""
+        # Pilih pustaka tujuan: kalau cuma satu, langsung; kalau banyak, tanya.
+        if len(libraries) == 1:
+            target = libraries[0]
+        else:
+            names = [getattr(pack, "name", pack.pack_id) for pack in libraries]
+            listing = "\n".join(f"{i + 1}. {n}" for i, n in enumerate(names))
+            choice = simpledialog.askstring(
+                "Pilih pustaka",
+                "Simpan ke pustaka mana?\n\n" + listing,
+                parent=self.root,
+            )
+            if not choice:
+                return ""
+            try:
+                target = libraries[int(choice) - 1]
+            except (ValueError, IndexError):
+                messagebox.showerror("Pilihan tidak sah", "Nomor pustaka tidak valid.", parent=self.root)
+                return ""
+        name = simpledialog.askstring(
+            "Nama karya", "Nama untuk karya ini di pustaka:", parent=self.root
+        )
+        if not name:
+            return ""
+        add_document_to_library(
+            library, document, pack_id=target.pack_id, name=name
+        )
+        return f"Karya '{name}' disimpan ke pustaka '{getattr(target, 'name', target.pack_id)}'."
 
     def open_batikbrew_studio(self) -> None:
         """Buka jendela batifikasi mandiri (seret gambar, bukan pilih objek)."""
