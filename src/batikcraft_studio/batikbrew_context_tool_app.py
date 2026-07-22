@@ -221,7 +221,9 @@ class ContextToolApplication(_ProgressApplication):
             existing.focus_force()
             return
         self._raster_paint_window = RasterPaintWindow(
-            self.root, library_saver=self._save_raster_document_to_library
+            self.root,
+            library_saver=self._save_raster_document_to_library,
+            nft_publisher=self._publish_raster_document_as_nft,
         )
 
     def _save_raster_document_to_library(self, document: object) -> str:
@@ -270,6 +272,45 @@ class ContextToolApplication(_ProgressApplication):
             library, document, pack_id=target.pack_id, name=name
         )
         return f"Karya '{name}' disimpan ke pustaka '{getattr(target, 'name', target.pack_id)}'."
+
+    def _publish_raster_document_as_nft(self, document: object) -> str:
+        """Publikasikan NFT dari gambar rata dokumen raster (dokumen penuh)."""
+
+        from tkinter import simpledialog
+
+        from batikcraft_studio.assets.raster_document_library import (
+            flatten_to_png_bytes,
+        )
+
+        session = self._ensure_web_session()
+        if session is None:
+            return ""
+        if session.account.role != "creator":
+            messagebox.showerror(
+                "Khusus kreator",
+                "Hanya akun kreator yang dapat mem-publish NFT.",
+                parent=self.root,
+            )
+            return ""
+        title = simpledialog.askstring("Judul NFT", "Judul motif:", parent=self.root)
+        if not title:
+            return ""
+        description = simpledialog.askstring(
+            "Deskripsi", "Deskripsi / filosofi (opsional):", parent=self.root
+        ) or ""
+        price = simpledialog.askstring(
+            "Harga awal", "Harga awal (mis. 0.5):", parent=self.root
+        ) or "0"
+        try:
+            png = flatten_to_png_bytes(document)
+            result = self.web_client.publish_image_nft(
+                png, title=title, description=description, starting_price=price
+            )
+        except (BatikCraftWebError, ValueError) as exc:
+            messagebox.showerror("Gagal publish", str(exc), parent=self.root)
+            return ""
+        nft_id = result.get("id") if isinstance(result, dict) else None
+        return f"NFT '{title}' dipublikasikan" + (f" (id {nft_id})." if nft_id else ".")
 
     def open_batikbrew_studio(self) -> None:
         """Buka jendela batifikasi mandiri (seret gambar, bukan pilih objek)."""

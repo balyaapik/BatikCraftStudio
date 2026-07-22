@@ -141,6 +141,11 @@ class WebSessionStore:
         self._write_payload(payload)
 
 
+def _slugify(value: str) -> str:
+    slug = "".join(ch if ch.isalnum() else "-" for ch in value.casefold()).strip("-")
+    return slug[:60] or "motif"
+
+
 class BatikCraftWebClient:
     """Small urllib client for BatikCraftWeb's token-authenticated REST API."""
 
@@ -274,6 +279,48 @@ class BatikCraftWebClient:
                     "image/jpeg",
                 )
             },
+        )
+        nft_id = int(item["id"])
+        return self._request_json("POST", f"nfts/{nft_id}/publish/", payload={})
+
+    def publish_image_nft(
+        self,
+        image_png: bytes,
+        *,
+        title: str,
+        description: str = "",
+        starting_price: str = "0",
+        auction_ends_at: str = "",
+    ) -> dict[str, Any]:
+        """Publikasikan NFT langsung dari gambar rata (PNG) dokumen raster.
+
+        Berbeda dari publish_nft_package yang butuh paket .batikcraft berbasis
+        objek, jalur ini menerima satu gambar rata — sesuai model kanvas raster
+        di mana motif berasal dari dokumen penuh, bukan objek per objek.
+        """
+
+        clean_title = str(title).strip()
+        if not clean_title:
+            raise BatikCraftWebError("Judul NFT tidak boleh kosong.")
+        if not image_png:
+            raise BatikCraftWebError("Gambar NFT kosong.")
+        fields: dict[str, str] = {
+            "title": clean_title[:200],
+            "description": str(description)[:2000],
+            "source_app_version": APP_VERSION,
+            "starting_price": str(starting_price),
+            "metadata": json.dumps(
+                {"source": "raster-document", "app_version": APP_VERSION},
+                ensure_ascii=False,
+            ),
+        }
+        if auction_ends_at.strip():
+            fields["auction_ends_at"] = auction_ends_at.strip()
+        item = self._request_multipart(
+            "POST",
+            "nfts/",
+            fields=fields,
+            files={"image": (f"{_slugify(clean_title)}.png", image_png, "image/png")},
         )
         nft_id = int(item["id"])
         return self._request_json("POST", f"nfts/{nft_id}/publish/", payload={})

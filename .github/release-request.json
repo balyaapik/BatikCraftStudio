@@ -1,5 +1,5 @@
 {
-  "release_tag": "v0.9.4",
-  "requested_at": "2026-07-23T05:30:00Z",
-  "reason": "Publish BatikCraft Studio 0.9.4: the raster paint document can now be printed. The print machinery was refactored around a shared image-based core (save_print_image / send_image_to_printer), so both the object canvas and the raster document reuse the same A4 300dpi page fit and atomic verified writes. The paint window gains Print and Print As (PDF/PNG/JPEG) with the cloud-folder warning."
+  "release_tag": "v0.9.5",
+  "requested_at": "2026-07-23T07:00:00Z",
+  "reason": "Publish BatikCraft Studio 0.9.5: NFT publishing from a flattened raster document. A new publish_image_nft path uploads a single flattened PNG to the marketplace instead of requiring an object-based .batikcraft package, matching the decision that motifs come from the full document. The raster paint window gains Sell as NFT, gated behind the existing creator web session."
 }

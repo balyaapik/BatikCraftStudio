@@ -131,9 +131,11 @@ class RasterPaintWindow(tk.Toplevel):
         on_status: Callable[[str], None] | None = None,
         document: RasterDocument | None = None,
         library_saver: "Callable[[RasterDocument], str] | None" = None,
+        nft_publisher: "Callable[[RasterDocument], str] | None" = None,
     ) -> None:
         super().__init__(master)
         self._library_saver = library_saver
+        self._nft_publisher = nft_publisher
         self.title("Kanvas Lukis (Raster) — pratinjau")
         self.geometry("1180x820")
         self.minsize(900, 640)
@@ -161,6 +163,7 @@ class RasterPaintWindow(tk.Toplevel):
         doc_menu.add_command(
             label="Simpan ke Pustaka Aset…", command=self.save_to_library
         )
+        doc_menu.add_command(label="Jual sebagai NFT…", command=self.publish_as_nft)
         doc_menu.add_separator()
         doc_menu.add_command(label="Cetak", command=self.print_document)
         doc_menu.add_command(label="Cetak Sebagai…", command=self.print_document_as)
@@ -288,6 +291,24 @@ class RasterPaintWindow(tk.Toplevel):
             message = self._library_saver(self.document)
         except Exception as exc:  # noqa: BLE001
             messagebox.showerror("Gagal menyimpan ke pustaka", str(exc), parent=self)
+            return
+        if message:
+            self.set_status(message)
+
+    def publish_as_nft(self) -> None:
+        """Publikasikan dokumen penuh sebagai NFT (gambar rata)."""
+
+        if self._nft_publisher is None:
+            messagebox.showinfo(
+                "Tidak tersedia",
+                "Buka kanvas raster dari aplikasi utama untuk mem-publish NFT.",
+                parent=self,
+            )
+            return
+        try:
+            message = self._nft_publisher(self.document)
+        except Exception as exc:  # noqa: BLE001
+            messagebox.showerror("Gagal publish", str(exc), parent=self)
             return
         if message:
             self.set_status(message)
