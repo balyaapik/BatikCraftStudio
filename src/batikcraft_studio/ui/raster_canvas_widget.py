@@ -71,6 +71,8 @@ class RasterCanvasWidget(ttk.Frame):
         self._tool = "brush"
         self._brush = BrushSettings()
         self._last_point: tuple[float, float] | None = None
+        self._last_view_point: tuple[float, float] | None = None
+        self._active_engine: BrushEngine | None = None
         self._photo: ImageTk.PhotoImage | None = None
         self._render_after: str | None = None
 
@@ -154,23 +156,60 @@ class RasterCanvasWidget(ttk.Frame):
     # ------------------------------------------------------------------
 
     def _on_press(self, event: tk.Event) -> None:
+        # Engine dibangun SEKALI per goresan. Membangunnya tiap gerakan mouse
+        # (termasuk blur tepi) adalah salah satu sumber lag versi sebelumnya.
+        self._active_engine = self._engine()
         proj = self._project_point(event.x, event.y)
         self._last_point = proj
-        self._engine().stroke(self.document.active_layer, [proj])
-        self._schedule_render(fast=True)
+        self._last_view_point = (self.canvas.canvasx(event.x), self.canvas.canvasy(event.y))
+        self._active_engine.stroke(self.document.active_layer, [proj])
+        self._draw_preview_dot(self._last_view_point)
 
     def _on_drag(self, event: tk.Event) -> None:
-        if self._last_point is None:
+        if self._last_point is None or self._active_engine is None:
             return
         proj = self._project_point(event.x, event.y)
-        self._engine().stroke(self.document.active_layer, [self._last_point, proj])
+        view_point = (self.canvas.canvasx(event.x), self.canvas.canvasy(event.y))
+        # Cap ke bitmap layer (murah), TAPI jangan render ulang seluruh viewport
+        # tiap gerakan -- itu yang bikin patah-patah. Umpan balik instan memakai
+        # garis native Tk; piksel asli muncul saat dilepas.
+        self._active_engine.stroke(self.document.active_layer, [self._last_point, proj])
+        if self._last_view_point is not None:
+            self._draw_preview_segment(self._last_view_point, view_point)
         self._last_point = proj
-        self._schedule_render(fast=True)
+        self._last_view_point = view_point
 
     def _on_release(self, _event: tk.Event) -> None:
         self._last_point = None
-        # Layer aktif berubah -> cache latar tetap valid, cukup render biasa.
-        self._schedule_render()
+        self._last_view_point = None
+        self._active_engine = None
+        # Render penuh sekali: gambar pratinjau native diganti piksel asli.
+        self._render()
+        self.canvas.delete("stroke-preview")
+
+    def _preview_style(self) -> tuple[str, float]:
+        color = "#FFFFFF" if self._tool == "eraser" else self._brush.color
+        width = max(1.0, self._brush.size * self._zoom)
+        return color, width
+
+    def _draw_preview_dot(self, view_point: tuple[float, float]) -> None:
+        color, width = self._preview_style()
+        radius = max(0.5, width / 2)
+        x, y = view_point
+        self.canvas.create_oval(
+            x - radius, y - radius, x + radius, y + radius,
+            fill=color, outline=color, tags="stroke-preview",
+        )
+
+    def _draw_preview_segment(
+        self, start: tuple[float, float], end: tuple[float, float]
+    ) -> None:
+        color, width = self._preview_style()
+        self.canvas.create_line(
+            start[0], start[1], end[0], end[1],
+            fill=color, width=width, capstyle="round", joinstyle="round",
+            tags="stroke-preview",
+        )
 
     def _project_point(self, view_x: float, view_y: float) -> tuple[float, float]:
         return view_to_project(

@@ -1,5 +1,5 @@
 {
-  "release_tag": "v0.8.3",
-  "requested_at": "2026-07-22T13:00:00Z",
-  "reason": "Publish BatikCraft Studio 0.8.3: stage 2 steps 2-3. Adds a working raster paint canvas with brush and eraser tools that write directly to the active layer, a layer panel (add/remove/move/switch), and New Document / Resize Canvas dialogs with size presets. Opened from the AI menu as a preview window so the MS Paint style workflow can be tried before the main canvas is swapped over."
+  "release_tag": "v0.8.4",
+  "requested_at": "2026-07-22T14:30:00Z",
+  "reason": "Publish BatikCraft Studio 0.8.4: fixes choppy, laggy drawing in the raster paint preview. Every mouse-motion event was rebuilding the brush engine and re-rendering the whole viewport into a new PhotoImage, which saturated at high motion rates. Now the brush engine is built once per stroke, and live feedback uses a cheap native Tk line overlay while stamping to the bitmap; the full render with real pixels happens once on release."
 }
