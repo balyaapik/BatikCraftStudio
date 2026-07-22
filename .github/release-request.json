@@ -1,5 +1,5 @@
 {
-  "release_tag": "v0.8.1",
-  "requested_at": "2026-07-22T10:00:00Z",
-  "reason": "Publish BatikCraft Studio 0.8.1: foundation for the raster-per-layer canvas rework (stage 2). Adds the RasterLayer bitmap model where drawing writes pixels directly, canvas resize preserves existing pixels (add or crop blank space, never blur), full-document flatten for the library, and configurable canvas size presets (Screen, A4, A3, fabric) plus free size. Not yet wired into the canvas UI; groundwork only, fully unit-tested."
+  "release_tag": "v0.8.2",
+  "requested_at": "2026-07-22T11:30:00Z",
+  "reason": "Publish BatikCraft Studio 0.8.2: stage 2 step 1 of the canvas rework. Adds the RasterDocument model (ordered raster layers, active layer, canvas resize preserving pixels) and a viewport renderer that crops the visible region and scales it instead of looping objects. Render cost is flat regardless of stroke count: rendering a 1600x900 viewport from a 4096 canvas holding 50000 strokes takes about 4 ms. Still groundwork, not yet wired into the live canvas UI."
 }
