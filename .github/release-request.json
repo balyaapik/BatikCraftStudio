@@ -1,5 +1,5 @@
 {
-  "release_tag": "v0.8.0",
-  "requested_at": "2026-07-22T08:30:00Z",
-  "reason": "Publish BatikCraft Studio 0.8.0: stage 1 of the canvas rework. SDXL batification moves out of the canvas into a standalone BatikBrew Studio window with drag-and-drop. Images are dropped straight into the window, batified, then saved to disk or inserted into the canvas, so batification no longer requires selecting an object first."
+  "release_tag": "v0.8.1",
+  "requested_at": "2026-07-22T10:00:00Z",
+  "reason": "Publish BatikCraft Studio 0.8.1: foundation for the raster-per-layer canvas rework (stage 2). Adds the RasterLayer bitmap model where drawing writes pixels directly, canvas resize preserves existing pixels (add or crop blank space, never blur), full-document flatten for the library, and configurable canvas size presets (Screen, A4, A3, fabric) plus free size. Not yet wired into the canvas UI; groundwork only, fully unit-tested."
 }
