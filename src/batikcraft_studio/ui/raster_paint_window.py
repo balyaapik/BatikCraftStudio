@@ -8,7 +8,8 @@ bisa dicoba tanpa mengganggu kanvas utama, sesuai rencana bertahap.
 from __future__ import annotations
 
 import tkinter as tk
-from tkinter import messagebox, ttk
+from pathlib import Path
+from tkinter import filedialog, messagebox, ttk
 from typing import Callable
 
 from batikcraft_studio.imaging.canvas_presets import (
@@ -19,6 +20,12 @@ from batikcraft_studio.imaging.canvas_presets import (
     preset_by_key,
 )
 from batikcraft_studio.imaging.raster_document import RasterDocument
+from batikcraft_studio.persistence.raster_archive import (
+    PAINT_EXTENSION,
+    RasterArchiveError,
+    load_raster_document,
+    save_raster_document,
+)
 from batikcraft_studio.ui.raster_canvas_widget import RasterCanvasWidget
 
 
@@ -124,6 +131,7 @@ class RasterPaintWindow(tk.Toplevel):
         self.minsize(900, 640)
         self._on_status = on_status
         self.document = document or RasterDocument(width=2048, height=2048)
+        self._path: Path | None = None
 
         self._build_menu()
         self._status = ttk.Label(self, text="Siap.", anchor="w")
@@ -135,7 +143,12 @@ class RasterPaintWindow(tk.Toplevel):
         menu_bar = tk.Menu(self)
         doc_menu = tk.Menu(menu_bar, tearoff=False)
         doc_menu.add_command(label="Dokumen Baru…", command=self.new_document)
+        doc_menu.add_command(label="Buka…", command=self.open_document)
+        doc_menu.add_command(label="Simpan…", command=self.save_document)
+        doc_menu.add_separator()
         doc_menu.add_command(label="Ubah Ukuran Kanvas…", command=self.resize_canvas)
+        doc_menu.add_separator()
+        doc_menu.add_command(label="Ekspor gambar rata (PNG)…", command=self.export_flat)
         menu_bar.add_cascade(label="Dokumen", menu=doc_menu)
         self.configure(menu=menu_bar)
 
@@ -146,9 +159,8 @@ class RasterPaintWindow(tk.Toplevel):
             return
         width, height = dialog.result
         self.document = RasterDocument(width=width, height=height)
-        self._widget.destroy()
-        self._widget = RasterCanvasWidget(self, self.document, on_status=self.set_status)
-        self._widget.pack(fill="both", expand=True)
+        self._path = None
+        self._swap_widget()
         self.set_status(f"Dokumen baru {width}×{height}.")
 
     def resize_canvas(self) -> None:
@@ -164,6 +176,66 @@ class RasterPaintWindow(tk.Toplevel):
         self.document.resize_canvas(width, height, anchor="nw")
         self._widget.refresh()
         self.set_status(f"Kanvas diubah ke {width}×{height} (gambar dipertahankan).")
+
+    def open_document(self) -> None:
+        path = filedialog.askopenfilename(
+            parent=self,
+            title="Buka dokumen raster",
+            filetypes=[("Dokumen BatikPaint", f"*{PAINT_EXTENSION}")],
+        )
+        if not path:
+            return
+        try:
+            document = load_raster_document(path)
+        except RasterArchiveError as exc:
+            messagebox.showerror("Gagal membuka", str(exc), parent=self)
+            return
+        self.document = document
+        self._path = Path(path)
+        self._swap_widget()
+        self.set_status(f"Dibuka: {Path(path).name}")
+
+    def save_document(self) -> None:
+        initial = getattr(self, "_path", None)
+        path = filedialog.asksaveasfilename(
+            parent=self,
+            title="Simpan dokumen raster",
+            defaultextension=PAINT_EXTENSION,
+            initialfile=initial.name if initial else "karya" + PAINT_EXTENSION,
+            filetypes=[("Dokumen BatikPaint", f"*{PAINT_EXTENSION}")],
+        )
+        if not path:
+            return
+        try:
+            saved = save_raster_document(path, self.document)
+        except RasterArchiveError as exc:
+            messagebox.showerror("Gagal menyimpan", str(exc), parent=self)
+            return
+        self._path = saved
+        self.set_status(f"Disimpan: {saved.name}")
+
+    def export_flat(self) -> None:
+        """Ekspor perataan seluruh dokumen sebagai PNG — dasar pustaka & cetak."""
+
+        path = filedialog.asksaveasfilename(
+            parent=self,
+            title="Ekspor gambar rata",
+            defaultextension=".png",
+            filetypes=[("Gambar PNG", "*.png")],
+        )
+        if not path:
+            return
+        try:
+            self.document.flatten().save(path)
+        except OSError as exc:
+            messagebox.showerror("Gagal mengekspor", str(exc), parent=self)
+            return
+        self.set_status(f"Diekspor: {Path(path).name}")
+
+    def _swap_widget(self) -> None:
+        self._widget.destroy()
+        self._widget = RasterCanvasWidget(self, self.document, on_status=self.set_status)
+        self._widget.pack(fill="both", expand=True)
 
     def set_status(self, message: str) -> None:
         self._status.configure(text=message)
