@@ -98,3 +98,31 @@ def test_broken_project_reports_print_error(tmp_path: Path) -> None:
     session._assets.clear()
     with pytest.raises(PrintError):
         save_print_file(project, session.assets, tmp_path / "gagal.pdf")
+
+
+def test_print_as_png_atomik_bisa_dibuka(tmp_path):
+    """Regresi: Print As -> PNG dulu memakai save() langsung, berkas bisa rusak."""
+
+    from PIL import Image
+
+    from batikcraft_studio.persistence.raster_archive import write_image_atomic
+
+    saved = write_image_atomic(tmp_path / "rererer.png", Image.new("RGB", (120, 90), (30, 60, 90)))
+
+    assert saved.suffix == ".png"
+    assert saved.stat().st_size > 0
+    reopened = Image.open(saved)
+    reopened.load()
+    assert reopened.size == (120, 90)
+
+
+def test_print_as_jpeg_dari_rgba(tmp_path):
+    from PIL import Image
+
+    from batikcraft_studio.persistence.raster_archive import write_image_atomic
+
+    saved = write_image_atomic(tmp_path / "x.jpg", Image.new("RGBA", (50, 50), (200, 0, 0, 255)))
+
+    reopened = Image.open(saved)
+    reopened.load()
+    assert reopened.mode == "RGB"

@@ -262,7 +262,11 @@ class ContextToolApplication(DirectStyleApplication):
         self.main_window.set_busy(True, tr("status.saving"))
         try:
             target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_bytes(render_project_jpeg(project, self.session.assets))
+            from batikcraft_studio.persistence.raster_archive import write_bytes_atomic
+
+            target = write_bytes_atomic(
+                target, render_project_jpeg(project, self.session.assets)
+            )
         except (OSError, ProjectRenderError, ValueError) as exc:
             self.main_window.set_busy(False, tr("status.export_failed"))
             messagebox.showerror(

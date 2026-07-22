@@ -64,19 +64,51 @@ def save_print_file(
     path = Path(destination).expanduser()
     image = render_for_print(project, assets)
     suffix = path.suffix.casefold()
+    from batikcraft_studio.persistence.raster_archive import (
+        RasterArchiveError,
+        write_image_atomic,
+    )
+
     try:
         if suffix == ".pdf":
             page = _fit_to_page(image) if fit_page else image
-            page.save(path, format="PDF", resolution=300.0)
+            _save_pdf_atomic(page, path)
         elif suffix in {".png", ".jpg", ".jpeg", ".tif", ".tiff"}:
-            image.save(path)
+            # Tulis ATOMIK + verifikasi: hindari berkas rusak yang tak bisa
+            # dibuka (gejala 'Windows cannot find'). Inilah jalur Print As -> PNG.
+            path = write_image_atomic(path, image)
         else:
             path = path.with_suffix(".pdf")
             page = _fit_to_page(image) if fit_page else image
-            page.save(path, format="PDF", resolution=300.0)
-    except OSError as exc:
+            _save_pdf_atomic(page, path)
+    except (OSError, RasterArchiveError) as exc:
         raise PrintError(f"Berkas cetak tidak dapat ditulis: {exc}") from exc
     return path
+
+
+def _save_pdf_atomic(page: Image.Image, path: Path) -> None:
+    """Tulis PDF secara atomik (encode ke memori, fsync, os.replace)."""
+
+    import io
+    import os
+    import tempfile
+
+    buffer = io.BytesIO()
+    page.save(buffer, format="PDF", resolution=300.0)
+    data = buffer.getvalue()
+    if not data:
+        raise OSError("Encoding PDF menghasilkan data kosong.")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    handle, tmp_name = tempfile.mkstemp(suffix=".pdf", dir=str(path.parent))
+    try:
+        with os.fdopen(handle, "wb") as fh:
+            fh.write(data)
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.replace(tmp_name, path)
+    except Exception:
+        Path(tmp_name).unlink(missing_ok=True)
+        raise
 
 
 def _fit_to_page(image: Image.Image) -> Image.Image:

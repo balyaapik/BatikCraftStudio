@@ -1,5 +1,5 @@
 {
-  "release_tag": "v0.8.8",
-  "requested_at": "2026-07-22T20:00:00Z",
-  "reason": "Publish BatikCraft Studio 0.8.8: PNG export now verifies the file is a genuinely decodable PNG before AND after writing to disk, and reads the file back to confirm it matches. If a cloud-sync client or antivirus alters the file, or the encode is faulty, the export fails honestly with a clear message instead of leaving an unopenable file. Library-stored flattened assets are verified the same way. The status line now shows the full export path."
+  "release_tag": "v0.8.9",
+  "requested_at": "2026-07-22T21:30:00Z",
+  "reason": "Publish BatikCraft Studio 0.8.9: fixes the real cause of unopenable exported PNGs. The culprit was Print As -> PNG (save_print_file), which still used a direct image.save() from v0.5.7 and was never covered by the earlier atomic-write fixes that targeted the wrong export path. Print As (PNG/JPEG/PDF) and the main canvas JPEG export now all write atomically with encode verification and readback, so a partial or externally-altered file can never be left behind."
 }

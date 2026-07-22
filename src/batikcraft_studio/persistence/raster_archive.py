@@ -138,31 +138,56 @@ def _validate_manifest(manifest: object) -> None:
 
 
 
-def write_png_atomic(path: str | Path, image) -> Path:
-    """Tulis PNG secara ATOMIK: encode dulu di memori, verifikasi, lalu ganti.
+_RASTER_FORMATS = {
+    ".png": "PNG",
+    ".jpg": "JPEG",
+    ".jpeg": "JPEG",
+    ".tif": "TIFF",
+    ".tiff": "TIFF",
+    ".webp": "WEBP",
+    ".bmp": "BMP",
+}
 
-    Menghindari berkas 0-byte atau tertulis separuh -- gejala 'Windows cannot
-    find' pada berkas yang justru terlihat di folder. Kalau encode gagal, tidak
-    ada berkas yang dibuat sama sekali.
+
+def write_png_atomic(path: str | Path, image) -> Path:
+    """Tulis PNG secara atomik + terverifikasi (lihat write_image_atomic)."""
+
+    destination = Path(path)
+    if destination.suffix.casefold() != ".png":
+        destination = destination.with_suffix(".png")
+    return write_image_atomic(destination, image)
+
+
+def write_image_atomic(path: str | Path, image, fmt: str | None = None) -> Path:
+    """Tulis gambar raster secara ATOMIK dan TERVERIFIKASI.
+
+    Encode ke memori, verifikasi bisa didekode, tulis ke berkas sementara +
+    fsync, os.replace, lalu baca ULANG dari disk dan bandingkan. Menghindari
+    berkas 0-byte/separuh (gejala 'Windows cannot find') DAN menangkap berkas
+    yang diubah pihak lain (sinkronisasi cloud/antivirus) setelah ditulis.
     """
 
     import io
 
     destination = Path(path)
-    if destination.suffix.casefold() != ".png":
-        destination = destination.with_suffix(".png")
+    suffix = destination.suffix.casefold()
+    fmt = fmt or _RASTER_FORMATS.get(suffix)
+    if fmt is None:
+        raise RasterArchiveError(f"Format gambar tidak didukung: {suffix!r}.")
+    save_image = image
+    if fmt == "JPEG" and getattr(image, "mode", "") in {"RGBA", "P", "LA"}:
+        save_image = image.convert("RGB")
     buffer = io.BytesIO()
-    image.save(buffer, format="PNG")
+    save_image.save(buffer, format=fmt)
     data = buffer.getvalue()
     if not data:
-        raise RasterArchiveError("Encoding PNG menghasilkan data kosong.")
-    # Verifikasi data yang DIENCODE benar-benar PNG yang bisa dibuka SEBELUM
-    # menyentuh disk. Kalau encode-nya sendiri cacat, ketahuan di sini, bukan
-    # nanti saat pengguna gagal membukanya.
-    _verify_png_bytes(data)
+        raise RasterArchiveError("Encoding gambar menghasilkan data kosong.")
+    # Verifikasi data yang DIENCODE benar-benar bisa dibuka SEBELUM menyentuh
+    # disk. Kalau encode-nya sendiri cacat, ketahuan di sini.
+    _verify_image_bytes(data)
 
     destination.parent.mkdir(parents=True, exist_ok=True)
-    handle, tmp_name = tempfile.mkstemp(suffix=".png", dir=str(destination.parent))
+    handle, tmp_name = tempfile.mkstemp(suffix=suffix, dir=str(destination.parent))
     try:
         with os.fdopen(handle, "wb") as fh:
             fh.write(data)
@@ -171,7 +196,7 @@ def write_png_atomic(path: str | Path, image) -> Path:
         os.replace(tmp_name, destination)
     except Exception as exc:  # noqa: BLE001
         Path(tmp_name).unlink(missing_ok=True)
-        raise RasterArchiveError(f"Gagal menulis PNG: {exc}") from exc
+        raise RasterArchiveError(f"Gagal menulis gambar: {exc}") from exc
 
     # Baca ULANG dari disk dan verifikasi. Kalau berkas di disk berbeda dari
     # yang ditulis (sinkronisasi cloud/antivirus mengubahnya, disk bermasalah),
@@ -179,35 +204,77 @@ def write_png_atomic(path: str | Path, image) -> Path:
     try:
         on_disk = destination.read_bytes()
     except OSError as exc:
-        raise RasterArchiveError(f"Berkas PNG tidak terbaca setelah ditulis: {exc}") from exc
+        raise RasterArchiveError(f"Berkas tidak terbaca setelah ditulis: {exc}") from exc
     if on_disk != data:
         raise RasterArchiveError(
-            "Berkas PNG di disk berbeda dari yang ditulis — kemungkinan diubah "
-            "oleh sinkronisasi cloud atau antivirus. Coba simpan ke folder lain."
+            "Berkas di disk berbeda dari yang ditulis — kemungkinan diubah oleh "
+            "sinkronisasi cloud atau antivirus. Coba simpan ke folder lain "
+            "(mis. Desktop), bukan Downloads/OneDrive."
         )
-    _verify_png_bytes(on_disk)
+    _verify_image_bytes(on_disk)
+    return destination
+
+
+def write_bytes_atomic(path: str | Path, data: bytes, *, verify_image: bool = True) -> Path:
+    """Tulis bytes gambar yang sudah di-encode secara atomik + verifikasi.
+
+    Untuk jalur yang sudah memegang bytes (mis. JPEG hasil render). Sama
+    amannya dengan write_image_atomic: fsync, os.replace, baca-ulang, cocokkan.
+    """
+
+    import os
+
+    destination = Path(path)
+    if not data:
+        raise RasterArchiveError("Tidak ada data untuk ditulis.")
+    if verify_image:
+        _verify_image_bytes(data)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    handle, tmp_name = tempfile.mkstemp(
+        suffix=destination.suffix or ".bin", dir=str(destination.parent)
+    )
+    try:
+        with os.fdopen(handle, "wb") as fh:
+            fh.write(data)
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.replace(tmp_name, destination)
+    except Exception as exc:  # noqa: BLE001
+        Path(tmp_name).unlink(missing_ok=True)
+        raise RasterArchiveError(f"Gagal menulis berkas: {exc}") from exc
+    if destination.read_bytes() != data:
+        raise RasterArchiveError(
+            "Berkas di disk berbeda dari yang ditulis — kemungkinan diubah oleh "
+            "sinkronisasi cloud atau antivirus. Coba folder lain (mis. Desktop)."
+        )
     return destination
 
 
 def _verify_png_bytes(data: bytes) -> None:
-    """Pastikan *data* adalah PNG yang benar-benar bisa didekode."""
+    if not data.startswith(b"\x89PNG\r\n\x1a\n"):
+        raise RasterArchiveError("Data bukan PNG yang sah (tanda tangan salah).")
+    _verify_image_bytes(data)
+
+
+def _verify_image_bytes(data: bytes) -> None:
+    """Pastikan *data* adalah gambar yang benar-benar bisa didekode."""
 
     import io
 
-    if not data.startswith(b"\x89PNG\r\n\x1a\n"):
-        raise RasterArchiveError("Data bukan PNG yang sah (tanda tangan salah).")
     try:
         from PIL import Image
 
         with Image.open(io.BytesIO(data)) as probe:
             probe.verify()
     except Exception as exc:  # noqa: BLE001
-        raise RasterArchiveError(f"PNG gagal diverifikasi: {exc}") from exc
+        raise RasterArchiveError(f"Gambar gagal diverifikasi: {exc}") from exc
 
 __all__ = [
     "PAINT_EXTENSION",
     "RasterArchiveError",
     "load_raster_document",
     "save_raster_document",
+    "write_bytes_atomic",
+    "write_image_atomic",
     "write_png_atomic",
 ]

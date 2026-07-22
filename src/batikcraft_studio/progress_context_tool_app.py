@@ -272,7 +272,11 @@ class ContextToolApplication(_BaseApplication):
                     detail=target.name,
                 )
                 target.parent.mkdir(parents=True, exist_ok=True)
-                target.write_bytes(content)
+                from batikcraft_studio.persistence.raster_archive import (
+                    write_bytes_atomic,
+                )
+
+                target = write_bytes_atomic(target, content)
                 reporter.update("Tahap 3/3 — Memverifikasi hasil", 3, 3)
             except (OSError, ProjectRenderError, ValueError) as exc:
                 self.root.after(
