@@ -126,3 +126,38 @@ def test_print_as_jpeg_dari_rgba(tmp_path):
     reopened = Image.open(saved)
     reopened.load()
     assert reopened.mode == "RGB"
+
+
+def test_save_print_image_pdf_dan_png(tmp_path):
+    """Inti cetak berbasis gambar — dipakai kanvas objek & dokumen raster."""
+
+    from PIL import Image
+
+    from batikcraft_studio.printing import save_print_image
+
+    pdf = save_print_image(Image.new("RGB", (400, 300), (200, 120, 60)), tmp_path / "a.pdf")
+    assert pdf.is_file() and pdf.stat().st_size > 0
+
+    png = save_print_image(Image.new("RGB", (400, 300), (10, 20, 30)), tmp_path / "b.png")
+    reopened = Image.open(png)
+    reopened.load()
+
+
+def test_save_print_image_rgba_dikonversi(tmp_path):
+    from PIL import Image
+
+    from batikcraft_studio.printing import save_print_image
+
+    png = save_print_image(Image.new("RGBA", (50, 50), (0, 0, 255, 255)), tmp_path / "c.png")
+    reopened = Image.open(png)
+    reopened.load()
+    assert reopened.mode == "RGB"
+
+
+def test_save_print_image_ekstensi_tak_dikenal_jadi_pdf(tmp_path):
+    from PIL import Image
+
+    from batikcraft_studio.printing import save_print_image
+
+    out = save_print_image(Image.new("RGB", (20, 20)), tmp_path / "x.xyz")
+    assert out.suffix == ".pdf"

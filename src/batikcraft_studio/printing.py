@@ -61,8 +61,25 @@ def save_print_file(
 ) -> Path:
     """Tulis berkas cetak (.pdf atau gambar) ke *destination*."""
 
-    path = Path(destination).expanduser()
     image = render_for_print(project, assets)
+    return save_print_image(image, destination, fit_page=fit_page)
+
+
+def save_print_image(
+    image: Image.Image,
+    destination: str | Path,
+    *,
+    fit_page: bool = True,
+) -> Path:
+    """Tulis gambar rata (RGB) sebagai berkas cetak — inti bersama.
+
+    Dipakai jalur cetak kanvas objek MAUPUN dokumen raster. Semua penulisan
+    atomik + terverifikasi.
+    """
+
+    path = Path(destination).expanduser()
+    if image.mode != "RGB":
+        image = image.convert("RGB")
     suffix = path.suffix.casefold()
     from batikcraft_studio.persistence.raster_archive import (
         RasterArchiveError,
@@ -130,11 +147,25 @@ def _fit_to_page(image: Image.Image) -> Image.Image:
     return page
 
 
+def send_image_to_printer(image: Image.Image) -> Path:
+    """Cetak gambar rata memakai printer sistem; kembalikan berkas sementara."""
+
+    temporary = Path(tempfile.gettempdir()) / "batikcraft-cetak.pdf"
+    save_print_image(image, temporary)
+    _spool_to_printer(temporary)
+    return temporary
+
+
 def send_to_printer(project: object, assets: Mapping[str, bytes]) -> Path:
     """Cetak proyek memakai printer bawaan sistem; kembalikan berkas sementara."""
 
     temporary = Path(tempfile.gettempdir()) / "batikcraft-cetak.pdf"
     save_print_file(project, assets, temporary)
+    _spool_to_printer(temporary)
+    return temporary
+
+
+def _spool_to_printer(temporary: Path) -> None:
     try:
         if os.name == "nt":
             # Verb 'print' membuka printer default tanpa jendela tambahan.
@@ -153,7 +184,13 @@ def send_to_printer(project: object, assets: Mapping[str, bytes]) -> Path:
             "Printer sistem tidak dapat dihubungi. Gunakan 'Cetak Sebagai…' "
             f"lalu cetak berkasnya secara manual. Detail: {exc}"
         ) from exc
-    return temporary
 
 
-__all__ = ["PrintError", "render_for_print", "save_print_file", "send_to_printer"]
+__all__ = [
+    "PrintError",
+    "render_for_print",
+    "save_print_file",
+    "save_print_image",
+    "send_image_to_printer",
+    "send_to_printer",
+]

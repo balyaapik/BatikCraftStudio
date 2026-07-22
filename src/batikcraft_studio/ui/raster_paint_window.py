@@ -161,6 +161,9 @@ class RasterPaintWindow(tk.Toplevel):
         doc_menu.add_command(
             label="Simpan ke Pustaka Aset…", command=self.save_to_library
         )
+        doc_menu.add_separator()
+        doc_menu.add_command(label="Cetak", command=self.print_document)
+        doc_menu.add_command(label="Cetak Sebagai…", command=self.print_document_as)
         menu_bar.add_cascade(label="Dokumen", menu=doc_menu)
         self.configure(menu=menu_bar)
 
@@ -293,6 +296,46 @@ class RasterPaintWindow(tk.Toplevel):
         self._widget.destroy()
         self._widget = RasterCanvasWidget(self, self.document, on_status=self.set_status)
         self._widget.pack(fill="both", expand=True)
+
+    def print_document(self) -> None:
+        """Cetak dokumen rata ke printer sistem."""
+
+        from batikcraft_studio.printing import PrintError, send_image_to_printer
+
+        try:
+            send_image_to_printer(self.document.flatten())
+        except PrintError as exc:
+            messagebox.showerror("Cetak", str(exc), parent=self)
+            return
+        self.set_status("Dikirim ke printer.")
+
+    def print_document_as(self) -> None:
+        """Simpan hasil cetak (PDF/PNG/JPEG) yang sudah difit ke halaman."""
+
+        from batikcraft_studio.persistence.export_location import is_cloud_synced_path
+        from batikcraft_studio.printing import PrintError, save_print_image
+
+        selected = filedialog.asksaveasfilename(
+            parent=self,
+            title="Cetak Sebagai",
+            defaultextension=".pdf",
+            filetypes=[("PDF", "*.pdf"), ("PNG", "*.png"), ("JPEG", "*.jpg")],
+        )
+        if not selected:
+            return
+        if is_cloud_synced_path(selected) and not messagebox.askyesno(
+            "Folder tersinkron cloud",
+            "Folder tujuan tampaknya dikelola OneDrive/cloud dan berkas bisa "
+            "sulit dibuka. Tetap simpan di sini?",
+            parent=self,
+        ):
+            return
+        try:
+            saved = save_print_image(self.document.flatten(), selected)
+        except PrintError as exc:
+            messagebox.showerror("Cetak Sebagai", str(exc), parent=self)
+            return
+        self.set_status(f"Berkas cetak disimpan: {saved}")
 
     def insert_result_images(self, results: object) -> None:
         """Terima hasil batifikasi (dari studio SDXL) sebagai layer baru."""
