@@ -1,5 +1,5 @@
 {
-  "release_tag": "v0.9.14",
-  "requested_at": "2026-07-23T23:00:00Z",
-  "reason": "Publish BatikCraft Studio 0.9.14: lighter drawing and complete fills on the main canvas. Stroke masks are now built only over the stroke's bounding box instead of the full canvas, cutting stroke compositing from 28 ms to under 7 ms, verified pixel-identical. Bucket fill no longer leaves an unfilled ring along anti-aliased stroke edges: the fill mask is dilated and the colour is placed underneath the strokes, so soft edges blend over the fill with no gaps and no leaking."
+  "release_tag": "v0.9.15",
+  "requested_at": "2026-07-24T01:00:00Z",
+  "reason": "Publish BatikCraft Studio 0.9.15: fixes heavy flickering zoom and delayed stroke appearance on the main canvas. The raster canting layer bitmap was being resized at full canvas size once per visible tile (about 90 ms x 24 tiles, over 2 seconds per full render) on every zoom change and every stroke. Prepared layer images are now cached per zoom level so the resize happens once, cutting a full 24-tile render from about 1.9 s to 0.1 s. Canting tile signatures now key on the layer asset instead of the global project revision, so unrelated edits no longer invalidate canting tiles and undo hits the tile cache instantly."
 }

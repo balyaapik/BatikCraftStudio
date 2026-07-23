@@ -26,6 +26,7 @@ Call ``renderer.invalidate_object(object_id)`` when a single object changes.
 from __future__ import annotations
 
 import math
+from collections import OrderedDict
 from dataclasses import dataclass
 from collections.abc import Mapping
 from typing import Any
@@ -300,6 +301,12 @@ class CachedViewportRenderer:
         self._rendered_objects = 0
         self._culled_objects = 0
         self._layer_index: dict[str, tuple[int, _LayerSpatialIndex]] = {}
+        # Cache layer legacy (canting raster dll) yang SUDAH di-resize ke zoom.
+        # Tanpa ini, bitmap kanvas penuh di-resize ulang untuk SETIAP tile
+        # (~90 ms x 24 tile = >2 detik per render) - sumber berat saat zoom
+        # dan jeda munculnya goresan.
+        self._prepared_layers: "OrderedDict[tuple, Image.Image]" = OrderedDict()
+        self._prepared_bytes = 0
 
     # ------------------------------------------------------------------
     # Public API
@@ -415,7 +422,19 @@ class CachedViewportRenderer:
                 continue
             if not layer.objects:
                 # Layer legacy: jatuh kembali ke revisi global agar tetap aman.
-                parts.append(("legacy", layer.layer_id, project_revision))
+                # Layer legacy dengan asset (canting raster): kunci pada isi
+                # nyatanya - asset_ref berubah per goresan, TAPI mutasi lain
+                # (mis. edit objek di layer lain) tidak lagi membatalkan tile
+                # canting. Undo juga langsung kena cache tile lama.
+                parts.append(
+                    (
+                        "legacy",
+                        layer.layer_id,
+                        layer.asset_ref or project_revision,
+                        layer.opacity,
+                        layer.transform,
+                    )
+                )
                 drawn_at.append(len(plan))
                 incremental_ok = False
                 continue
@@ -514,6 +533,8 @@ class CachedViewportRenderer:
         self._tile_cache.clear()
         self._obj_cache.clear()
         self._layer_index.clear()
+        self._prepared_layers.clear()
+        self._prepared_bytes = 0
         # Piramida mipmap memegang gambar berukuran penuh; lepaskan juga supaya
         # menutup proyek benar-benar mengembalikan memorinya.
         clear_decoded_asset_cache()
@@ -603,7 +624,7 @@ class CachedViewportRenderer:
                     self._culled_objects += 1
                 continue
 
-            prepared = self._prepare_layer_image(layer, content, zoom_scale=zoom_scale)
+            prepared = self._prepared_layer_image(layer, content, zoom_scale=zoom_scale)
             eff_opacity = _effective_layer_opacity(project, layer)
             if eff_opacity != layer.opacity:
                 alpha = prepared.getchannel("A")
@@ -804,6 +825,36 @@ class CachedViewportRenderer:
         if item.opacity < 1.0:
             alpha = image.getchannel("A")
             image.putalpha(ImageEnhance.Brightness(alpha).enhance(item.opacity))
+        return image
+
+    def _prepared_layer_image(
+        self,
+        layer: Layer,
+        content: bytes | None,
+        zoom_scale: float,
+    ) -> Image.Image:
+        """Versi ber-cache dari _prepare_layer_image (sekali per zoom, bukan per tile)."""
+
+        key = (
+            layer.layer_id,
+            layer.asset_ref,
+            round(zoom_scale, 4),
+            layer.transform.scale_x,
+            layer.transform.scale_y,
+            layer.transform.rotation_degrees,
+        )
+        cached = self._prepared_layers.get(key)
+        if cached is not None:
+            self._prepared_layers.move_to_end(key)
+            return cached
+        image = self._prepare_layer_image(layer, content, zoom_scale=zoom_scale)
+        size = image.width * image.height * 4
+        self._prepared_layers[key] = image
+        self._prepared_bytes += size
+        # Batasi memori cache (gambar zoom tinggi bisa puluhan MB per entri).
+        while self._prepared_bytes > 192 * 1024 * 1024 and len(self._prepared_layers) > 1:
+            _k, old = self._prepared_layers.popitem(last=False)
+            self._prepared_bytes -= old.width * old.height * 4
         return image
 
     @staticmethod
