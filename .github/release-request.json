@@ -1,5 +1,5 @@
 {
-  "release_tag": "v0.9.11",
-  "requested_at": "2026-07-23T18:30:00Z",
-  "reason": "Publish BatikCraft Studio 0.9.11: brush strokes on the main canvas are about twice as fast again, and the raster paint window gains a Layer menu (New Layer, Move Up/Down, Delete). Each raster stroke used to allocate and encode a full transparent canvas via render_cropped_stroke (~58 ms) on top of the final encode. The stroke is now drawn directly onto the live layer bitmap via a shared image-based core, cutting per-stroke work from about 163 ms to 78 ms on a 2048 canvas, verified pixel-identical to before."
+  "release_tag": "v0.9.12",
+  "requested_at": "2026-07-23T20:00:00Z",
+  "reason": "Publish BatikCraft Studio 0.9.12: adds a Layer menu to the main canvas (New Raster Canting Layer, Move Up, Move Down, Delete Active Layer), wired to the existing session layer operations."
 }

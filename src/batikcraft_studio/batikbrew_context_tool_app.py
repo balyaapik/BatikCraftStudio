@@ -106,6 +106,17 @@ class ContextToolApplication(_ProgressApplication):
         )
         _insert_before_help(menu_bar, "Effects", effects_menu)
 
+        layer_menu = tk.Menu(menu_bar, tearoff=False)
+        layer_menu.add_command(
+            label="Lapis Canting Raster Baru", command=self.new_raster_layer
+        )
+        layer_menu.add_separator()
+        layer_menu.add_command(label="Naikkan Lapis", command=lambda: self.move_active_layer(1))
+        layer_menu.add_command(label="Turunkan Lapis", command=lambda: self.move_active_layer(-1))
+        layer_menu.add_separator()
+        layer_menu.add_command(label="Hapus Lapis Aktif", command=self.delete_active_layer)
+        _insert_before_help(menu_bar, "Layer", layer_menu)
+
         dependencies_menu = tk.Menu(menu_bar, tearoff=False)
         # Satu pintu: seluruh unduhan/instalasi/uninstall dilakukan lewat tabel
         # bercentang di Pusat Dependensi (tanpa tombol instal tersebar).
@@ -343,6 +354,49 @@ class ContextToolApplication(_ProgressApplication):
         if not payloads:
             return
         importer(payloads, position=None, source_label="studio batifikasi")
+
+    def new_raster_layer(self) -> None:
+        """Buat lapis canting raster baru (langsung siap digambari)."""
+
+        editor = self.main_window._editor()
+        try:
+            layer = editor.session.create_raster_paint_layer()
+        except Exception as exc:  # noqa: BLE001
+            editor.set_status(f"Gagal membuat lapis: {exc}")
+            return
+        editor.refresh_context()
+        editor.set_status(f"Lapis baru dibuat: {layer.name}")
+
+    def move_active_layer(self, delta: int) -> None:
+        """Pindah lapis aktif naik (+1) atau turun (-1) di tumpukan."""
+
+        editor = self.main_window._editor()
+        project = editor.session.project
+        if project is None or project.active_layer_id is None:
+            editor.set_status("Pilih lapis yang akan dipindah.")
+            return
+        layer_id = project.active_layer_id
+        try:
+            if delta > 0:
+                moved = editor.session.move_layer_up(layer_id)
+            else:
+                moved = editor.session.move_layer_down(layer_id)
+        except Exception as exc:  # noqa: BLE001
+            editor.set_status(f"Gagal memindah lapis: {exc}")
+            return
+        editor.refresh_context()
+        if moved:
+            editor.set_status("Lapis dipindah " + ("naik." if delta > 0 else "turun."))
+        else:
+            editor.set_status("Lapis sudah di ujung tumpukan.")
+
+    def delete_active_layer(self) -> None:
+        editor = self.main_window._editor()
+        deleter = getattr(editor, "delete_active", None)
+        if callable(deleter):
+            deleter()
+        else:
+            editor.set_status("Penghapusan lapis tidak tersedia di editor ini.")
 
     def _remove_nft_export_from_file(self, menu_bar: tk.Menu) -> None:
         try:
