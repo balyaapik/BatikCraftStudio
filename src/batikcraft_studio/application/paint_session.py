@@ -178,13 +178,24 @@ class PaintProjectSession(ProjectSession):
         layer_name = (name or f"Lapis Canting Raster {number}").strip()[:120]
         asset_ref = f"assets/{uuid4()}.png"
         blank = blank_canvas_png(project.canvas.width, project.canvas.height)
+        # Layer full-canvas: renderer menempatkan bitmap berpusat di transform,
+        # dan butuh pixel_width/pixel_height untuk tahu ukuran aslinya. Tanpa
+        # ini render tile gagal diam-diam dan goresan tidak muncul.
         layer = Layer(
             name=layer_name or "Lapis Canting Raster",
             kind=LayerKind.PAINT,
             node_kind=LayerNodeKind.LAYER,
             parent_id=parent_id,
             asset_ref=asset_ref,
-            properties={"source_format": "RASTER_CANVAS", "stroke_count": 0},
+            transform=Transform(
+                x=project.canvas.width / 2, y=project.canvas.height / 2
+            ),
+            properties={
+                "source_format": "RASTER_CANVAS",
+                "stroke_count": 0,
+                "pixel_width": project.canvas.width,
+                "pixel_height": project.canvas.height,
+            },
         )
 
         def mutation() -> None:
@@ -260,12 +271,23 @@ class PaintProjectSession(ProjectSession):
 
         def mutation() -> None:
             self._assets[new_ref] = updated_png
-            project.update_layer(layer_id, asset_ref=new_ref)
+            transform_changes: dict = {"asset_ref": new_ref}
+            # Sembuhkan layer yang dibuat versi 0.9.7 tanpa transform pusat
+            # (kalau ada) supaya bitmap-nya tampil.
+            if layer.transform == Transform():
+                transform_changes["transform"] = Transform(
+                    x=project.canvas.width / 2, y=project.canvas.height / 2
+                )
+            project.update_layer(layer_id, **transform_changes)
             refreshed = project.get_layer(layer_id)
             properties = dict(refreshed.properties)
             properties["stroke_count"] = int(properties.get("stroke_count", 0)) + 1
             properties["last_tool"] = "eraser" if erase else "brush"
             properties["last_brush_size"] = float(brush_size)
+            # Pastikan properti ukuran ada (renderer full-canvas memerlukannya).
+            properties.setdefault("pixel_width", project.canvas.width)
+            properties.setdefault("pixel_height", project.canvas.height)
+            properties["source_format"] = "RASTER_CANVAS"
             project.update_layer(layer_id, properties=properties)
             # Aset lama tidak lagi dirujuk siapa pun; lepaskan agar arsip ramping.
             if old_ref and old_ref != new_ref:

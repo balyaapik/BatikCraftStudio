@@ -74,3 +74,27 @@ def test_seratus_goresan_tetap_satu_bitmap():
     assert result.size == (400, 400)
     # Hasil tetap satu gambar; ukuran byte tetap wajar (bukan 100 objek terpisah).
     assert len(canvas) < 400 * 400 * 4
+
+
+def test_penempatan_full_canvas_benar():
+    """Regresi 0.9.7->0.9.8: goresan harus muncul di posisi yang digambar.
+
+    Layer canting raster full-canvas berpusat di transform=(W/2, H/2) dan
+    memerlukan pixel_width/pixel_height. Tanpa itu render gagal diam-diam
+    (tidak ada yang muncul).
+    """
+
+    cw, ch = 200, 200
+    base = blank_canvas_png(cw, ch)
+    stroke = _png(Image.new("RGBA", (20, 20), (255, 0, 0, 255)))
+    bitmap = _open(composite_stroke_onto_canvas(base, stroke, 30, 30))
+
+    # Tiru penempatan renderer: bitmap berpusat di (cw/2, ch/2), zoom 1.
+    tx, ty = cw / 2, ch / 2
+    dest = (round(tx - bitmap.width / 2), round(ty - bitmap.height / 2))
+    assert dest == (0, 0)
+
+    surface = Image.new("RGBA", (cw, ch), (0, 0, 0, 0))
+    surface.alpha_composite(bitmap, dest=dest)
+    assert surface.getpixel((35, 35)) == (255, 0, 0, 255)
+    assert surface.getpixel((5, 5)) == (0, 0, 0, 0)
