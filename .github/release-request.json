@@ -1,5 +1,5 @@
 {
-  "release_tag": "v0.9.5",
-  "requested_at": "2026-07-23T07:00:00Z",
-  "reason": "Publish BatikCraft Studio 0.9.5: NFT publishing from a flattened raster document. A new publish_image_nft path uploads a single flattened PNG to the marketplace instead of requiring an object-based .batikcraft package, matching the decision that motifs come from the full document. The raster paint window gains Sell as NFT, gated behind the existing creator web session."
+  "release_tag": "v0.9.6",
+  "requested_at": "2026-07-23T09:00:00Z",
+  "reason": "Publish BatikCraft Studio 0.9.6: nicer save-to-library and sell-as-NFT flows for the raster canvas. Saving to the library now shows a proper dialog with a list of libraries to pick from and an auto-generated asset name (no typing required), plus a preview thumbnail. Selling as NFT opens a dedicated window with the preview, title, multi-line description, and price fields together, replacing the minimal chained prompts."
 }

@@ -229,12 +229,15 @@ class ContextToolApplication(_ProgressApplication):
     def _save_raster_document_to_library(self, document: object) -> str:
         """Ratakan dokumen raster penuh dan simpan sebagai satu aset pustaka."""
 
-        from tkinter import simpledialog
-
         from batikcraft_studio.assets.personal_store import list_user_libraries
         from batikcraft_studio.assets.raster_document_library import (
             add_document_to_library,
         )
+
+        from batikcraft_studio.assets.raster_document_library import flatten_to_png_bytes
+        from batikcraft_studio.ui.raster_publish_dialogs import LibrarySaveDialog
+        from io import BytesIO
+        from PIL import Image
 
         library = self._asset_library()
         libraries = list_user_libraries(library)
@@ -245,38 +248,23 @@ class ContextToolApplication(_ProgressApplication):
                 parent=self.root,
             )
             return ""
-        # Pilih pustaka tujuan: kalau cuma satu, langsung; kalau banyak, tanya.
-        if len(libraries) == 1:
-            target = libraries[0]
-        else:
-            names = [getattr(pack, "name", pack.pack_id) for pack in libraries]
-            listing = "\n".join(f"{i + 1}. {n}" for i, n in enumerate(names))
-            choice = simpledialog.askstring(
-                "Pilih pustaka",
-                "Simpan ke pustaka mana?\n\n" + listing,
-                parent=self.root,
-            )
-            if not choice:
-                return ""
-            try:
-                target = libraries[int(choice) - 1]
-            except (ValueError, IndexError):
-                messagebox.showerror("Pilihan tidak sah", "Nomor pustaka tidak valid.", parent=self.root)
-                return ""
-        name = simpledialog.askstring(
-            "Nama karya", "Nama untuk karya ini di pustaka:", parent=self.root
-        )
-        if not name:
+        try:
+            preview = Image.open(BytesIO(flatten_to_png_bytes(document)))
+            preview.load()
+        except Exception:  # noqa: BLE001
+            preview = None
+        dialog = LibrarySaveDialog(self.root, libraries, preview=preview)
+        self.root.wait_window(dialog)
+        if dialog.result is None:
             return ""
-        add_document_to_library(
-            library, document, pack_id=target.pack_id, name=name
-        )
-        return f"Karya '{name}' disimpan ke pustaka '{getattr(target, 'name', target.pack_id)}'."
+        pack_id, name = dialog.result
+        target = next((p for p in libraries if getattr(p, "pack_id", None) == pack_id), None)
+        add_document_to_library(library, document, pack_id=pack_id, name=name)
+        target_name = getattr(target, "name", pack_id) if target else pack_id
+        return f"Karya '{name}' disimpan ke pustaka '{target_name}'."
 
     def _publish_raster_document_as_nft(self, document: object) -> str:
         """Publikasikan NFT dari gambar rata dokumen raster (dokumen penuh)."""
-
-        from tkinter import simpledialog
 
         from batikcraft_studio.assets.raster_document_library import (
             flatten_to_png_bytes,
@@ -292,25 +280,34 @@ class ContextToolApplication(_ProgressApplication):
                 parent=self.root,
             )
             return ""
-        title = simpledialog.askstring("Judul NFT", "Judul motif:", parent=self.root)
-        if not title:
-            return ""
-        description = simpledialog.askstring(
-            "Deskripsi", "Deskripsi / filosofi (opsional):", parent=self.root
-        ) or ""
-        price = simpledialog.askstring(
-            "Harga awal", "Harga awal (mis. 0.5):", parent=self.root
-        ) or "0"
+        from batikcraft_studio.ui.raster_publish_dialogs import NFTPublishDialog
+        from io import BytesIO
+        from PIL import Image
+
         try:
             png = flatten_to_png_bytes(document)
+            preview = Image.open(BytesIO(png))
+            preview.load()
+        except Exception as exc:  # noqa: BLE001
+            messagebox.showerror("Gagal menyiapkan gambar", str(exc), parent=self.root)
+            return ""
+        dialog = NFTPublishDialog(self.root, preview=preview)
+        self.root.wait_window(dialog)
+        if dialog.result is None:
+            return ""
+        info = dialog.result
+        try:
             result = self.web_client.publish_image_nft(
-                png, title=title, description=description, starting_price=price
+                png,
+                title=info["title"],
+                description=info["description"],
+                starting_price=info["price"],
             )
         except (BatikCraftWebError, ValueError) as exc:
             messagebox.showerror("Gagal publish", str(exc), parent=self.root)
             return ""
         nft_id = result.get("id") if isinstance(result, dict) else None
-        return f"NFT '{title}' dipublikasikan" + (f" (id {nft_id})." if nft_id else ".")
+        return f"NFT '{info['title']}' dipublikasikan" + (f" (id {nft_id})." if nft_id else ".")
 
     def open_batikbrew_studio(self) -> None:
         """Buka jendela batifikasi mandiri (seret gambar, bukan pilih objek)."""
