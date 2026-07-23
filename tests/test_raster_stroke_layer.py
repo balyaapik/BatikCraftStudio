@@ -98,3 +98,34 @@ def test_penempatan_full_canvas_benar():
     surface.alpha_composite(bitmap, dest=dest)
     assert surface.getpixel((35, 35)) == (255, 0, 0, 255)
     assert surface.getpixel((5, 5)) == (0, 0, 0, 0)
+
+
+def test_composite_image_identik_dengan_bytes():
+    """Jalur gambar-hidup harus menghasilkan piksel sama dengan jalur bytes."""
+
+    from PIL import ImageChops
+
+    from batikcraft_studio.imaging.raster_stroke_layer import (
+        composite_stroke_onto_image,
+    )
+
+    base = Image.new("RGBA", (200, 200), (0, 0, 0, 0))
+    stroke = _png(Image.new("RGBA", (30, 30), (255, 0, 0, 255)))
+
+    via_image = composite_stroke_onto_image(base, stroke, 40, 40)
+    via_bytes = _open(composite_stroke_onto_canvas(_png(base), stroke, 40, 40))
+
+    assert ImageChops.difference(via_image, via_bytes).getbbox() is None
+
+
+def test_composite_image_tidak_mengubah_base():
+    """Base harus utuh (undo menyimpan state 'sebelum')."""
+
+    from batikcraft_studio.imaging.raster_stroke_layer import (
+        composite_stroke_onto_image,
+    )
+
+    base = Image.new("RGBA", (100, 100), (0, 0, 0, 0))
+    composite_stroke_onto_image(base, _png(Image.new("RGBA", (20, 20), (1, 2, 3, 255))), 10, 10)
+
+    assert base.getpixel((15, 15)) == (0, 0, 0, 0)

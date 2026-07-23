@@ -824,15 +824,26 @@ class CachedViewportRenderer:
                     f"Layer {layer.name!r} contains invalid shape data."
                 ) from exc
         else:
-            if content is None:
-                raise MissingRasterAssetError(f"Layer {layer.name!r} has no raster content.")
-            image = display_source(
-                content,
-                lambda: _open_rgba(content, f"Layer {layer.name!r}"),
-                width,
-                height,
-            )
-            image = _resize_for_display(image, width, height)
+            # Bitmap HIDUP (kalau ada) dipakai langsung: tidak perlu decode PNG.
+            # Inilah pasangan dari live_bitmap_store di sisi sesi — menghapus
+            # decode berulang saat menggambar di lapis canting raster.
+            from batikcraft_studio.imaging import live_bitmap_store
+
+            live = live_bitmap_store.get(layer.asset_ref)
+            if live is not None:
+                image = _resize_for_display(live, width, height)
+            else:
+                if content is None:
+                    raise MissingRasterAssetError(
+                        f"Layer {layer.name!r} has no raster content."
+                    )
+                image = display_source(
+                    content,
+                    lambda: _open_rgba(content, f"Layer {layer.name!r}"),
+                    width,
+                    height,
+                )
+                image = _resize_for_display(image, width, height)
         if layer.transform.scale_x < 0:
             image = image.transpose(Image.Transpose.FLIP_LEFT_RIGHT)
         if layer.transform.scale_y < 0:

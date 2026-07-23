@@ -14,9 +14,11 @@ from batikcraft_studio.domain import (
     ObjectKind,
     Transform,
 )
+from batikcraft_studio.imaging import live_bitmap_store
 from batikcraft_studio.imaging.raster_stroke_layer import (
     blank_canvas_png,
-    composite_stroke_onto_canvas,
+    composite_stroke_onto_image,
+    encode_canvas_png,
 )
 from batikcraft_studio.imaging.stroke_object import render_cropped_stroke
 
@@ -260,14 +262,32 @@ class PaintProjectSession(ProjectSession):
         if cropped.width <= 0 or cropped.height <= 0:
             return layer  # goresan kosong
 
-        base_png = self._assets.get(layer.asset_ref)
-        if base_png is None:
-            base_png = blank_canvas_png(project.canvas.width, project.canvas.height)
-        updated_png = composite_stroke_onto_canvas(
-            base_png, cropped.content, cropped.left, cropped.top, erase=erase
-        )
-        new_ref = f"assets/{uuid4()}.png"
+        # Ambil bitmap HIDUP (sudah didekode) dari store bersama; kalau tidak
+        # ada, dekode sekali dari bytes. Menghindari decode PNG base tiap
+        # goresan — biaya terbesar kedua setelah encode.
+        from io import BytesIO
+
+        from PIL import Image
+
         old_ref = layer.asset_ref
+        base_image = live_bitmap_store.get(old_ref)
+        if base_image is None:
+            base_png = self._assets.get(old_ref)
+            if base_png is None:
+                base_image = Image.new(
+                    "RGBA", (project.canvas.width, project.canvas.height), (0, 0, 0, 0)
+                )
+            else:
+                with Image.open(BytesIO(base_png)) as decoded:
+                    decoded.load()
+                    base_image = decoded.convert("RGBA")
+        updated_image = composite_stroke_onto_image(
+            base_image, cropped.content, cropped.left, cropped.top, erase=erase
+        )
+        updated_png = encode_canvas_png(updated_image, fast=True)
+        new_ref = f"assets/{uuid4()}.png"
+        # Bagikan gambar hidup ke renderer supaya tidak perlu decode PNG lagi.
+        live_bitmap_store.put(new_ref, updated_image)
 
         def mutation() -> None:
             self._assets[new_ref] = updated_png

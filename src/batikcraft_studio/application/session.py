@@ -468,6 +468,14 @@ class ProjectSession:
     def _clear_history(self) -> None:
         self._undo_stack.clear()
         self._redo_stack.clear()
+        # Bitmap hidup lapis canting milik proyek yang ditinggalkan; lepaskan
+        # agar proyek baru tidak memakai gambar basi.
+        try:
+            from batikcraft_studio.imaging import live_bitmap_store
+
+            live_bitmap_store.clear()
+        except Exception:  # noqa: BLE001
+            pass
 
     @staticmethod
     def _append_history(stack: list[_SessionState], state: _SessionState) -> None:

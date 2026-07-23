@@ -65,4 +65,48 @@ def composite_stroke_onto_canvas(
     return buffer.getvalue()
 
 
-__all__ = ["blank_canvas_png", "composite_stroke_onto_canvas"]
+def encode_canvas_png(image: Image.Image, *, fast: bool = True) -> bytes:
+    """Encode gambar RGBA jadi PNG. ``fast`` = kompresi rendah (saat menggambar)."""
+
+    buffer = BytesIO()
+    if fast:
+        image.save(buffer, format="PNG", compress_level=1)
+    else:
+        image.save(buffer, format="PNG", optimize=True)
+    return buffer.getvalue()
+
+
+def composite_stroke_onto_image(
+    base: Image.Image,
+    stroke_png: bytes,
+    left: int,
+    top: int,
+    *,
+    erase: bool = False,
+) -> Image.Image:
+    """Seperti composite_stroke_onto_canvas tapi bekerja pada gambar PIL hidup.
+
+    Mengembalikan gambar BARU (base tidak diubah), sehingga base lama tetap utuh
+    untuk undo. Tidak ada decode PNG base — inilah yang menghilangkan biaya
+    decode berulang pada kanvas utama.
+    """
+
+    result = base.copy()
+    stroke = _decode(stroke_png)
+    if erase:
+        region = result.crop((left, top, left + stroke.width, top + stroke.height))
+        r, g, b, a = region.split()
+        keep = ImageChops.subtract(a, stroke.getchannel("A"))
+        region = Image.merge("RGBA", (r, g, b, keep))
+        result.paste(region, (left, top))
+    else:
+        result.alpha_composite(stroke, dest=(left, top))
+    return result
+
+
+__all__ = [
+    "blank_canvas_png",
+    "composite_stroke_onto_canvas",
+    "composite_stroke_onto_image",
+    "encode_canvas_png",
+]
