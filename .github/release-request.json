@@ -1,5 +1,5 @@
 {
-  "release_tag": "v0.9.6",
-  "requested_at": "2026-07-23T09:00:00Z",
-  "reason": "Publish BatikCraft Studio 0.9.6: nicer save-to-library and sell-as-NFT flows for the raster canvas. Saving to the library now shows a proper dialog with a list of libraries to pick from and an auto-generated asset name (no typing required), plus a preview thumbnail. Selling as NFT opens a dedicated window with the preview, title, multi-line description, and price fields together, replacing the minimal chained prompts."
+  "release_tag": "v0.9.7",
+  "requested_at": "2026-07-23T11:30:00Z",
+  "reason": "Publish BatikCraft Studio 0.9.7: hybrid canvas optimization in the main app. Brush and eraser strokes now melt into a single raster canting-layer bitmap instead of creating one object per stroke, so drawing stays light no matter how many strokes. All other elements (cap, motif, imported images, shapes) remain objects, and the file stays .batikcraft (the bitmap is just one PNG per layer inside the archive)."
 }

@@ -233,7 +233,9 @@ class PaintLayerEditorWorkspaceView(NativeLayerEditorWorkspaceView):
         if not (0 <= point[0] < project.canvas.width and 0 <= point[1] < project.canvas.height):
             return
         try:
-            layer = self._paint_session.ensure_active_paint_layer()
+            # Goresan kuas/penghapus melebur ke satu bitmap layer (raster),
+            # bukan objek per goresan — jauh lebih ringan saat goresan banyak.
+            layer = self._paint_session.ensure_active_raster_paint_layer()
         except (ProjectSessionError, ProjectValidationError, PaintStrokeError) as exc:
             self.set_status(str(exc))
             return
@@ -270,7 +272,7 @@ class PaintLayerEditorWorkspaceView(NativeLayerEditorWorkspaceView):
         if point is not None and (not self._stroke_points or point != self._stroke_points[-1]):
             self._stroke_points.append(point)
         try:
-            self._paint_session.apply_paint_stroke(
+            self._paint_session.apply_raster_paint_stroke(
                 self._stroke_layer_id,
                 points=tuple(self._stroke_points),
                 brush_size=float(self.brush_size_value.get()),

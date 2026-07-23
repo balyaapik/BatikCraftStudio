@@ -192,7 +192,9 @@ class RefinedPaintLayerEditorWorkspaceView(PaintLayerEditorWorkspaceView):
         if point is not None and (not self._stroke_points or point != self._stroke_points[-1]):
             self._stroke_points.append(point)
         try:
-            self._paint_session.apply_paint_stroke(
+            # Goresan melebur ke satu bitmap layer (raster) - ringan berapa pun
+            # banyaknya goresan, tetap disimpan di .batikcraft sebagai PNG.
+            self._paint_session.apply_raster_paint_stroke(
                 self._stroke_layer_id,
                 points=tuple(self._stroke_points),
                 brush_size=float(self.brush_size_value.get()),

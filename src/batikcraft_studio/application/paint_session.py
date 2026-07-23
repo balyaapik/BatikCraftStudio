@@ -14,6 +14,10 @@ from batikcraft_studio.domain import (
     ObjectKind,
     Transform,
 )
+from batikcraft_studio.imaging.raster_stroke_layer import (
+    blank_canvas_png,
+    composite_stroke_onto_canvas,
+)
 from batikcraft_studio.imaging.stroke_object import render_cropped_stroke
 
 from .session import LayerLockedError, ProjectSession, ProjectSessionError
@@ -153,6 +157,119 @@ class PaintProjectSession(ProjectSession):
             properties["last_brush_hardness"] = float(hardness)
             properties["last_brush_smoothing"] = float(smoothing)
             project.update_layer(layer_id, properties=properties)
+
+        self._commit_mutation(mutation)
+        return project.get_layer(layer_id)
+
+
+    # ------------------------------------------------------------------
+    # Lapis canting RASTER: goresan melebur ke satu bitmap (bukan objek per
+    # goresan). Menjaga menggambar tetap ringan berapa pun banyak goresannya,
+    # sambil tetap disimpan di .batikcraft sebagai satu PNG per layer.
+    # ------------------------------------------------------------------
+
+    def create_raster_paint_layer(
+        self, name: str | None = None, *, parent_id: str | None = None
+    ) -> Layer:
+        """Buat lapis canting raster: satu bitmap kanvas penuh untuk digambari."""
+
+        project = self.require_project()
+        number = sum(layer.kind is LayerKind.PAINT for layer in project.layers) + 1
+        layer_name = (name or f"Lapis Canting Raster {number}").strip()[:120]
+        asset_ref = f"assets/{uuid4()}.png"
+        blank = blank_canvas_png(project.canvas.width, project.canvas.height)
+        layer = Layer(
+            name=layer_name or "Lapis Canting Raster",
+            kind=LayerKind.PAINT,
+            node_kind=LayerNodeKind.LAYER,
+            parent_id=parent_id,
+            asset_ref=asset_ref,
+            properties={"source_format": "RASTER_CANVAS", "stroke_count": 0},
+        )
+
+        def mutation() -> None:
+            self._assets[asset_ref] = blank
+            project.add_layer(layer)
+
+        self._commit_mutation(mutation)
+        return project.get_layer(layer.layer_id)
+
+    def _is_raster_paint_layer(self, layer: Layer) -> bool:
+        return (
+            layer.kind is LayerKind.PAINT
+            and layer.node_kind is LayerNodeKind.LAYER
+            and layer.asset_ref is not None
+            and str(layer.properties.get("source_format")) == "RASTER_CANVAS"
+        )
+
+    def ensure_active_raster_paint_layer(self) -> Layer:
+        """Kembalikan lapis canting raster aktif, atau buat baru bila belum ada."""
+
+        project = self.require_project()
+        if project.active_layer_id is not None:
+            active = project.get_layer(project.active_layer_id)
+            if self._is_raster_paint_layer(active):
+                if project.is_layer_effectively_locked(active.layer_id):
+                    raise LayerLockedError(
+                        f"Layer {active.name!r} terkunci. Buka kunci atau pilih layer lain."
+                    )
+                return active
+        return self.create_raster_paint_layer()
+
+    def apply_raster_paint_stroke(
+        self,
+        layer_id: str,
+        *,
+        points: Sequence[tuple[float, float]],
+        brush_size: float,
+        color: str,
+        erase: bool = False,
+        opacity: float = 1.0,
+        hardness: float = 1.0,
+        smoothing: float = 0.0,
+    ) -> Layer:
+        """Leburkan satu goresan ke bitmap lapis canting raster (satu mutasi)."""
+
+        project = self.require_project()
+        layer = self._require_unlocked_layer(layer_id)
+        if not self._is_raster_paint_layer(layer):
+            raise PaintLayerError("Goresan raster memerlukan lapis canting raster.")
+
+        cropped = render_cropped_stroke(
+            canvas_width=project.canvas.width,
+            canvas_height=project.canvas.height,
+            points=list(points),
+            brush_size=brush_size,
+            color=color,
+            opacity=opacity,
+            hardness=hardness,
+            smoothing=smoothing,
+            eraser=erase,
+        )
+        if cropped.width <= 0 or cropped.height <= 0:
+            return layer  # goresan kosong
+
+        base_png = self._assets.get(layer.asset_ref)
+        if base_png is None:
+            base_png = blank_canvas_png(project.canvas.width, project.canvas.height)
+        updated_png = composite_stroke_onto_canvas(
+            base_png, cropped.content, cropped.left, cropped.top, erase=erase
+        )
+        new_ref = f"assets/{uuid4()}.png"
+        old_ref = layer.asset_ref
+
+        def mutation() -> None:
+            self._assets[new_ref] = updated_png
+            project.update_layer(layer_id, asset_ref=new_ref)
+            refreshed = project.get_layer(layer_id)
+            properties = dict(refreshed.properties)
+            properties["stroke_count"] = int(properties.get("stroke_count", 0)) + 1
+            properties["last_tool"] = "eraser" if erase else "brush"
+            properties["last_brush_size"] = float(brush_size)
+            project.update_layer(layer_id, properties=properties)
+            # Aset lama tidak lagi dirujuk siapa pun; lepaskan agar arsip ramping.
+            if old_ref and old_ref != new_ref:
+                self._assets.pop(old_ref, None)
 
         self._commit_mutation(mutation)
         return project.get_layer(layer_id)
