@@ -321,6 +321,73 @@ class PaintProjectSession(ProjectSession):
         return project.get_layer(layer_id)
 
 
+    def apply_raster_fill(
+        self,
+        layer_id: str,
+        x: float,
+        y: float,
+        color: str,
+        *,
+        tolerance: int = 40,
+    ) -> Layer:
+        """Isi ember di titik (x, y) pada bitmap lapis canting raster.
+
+        Klik di dalam area tertutup goresan -> terisi sampai batas. Satu mutasi
+        undo. Memakai bitmap hidup (tanpa decode ulang) seperti jalur goresan.
+        """
+
+        project = self.require_project()
+        layer = self._require_unlocked_layer(layer_id)
+        if not self._is_raster_paint_layer(layer):
+            raise PaintLayerError("Fill raster memerlukan lapis canting raster.")
+
+        from io import BytesIO
+
+        from PIL import Image
+
+        from batikcraft_studio.imaging.raster_fill import flood_fill_image
+
+        old_ref = layer.asset_ref
+        base_image = live_bitmap_store.get(old_ref)
+        if base_image is None:
+            base_png = self._assets.get(old_ref)
+            if base_png is None:
+                base_image = Image.new(
+                    "RGBA", (project.canvas.width, project.canvas.height), (0, 0, 0, 0)
+                )
+            else:
+                with Image.open(BytesIO(base_png)) as decoded:
+                    decoded.load()
+                    base_image = decoded.convert("RGBA")
+
+        filled = flood_fill_image(
+            base_image, int(x), int(y), color, tolerance=tolerance
+        )
+        updated_png = encode_canvas_png(filled, fast=True)
+        new_ref = f"assets/{uuid4()}.png"
+        live_bitmap_store.put(new_ref, filled)
+
+        def mutation() -> None:
+            self._assets[new_ref] = updated_png
+            transform_changes: dict = {"asset_ref": new_ref}
+            if layer.transform == Transform():
+                transform_changes["transform"] = Transform(
+                    x=project.canvas.width / 2, y=project.canvas.height / 2
+                )
+            project.update_layer(layer_id, **transform_changes)
+            refreshed = project.get_layer(layer_id)
+            properties = dict(refreshed.properties)
+            properties.setdefault("pixel_width", project.canvas.width)
+            properties.setdefault("pixel_height", project.canvas.height)
+            properties["source_format"] = "RASTER_CANVAS"
+            project.update_layer(layer_id, properties=properties)
+            if old_ref and old_ref != new_ref:
+                self._assets.pop(old_ref, None)
+
+        self._commit_mutation(mutation)
+        return project.get_layer(layer_id)
+
+
 __all__ = [
     "LayerLockedError",
     "PaintLayerError",

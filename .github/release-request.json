@@ -1,5 +1,5 @@
 {
-  "release_tag": "v0.9.12",
-  "requested_at": "2026-07-23T20:00:00Z",
-  "reason": "Publish BatikCraft Studio 0.9.12: adds a Layer menu to the main canvas (New Raster Canting Layer, Move Up, Move Down, Delete Active Layer), wired to the existing session layer operations."
+  "release_tag": "v0.9.13",
+  "requested_at": "2026-07-23T21:30:00Z",
+  "reason": "Publish BatikCraft Studio 0.9.13: the fill (bucket) tool now works on the main canvas. Because brush strokes are now raster rather than objects, the old object-based fill had nothing to target. Fill on a raster canting layer now flood-fills the clicked enclosed area directly on the layer bitmap, stopping at the stroke boundaries, as a single undoable action."
 }

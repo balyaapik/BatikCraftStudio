@@ -245,6 +245,10 @@ class DirectStyleEditorWorkspaceView(ViewportEditorWorkspaceView):
         point = self._project_point(event.x, event.y)
         if point is None or self.session.project is None:
             return
+        # Fill RASTER: kalau lapis aktif adalah canting raster, isi ember
+        # langsung ke bitmapnya di titik ini (goresan kini raster, bukan objek).
+        if self._try_raster_fill(point):
+            return
         item = self._hit_topmost_object(point)
         if item is None:
             self.set_status(tr("structure.fill.closed_required"))
@@ -267,6 +271,36 @@ class DirectStyleEditorWorkspaceView(ViewportEditorWorkspaceView):
         self.set_status(
             tr("direct.fill.applied", color=self.foreground_color_value.get().upper())
         )
+
+    def _try_raster_fill(self, point: tuple[float, float]) -> bool:
+        """Fill ember pada lapis canting raster aktif. True bila ditangani."""
+
+        project = self.session.project
+        if project is None or project.active_layer_id is None:
+            return False
+        try:
+            layer = project.get_layer(project.active_layer_id)
+        except Exception:  # noqa: BLE001
+            return False
+        checker = getattr(self.session, "_is_raster_paint_layer", None)
+        filler = getattr(self.session, "apply_raster_fill", None)
+        if not callable(checker) or not callable(filler) or not checker(layer):
+            return False
+        try:
+            filler(
+                layer.layer_id,
+                point[0],
+                point[1],
+                self.foreground_color_value.get(),
+            )
+        except ProjectSessionError as exc:
+            self.set_status(str(exc))
+            return True
+        self.refresh_context()
+        self.set_status(
+            tr("direct.fill.applied", color=self.foreground_color_value.get().upper())
+        )
+        return True
 
     def _set_primary_color(self, color: str, *, announce: bool = True) -> None:
         super()._set_primary_color(color, announce=False)

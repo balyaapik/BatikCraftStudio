@@ -10,7 +10,7 @@ from dataclasses import dataclass
 
 APP_NAME = "BatikCraft Studio"
 # Keep aligned with pyproject.toml and public installer filenames.
-APP_VERSION = "0.9.12"
+APP_VERSION = "0.9.13"
 DEFAULT_WINDOW_SIZE = "1280x800"
 MINIMUM_WINDOW_SIZE = (1024, 680)
 
