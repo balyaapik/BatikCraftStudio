@@ -1,5 +1,5 @@
 {
-  "release_tag": "v0.9.10",
-  "requested_at": "2026-07-23T16:30:00Z",
-  "reason": "Publish BatikCraft Studio 0.9.10: in-memory bitmap cache makes main-canvas brush strokes much faster. The canting layer bitmap is now kept as a live PIL image shared between the paint session and the renderer, so a stroke no longer decodes the base PNG and the renderer no longer re-decodes it for display. Per-stroke work on a 2048 canvas drops from about 84 ms to 48 ms on the session side, and the render side skips its decode entirely. Verified pixel-identical to the previous bytes path."
+  "release_tag": "v0.9.11",
+  "requested_at": "2026-07-23T18:30:00Z",
+  "reason": "Publish BatikCraft Studio 0.9.11: brush strokes on the main canvas are about twice as fast again, and the raster paint window gains a Layer menu (New Layer, Move Up/Down, Delete). Each raster stroke used to allocate and encode a full transparent canvas via render_cropped_stroke (~58 ms) on top of the final encode. The stroke is now drawn directly onto the live layer bitmap via a shared image-based core, cutting per-stroke work from about 163 ms to 78 ms on a 2048 canvas, verified pixel-identical to before."
 }

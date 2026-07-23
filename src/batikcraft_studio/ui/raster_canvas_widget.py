@@ -516,6 +516,36 @@ class RasterCanvasWidget(ttk.Frame):
                 continue
         return "copy"
 
+    def add_layer(self) -> None:
+        self.document.add_layer()
+        self.refresh()
+        panel = getattr(self, "_layer_panel", None)
+        if panel is not None:
+            panel.refresh()
+        self._status("Layer baru ditambahkan.")
+
+    def move_active_layer(self, delta: int) -> None:
+        """Pindah layer aktif naik (+1) atau turun (-1) di tumpukan."""
+
+        self.document.move_active(delta)
+        self.refresh()
+        panel = getattr(self, "_layer_panel", None)
+        if panel is not None:
+            panel.refresh()
+        self._status("Layer dipindah " + ("naik." if delta > 0 else "turun."))
+
+    def remove_active_layer(self) -> None:
+        try:
+            self.document.remove_active()
+        except Exception as exc:  # noqa: BLE001
+            self._status(str(exc))
+            return
+        self.refresh()
+        panel = getattr(self, "_layer_panel", None)
+        if panel is not None:
+            panel.refresh()
+        self._status("Layer dihapus.")
+
     def _status(self, message: str) -> None:
         if self._on_status is not None:
             self._on_status(message)

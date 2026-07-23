@@ -94,26 +94,61 @@ def apply_paint_stroke(
     if image.size != (width, height):
         raise PaintStrokeError("Paint-layer dimensions must match the project canvas.")
 
+    image = apply_stroke_to_image(
+        image,
+        points=points,
+        brush_size=diameter,
+        color=color,
+        erase=erase,
+        opacity=opacity_value,
+        hardness=hardness_value,
+        smoothing=smoothing_value,
+    )
+    return _encode_png(image)
+
+
+def apply_stroke_to_image(
+    image: Image.Image,
+    *,
+    points: Sequence[tuple[float, float]],
+    brush_size: float,
+    color: str,
+    erase: bool = False,
+    opacity: float = 1.0,
+    hardness: float = 1.0,
+    smoothing: float = 0.0,
+) -> Image.Image:
+    """Terapkan satu goresan LANGSUNG ke gambar PIL (tanpa decode/encode PNG).
+
+    Inti bersama: apply_paint_stroke (jalur bytes) memakainya, dan jalur canting
+    RASTER memakainya untuk menggambar ke bitmap hidup tanpa alokasi/kliping/
+    encode kanvas penuh yang mahal. Hasil visualnya identik dengan sebelumnya.
+    """
+
+    rgba = _validate_color(color)
+    diameter = _validate_brush_size(brush_size)
+    opacity_value = _validate_unit_interval(opacity, "Opacity", minimum_exclusive=True)
+    hardness_value = _validate_unit_interval(hardness, "Hardness")
+    smoothing_value = _validate_unit_interval(smoothing, "Smoothing")
+    working = image if image.mode == "RGBA" else image.convert("RGBA")
     smoothed = smooth_stroke_points(points, smoothing_value)
     stamp_points = _resample_stroke(smoothed, max(0.75, diameter * 0.10))
     color_alpha = rgba[3] / 255
     stroke_opacity = opacity_value if erase else opacity_value * color_alpha
     stroke_mask = _build_stroke_mask(
-        image.size,
+        working.size,
         stamp_points,
         diameter=diameter,
         opacity=stroke_opacity,
         hardness=hardness_value,
     )
-
     if erase:
         remaining = ImageOps.invert(stroke_mask)
-        image.putalpha(ImageChops.multiply(image.getchannel("A"), remaining))
-    else:
-        overlay = Image.new("RGBA", image.size, (*rgba[:3], 0))
-        overlay.putalpha(stroke_mask)
-        image = Image.alpha_composite(image, overlay)
-    return _encode_png(image)
+        working.putalpha(ImageChops.multiply(working.getchannel("A"), remaining))
+        return working
+    overlay = Image.new("RGBA", working.size, (*rgba[:3], 0))
+    overlay.putalpha(stroke_mask)
+    return Image.alpha_composite(working, overlay)
 
 
 def _resample_stroke(

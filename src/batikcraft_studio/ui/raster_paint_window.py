@@ -168,7 +168,25 @@ class RasterPaintWindow(tk.Toplevel):
         doc_menu.add_command(label="Cetak", command=self.print_document)
         doc_menu.add_command(label="Cetak Sebagai…", command=self.print_document_as)
         menu_bar.add_cascade(label="Dokumen", menu=doc_menu)
+
+        layer_menu = tk.Menu(menu_bar, tearoff=False)
+        layer_menu.add_command(label="Layer Baru", command=self._layer_add)
+        layer_menu.add_command(label="Naikkan Layer", command=lambda: self._layer_move(1))
+        layer_menu.add_command(label="Turunkan Layer", command=lambda: self._layer_move(-1))
+        layer_menu.add_separator()
+        layer_menu.add_command(label="Hapus Layer", command=self._layer_remove)
+        menu_bar.add_cascade(label="Layer", menu=layer_menu)
+
         self.configure(menu=menu_bar)
+
+    def _layer_add(self) -> None:
+        self._widget.add_layer()
+
+    def _layer_move(self, delta: int) -> None:
+        self._widget.move_active_layer(delta)
+
+    def _layer_remove(self) -> None:
+        self._widget.remove_active_layer()
 
     def new_document(self) -> None:
         dialog = CanvasSizeDialog(self, title="Dokumen Baru")

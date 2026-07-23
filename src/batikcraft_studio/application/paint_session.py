@@ -15,9 +15,9 @@ from batikcraft_studio.domain import (
     Transform,
 )
 from batikcraft_studio.imaging import live_bitmap_store
+from batikcraft_studio.imaging.paint import PaintStrokeError
 from batikcraft_studio.imaging.raster_stroke_layer import (
     blank_canvas_png,
-    composite_stroke_onto_image,
     encode_canvas_png,
 )
 from batikcraft_studio.imaging.stroke_object import render_cropped_stroke
@@ -248,26 +248,16 @@ class PaintProjectSession(ProjectSession):
         if not self._is_raster_paint_layer(layer):
             raise PaintLayerError("Goresan raster memerlukan lapis canting raster.")
 
-        cropped = render_cropped_stroke(
-            canvas_width=project.canvas.width,
-            canvas_height=project.canvas.height,
-            points=list(points),
-            brush_size=brush_size,
-            color=color,
-            opacity=opacity,
-            hardness=hardness,
-            smoothing=smoothing,
-            eraser=erase,
-        )
-        if cropped.width <= 0 or cropped.height <= 0:
+        if not points:
             return layer  # goresan kosong
 
         # Ambil bitmap HIDUP (sudah didekode) dari store bersama; kalau tidak
-        # ada, dekode sekali dari bytes. Menghindari decode PNG base tiap
-        # goresan — biaya terbesar kedua setelah encode.
+        # ada, dekode sekali dari bytes.
         from io import BytesIO
 
         from PIL import Image
+
+        from batikcraft_studio.imaging.paint import apply_stroke_to_image
 
         old_ref = layer.asset_ref
         base_image = live_bitmap_store.get(old_ref)
@@ -281,9 +271,23 @@ class PaintProjectSession(ProjectSession):
                 with Image.open(BytesIO(base_png)) as decoded:
                     decoded.load()
                     base_image = decoded.convert("RGBA")
-        updated_image = composite_stroke_onto_image(
-            base_image, cropped.content, cropped.left, cropped.top, erase=erase
-        )
+        # Gambar goresan LANGSUNG ke salinan bitmap hidup — tanpa
+        # render_cropped_stroke yang mengalokasi + encode kanvas penuh
+        # (~58 ms/goresan). Base disalin dulu agar state 'sebelum' untuk undo
+        # tetap utuh. Hasil visual identik (memakai mask goresan yang sama).
+        try:
+            updated_image = apply_stroke_to_image(
+                base_image.copy(),
+                points=list(points),
+                brush_size=brush_size,
+                color=color,
+                erase=erase,
+                opacity=opacity,
+                hardness=hardness,
+                smoothing=smoothing,
+            )
+        except PaintStrokeError:
+            return layer
         updated_png = encode_canvas_png(updated_image, fast=True)
         new_ref = f"assets/{uuid4()}.png"
         # Bagikan gambar hidup ke renderer supaya tidak perlu decode PNG lagi.
