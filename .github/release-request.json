@@ -1,5 +1,5 @@
 {
-  "release_tag": "v0.9.13",
-  "requested_at": "2026-07-23T21:30:00Z",
-  "reason": "Publish BatikCraft Studio 0.9.13: the fill (bucket) tool now works on the main canvas. Because brush strokes are now raster rather than objects, the old object-based fill had nothing to target. Fill on a raster canting layer now flood-fills the clicked enclosed area directly on the layer bitmap, stopping at the stroke boundaries, as a single undoable action."
+  "release_tag": "v0.9.14",
+  "requested_at": "2026-07-23T23:00:00Z",
+  "reason": "Publish BatikCraft Studio 0.9.14: lighter drawing and complete fills on the main canvas. Stroke masks are now built only over the stroke's bounding box instead of the full canvas, cutting stroke compositing from 28 ms to under 7 ms, verified pixel-identical. Bucket fill no longer leaves an unfilled ring along anti-aliased stroke edges: the fill mask is dilated and the colour is placed underneath the strokes, so soft edges blend over the fill with no gaps and no leaking."
 }

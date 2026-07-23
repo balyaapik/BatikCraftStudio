@@ -135,20 +135,40 @@ def apply_stroke_to_image(
     stamp_points = _resample_stroke(smoothed, max(0.75, diameter * 0.10))
     color_alpha = rgba[3] / 255
     stroke_opacity = opacity_value if erase else opacity_value * color_alpha
+
+    # Batasi kerja ke KOTAK goresan, bukan kanvas penuh. Mask seukuran kanvas
+    # 2048 memakan ~28 ms walau goresannya kecil; dengan kotak terbatas biaya
+    # mengikuti besar goresan. Margin >= diameter menjamin cap tidak terpotong,
+    # sehingga hasilnya identik piksel dengan mask kanvas penuh.
+    margin = diameter + 2
+    xs = [p[0] for p in stamp_points] or [0.0]
+    ys = [p[1] for p in stamp_points] or [0.0]
+    left = max(0, int(min(xs) - margin))
+    top = max(0, int(min(ys) - margin))
+    right = min(working.width, int(max(xs) + margin) + 1)
+    bottom = min(working.height, int(max(ys) + margin) + 1)
+    if right <= left or bottom <= top:
+        return working
+    region_size = (right - left, bottom - top)
+    shifted = [(px - left, py - top) for px, py in stamp_points]
     stroke_mask = _build_stroke_mask(
-        working.size,
-        stamp_points,
+        region_size,
+        shifted,
         diameter=diameter,
         opacity=stroke_opacity,
         hardness=hardness_value,
     )
+    box = (left, top, right, bottom)
+    region = working.crop(box)
     if erase:
         remaining = ImageOps.invert(stroke_mask)
-        working.putalpha(ImageChops.multiply(working.getchannel("A"), remaining))
+        region.putalpha(ImageChops.multiply(region.getchannel("A"), remaining))
+        working.paste(region, (left, top))
         return working
-    overlay = Image.new("RGBA", working.size, (*rgba[:3], 0))
+    overlay = Image.new("RGBA", region_size, (*rgba[:3], 0))
     overlay.putalpha(stroke_mask)
-    return Image.alpha_composite(working, overlay)
+    working.paste(Image.alpha_composite(region, overlay), (left, top))
+    return working
 
 
 def _resample_stroke(
