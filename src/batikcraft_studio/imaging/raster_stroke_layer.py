@@ -19,7 +19,10 @@ def blank_canvas_png(width: int, height: int) -> bytes:
     """PNG transparan seukuran kanvas — titik awal layer canting raster."""
 
     buffer = BytesIO()
-    Image.new("RGBA", (width, height), (0, 0, 0, 0)).save(buffer, format="PNG")
+    # compress_level rendah: saat menggambar yang penting cepat, bukan kecil.
+    Image.new("RGBA", (width, height), (0, 0, 0, 0)).save(
+        buffer, format="PNG", compress_level=1
+    )
     return buffer.getvalue()
 
 
@@ -56,7 +59,9 @@ def composite_stroke_onto_canvas(
     else:
         base.alpha_composite(stroke, dest=(left, top))
     buffer = BytesIO()
-    base.save(buffer, format="PNG", optimize=True)
+    # optimize=True menjalankan pass kompresi ekstra (~2x lebih lambat) yang
+    # tidak perlu saat menggambar — kompresi penuh cukup saat menyimpan berkas.
+    base.save(buffer, format="PNG", compress_level=1)
     return buffer.getvalue()
 
 

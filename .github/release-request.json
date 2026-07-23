@@ -1,5 +1,5 @@
 {
-  "release_tag": "v0.9.8",
-  "requested_at": "2026-07-23T13:00:00Z",
-  "reason": "Publish BatikCraft Studio 0.9.8: fixes brush strokes not appearing on the main canvas in 0.9.7. The new raster canting layer was missing the pixel_width/pixel_height properties and centre transform that the full-canvas layer renderer requires, so tile rendering failed silently and nothing showed. The layer now carries those properties and a centre transform, and existing broken layers self-heal on the next stroke."
+  "release_tag": "v0.9.9",
+  "requested_at": "2026-07-23T14:30:00Z",
+  "reason": "Publish BatikCraft Studio 0.9.9: faster brush strokes on the main canvas. Each stroke re-encoded the full-canvas layer PNG with optimize=True (~100-180 ms just to encode); switching to compress_level=1 during drawing roughly halves that, since full compression only matters when saving the file. The main canvas is still heavier than the standalone raster canvas due to its tile pipeline, but the per-stroke hitch is much smaller."
 }

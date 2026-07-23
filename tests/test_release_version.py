@@ -12,7 +12,7 @@ def test_application_and_package_versions_are_0_5_7() -> None:
     with (ROOT / "pyproject.toml").open("rb") as stream:
         project_version = str(tomllib.load(stream)["project"]["version"])
 
-    assert APP_VERSION == "0.9.8"
+    assert APP_VERSION == "0.9.9"
     assert project_version == APP_VERSION
 
 
