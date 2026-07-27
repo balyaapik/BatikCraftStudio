@@ -14,9 +14,9 @@ buram akibat perubahan ukuran.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass, field, replace
 from io import BytesIO
-from typing import Iterable
 from uuid import uuid4
 
 from PIL import Image
@@ -101,7 +101,7 @@ class RasterLayer:
 
     def resized_canvas(
         self, width: int, height: int, *, anchor: str = "nw"
-    ) -> "RasterLayer":
+    ) -> RasterLayer:
         """Kembalikan layer dengan kanvas berukuran baru, piksel dipertahankan.
 
         Ini gaya "Resize Canvas": isi lama tidak diregangkan. Memperbesar
@@ -144,7 +144,7 @@ class RasterLayer:
         layer_id: str | None = None,
         visible: bool = True,
         opacity: float = 1.0,
-    ) -> "RasterLayer":
+    ) -> RasterLayer:
         with Image.open(BytesIO(content)) as image:
             image.load()
             rgba = image.convert("RGBA")
@@ -164,7 +164,7 @@ class RasterLayer:
         name: str | None = None,
         visible: bool | None = None,
         opacity: float | None = None,
-    ) -> "RasterLayer":
+    ) -> RasterLayer:
         return replace(
             self,
             name=self.name if name is None else name,
@@ -201,8 +201,6 @@ def _anchor_offset(
         return 0, 0
     dx = new_w - old_w
     dy = new_h - old_h
-    horizontal = {"w": 0, "e": dx}.get(anchor[-1:], dx // 2)
-    vertical = {"n": 0, "s": dy}.get(anchor[:1], dy // 2)
     if anchor == "center":
         return dx // 2, dy // 2
     # Kombinasi seperti "ne", "sw" ditangani per-sumbu.

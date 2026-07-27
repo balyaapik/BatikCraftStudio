@@ -8,16 +8,15 @@ bisa dicoba tanpa mengganggu kanvas utama, sesuai rencana bertahap.
 from __future__ import annotations
 
 import tkinter as tk
+from collections.abc import Callable
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
-from typing import Callable
 
 from batikcraft_studio.imaging.canvas_presets import (
     CANVAS_PRESETS,
     DEFAULT_PRESET_KEY,
     clamp_dimension,
     estimate_document_megabytes,
-    preset_by_key,
 )
 from batikcraft_studio.imaging.raster_document import RasterDocument
 from batikcraft_studio.persistence.export_location import (
@@ -130,8 +129,8 @@ class RasterPaintWindow(tk.Toplevel):
         *,
         on_status: Callable[[str], None] | None = None,
         document: RasterDocument | None = None,
-        library_saver: "Callable[[RasterDocument], str] | None" = None,
-        nft_publisher: "Callable[[RasterDocument], str] | None" = None,
+        library_saver: Callable[[RasterDocument], str] | None = None,
+        nft_publisher: Callable[[RasterDocument], str] | None = None,
     ) -> None:
         super().__init__(master)
         self._library_saver = library_saver

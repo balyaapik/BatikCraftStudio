@@ -161,7 +161,7 @@ def _asset_digest(content: bytes | None) -> str:
     return digest
 
 
-_DECODED_ASSET_CACHE: "OrderedDict[int, tuple[bytes, list[Image.Image]]]" = OrderedDict()
+_DECODED_ASSET_CACHE: OrderedDict[int, tuple[bytes, list[Image.Image]]] = OrderedDict()
 _DECODED_ASSET_LIMIT_BYTES = 128 * 1024 * 1024
 _DECODED_ASSET_USED_BYTES = 0
 _MIN_MIP_EDGE = 64

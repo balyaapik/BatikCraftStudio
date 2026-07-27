@@ -73,13 +73,14 @@ def test_bbox_identik_termasuk_titik_luar_kanvas():
 
     import random
 
+    from PIL import ImageOps
+
     from batikcraft_studio.imaging.paint import (
         _build_stroke_mask,
         _resample_stroke,
         _validate_color,
         smooth_stroke_points,
     )
-    from PIL import ImageOps
 
     random.seed(3)
     for _ in range(8):

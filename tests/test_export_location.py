@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import os
-
 from batikcraft_studio.persistence.export_location import (
     is_cloud_synced_path,
     safe_default_export_dir,

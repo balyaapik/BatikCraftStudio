@@ -75,7 +75,8 @@ def apply_paint_stroke(
 
     _validate_canvas_size(width, height)
     diameter = _validate_brush_size(brush_size)
-    rgba = _validate_color(color)
+    # Validasi awal; nilai RGBA dihitung ulang di jalur render.
+    _validate_color(color)
     opacity_value = _validate_unit_interval(opacity, "Opacity", minimum_exclusive=True)
     hardness_value = _validate_unit_interval(hardness, "Hardness")
     smoothing_value = _validate_unit_interval(smoothing, "Smoothing")

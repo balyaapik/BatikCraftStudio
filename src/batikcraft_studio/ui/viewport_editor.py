@@ -44,8 +44,8 @@ from batikcraft_studio.imaging import ProjectRenderError, render_project_preview
 from batikcraft_studio.imaging.cached_renderer import CachedViewportRenderer
 from batikcraft_studio.imaging.tile_cache import (
     TILE_SIZE,
-    tile_project_size,
     tile_project_bounds,
+    tile_project_size,
     visible_tile_coords,
     zoom_scale_bucket,
 )

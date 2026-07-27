@@ -192,6 +192,25 @@ def _slugify(value: str) -> str:
     return slug[:60] or "motif"
 
 
+def normalize_auction_deadline(value: str, timezone_name: str = "") -> str:
+    """Ubah batas waktu lelang menjadi ISO-8601 beroffset sebelum dikirim.
+
+    Dipusatkan di sini supaya setiap jalur publish — paket, mint proyek, dan
+    gambar raster — mengirim waktu yang maksudnya tidak ambigu bagi server.
+    """
+    from batikcraft_studio.auction_time import (
+        AuctionTimeError,
+        TimezonePreference,
+        local_input_to_iso,
+    )
+
+    try:
+        chosen = timezone_name or TimezonePreference().load()
+        return local_input_to_iso(value, chosen)
+    except AuctionTimeError as exc:
+        raise BatikCraftWebError(str(exc)) from exc
+
+
 class BatikCraftWebClient:
     """Small urllib client for BatikCraftWeb's token-authenticated REST API."""
 
@@ -312,8 +331,9 @@ class BatikCraftWebClient:
                 ensure_ascii=False,
             ),
         }
-        if auction_ends_at.strip():
-            fields["auction_ends_at"] = auction_ends_at.strip()
+        deadline = normalize_auction_deadline(auction_ends_at)
+        if deadline:
+            fields["auction_ends_at"] = deadline
         item = self._request_multipart(
             "POST",
             "nfts/",
@@ -360,8 +380,9 @@ class BatikCraftWebClient:
                 ensure_ascii=False,
             ),
         }
-        if auction_ends_at.strip():
-            fields["auction_ends_at"] = auction_ends_at.strip()
+        deadline = normalize_auction_deadline(auction_ends_at)
+        if deadline:
+            fields["auction_ends_at"] = deadline
         item = self._request_multipart(
             "POST",
             "nfts/",
@@ -706,6 +727,7 @@ __all__ = [
     "BatikCraftWebError",
     "ListingFeeRequiredError",
     "format_rupiah",
+    "normalize_auction_deadline",
     "WebAccount",
     "WebSession",
     "WebSessionStore",

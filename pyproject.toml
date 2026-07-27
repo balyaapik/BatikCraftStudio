@@ -112,6 +112,8 @@ select = ["E", "F", "I", "UP", "B"]
 [tool.ruff.lint.per-file-ignores]
 "notebooks/*.ipynb" = ["E401", "E402", "E501", "F401", "I001"]
 "notebooks/kaggle_train_batik_style_any_object.ipynb" = ["E701", "E702", "B007"]
+# Encoder teks disiapkan pada sel setup Kaggle yang tidak dibaca ruff.
+"notebooks/kaggle_train_batikbrew_sdxl_style_lora.ipynb" = ["E702", "F821"]
 "src/batikcraft_studio/ai/batikbrew_generation.py" = ["E501", "F401", "I001"]
 "src/batikcraft_studio/ai/batikbrew_generation_modes.py" = ["E501"]
 "src/batikcraft_studio/ai/batikbrew_model_settings.py" = ["E501"]

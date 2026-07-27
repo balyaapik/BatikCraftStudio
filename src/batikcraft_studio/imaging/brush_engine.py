@@ -85,7 +85,7 @@ class BrushEngine:
         if not points:
             return
         self.stamp_point(layer, points[0][0], points[0][1])
-        for start, end in zip(points, points[1:]):
+        for start, end in zip(points, points[1:], strict=False):
             for px, py in _points_along(start, end, self._spacing):
                 self.stamp_point(layer, px, py)
 

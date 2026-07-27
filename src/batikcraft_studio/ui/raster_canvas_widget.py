@@ -12,22 +12,22 @@ Logika penempatan/koordinat dipisah ke fungsi murni ``view_to_project`` dan
 from __future__ import annotations
 
 import tkinter as tk
-from tkinter import colorchooser, simpledialog, ttk
-from typing import Callable
+from collections.abc import Callable
+from tkinter import colorchooser, ttk
 
 from PIL import Image, ImageTk
 
 from batikcraft_studio.imaging.brush_engine import BrushEngine, BrushSettings
 from batikcraft_studio.imaging.raster_document import RasterDocument
-from batikcraft_studio.imaging.raster_viewport import (
-    RasterViewportRenderer,
-    ViewportRequest,
-)
 from batikcraft_studio.imaging.raster_insert import (
     centered_position,
     commit_floating_to_layer,
     point_in_floating,
     prepare_floating_image,
+)
+from batikcraft_studio.imaging.raster_viewport import (
+    RasterViewportRenderer,
+    ViewportRequest,
 )
 from batikcraft_studio.imaging.undo_history import UndoStack
 
@@ -87,7 +87,7 @@ class RasterCanvasWidget(ttk.Frame):
         self._last_view_point: tuple[float, float] | None = None
         self._active_engine: BrushEngine | None = None
         self._undo = UndoStack()
-        self._stroke_before: "Image.Image | None" = None
+        self._stroke_before: Image.Image | None = None
         # Gambar mengambang: bisa digeser dulu sebelum dileburkan ke layer.
         self._floating: Image.Image | None = None
         self._floating_pos: tuple[int, int] = (0, 0)
@@ -472,8 +472,12 @@ class RasterCanvasWidget(ttk.Frame):
             return
         self._float_bar = ttk.Frame(self)
         ttk.Label(self._float_bar, text="Gambar mengambang:").pack(side="left", padx=4)
-        ttk.Button(self._float_bar, text="Terapkan (Enter)", command=self.commit_floating).pack(side="left")
-        ttk.Button(self._float_bar, text="Batal (Esc)", command=self.cancel_floating).pack(side="left", padx=4)
+        ttk.Button(
+            self._float_bar, text="Terapkan (Enter)", command=self.commit_floating
+        ).pack(side="left")
+        ttk.Button(
+            self._float_bar, text="Batal (Esc)", command=self.cancel_floating
+        ).pack(side="left", padx=4)
         self._float_bar.place(relx=0.5, rely=0.02, anchor="n")
         self.bind_all("<Return>", lambda _e: self.commit_floating())
         self.bind_all("<Escape>", lambda _e: self.cancel_floating())
@@ -566,7 +570,9 @@ class _LayerPanel(ttk.Frame):
         ttk.Button(buttons, text="+", width=3, command=self._add).pack(side="left")
         ttk.Button(buttons, text="−", width=3, command=self._remove).pack(side="left", padx=2)
         ttk.Button(buttons, text="▲", width=3, command=lambda: self._move(1)).pack(side="left")
-        ttk.Button(buttons, text="▼", width=3, command=lambda: self._move(-1)).pack(side="left", padx=2)
+        ttk.Button(
+            buttons, text="▼", width=3, command=lambda: self._move(-1)
+        ).pack(side="left", padx=2)
         self.refresh()
 
     def refresh(self) -> None:

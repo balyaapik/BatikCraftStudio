@@ -12,8 +12,8 @@ import os
 import subprocess
 import sys
 import tempfile
+from collections.abc import Mapping
 from pathlib import Path
-from typing import Mapping
 
 from PIL import Image
 

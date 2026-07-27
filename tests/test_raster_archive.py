@@ -45,7 +45,7 @@ def test_round_trip_piksel_identik(tmp_path):
     doc = _doc()
     loaded = load_raster_document(save_raster_document(tmp_path / "k", doc))
 
-    for asli, dimuat in zip(doc.layers, loaded.layers):
+    for asli, dimuat in zip(doc.layers, loaded.layers, strict=False):
         assert ImageChops.difference(asli.image, dimuat.image).getbbox() is None
 
 

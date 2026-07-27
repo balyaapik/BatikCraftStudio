@@ -24,7 +24,7 @@ from collections import OrderedDict
 from PIL import Image
 
 _LOCK = threading.RLock()
-_STORE: "OrderedDict[str, Image.Image]" = OrderedDict()
+_STORE: OrderedDict[str, Image.Image] = OrderedDict()
 _MAX_ENTRIES = 24
 
 

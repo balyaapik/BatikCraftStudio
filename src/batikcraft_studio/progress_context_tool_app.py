@@ -276,7 +276,10 @@ class ContextToolApplication(_BaseApplication):
                     write_bytes_atomic,
                 )
 
-                target = write_bytes_atomic(target, content)
+                # Jangan menugasi ulang `target`: itu membuatnya menjadi variabel
+                # lokal worker() sehingga pembacaan di atas melempar
+                # UnboundLocalError sebelum file sempat ditulis.
+                written = write_bytes_atomic(target, content)
                 reporter.update("Tahap 3/3 — Memverifikasi hasil", 3, 3)
             except (OSError, ProjectRenderError, ValueError) as exc:
                 self.root.after(
@@ -284,7 +287,7 @@ class ContextToolApplication(_BaseApplication):
                     lambda error=exc: self._finish_export_error(progress, error),
                 )
                 return
-            self.root.after(0, lambda: self._finish_image_export(progress, target))
+            self.root.after(0, lambda: self._finish_image_export(progress, written))
 
         threading.Thread(
             target=worker,

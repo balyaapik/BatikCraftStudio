@@ -8,6 +8,7 @@ from collections.abc import Mapping
 from pathlib import Path
 from tkinter import messagebox, ttk
 
+from batikcraft_studio.auction_time import system_timezone_name
 from batikcraft_studio.domain import Project
 from batikcraft_studio.imaging import ProjectRenderError
 from batikcraft_studio.persistence import BatikNFTError, NFTExportMetadata, export_batikcraft_nft
@@ -22,7 +23,17 @@ from batikcraft_studio.web_bridge import (
     BatikCraftWebError,
     ListingFeeRequiredError,
     WebSession,
+    normalize_auction_deadline,
 )
+
+
+def _preferred_timezone() -> str:
+    from batikcraft_studio.auction_time import TimezonePreference
+
+    try:
+        return TimezonePreference().load()
+    except OSError:
+        return system_timezone_name()
 
 
 class MintCurrentProjectDialog(tk.Toplevel):
@@ -45,6 +56,9 @@ class MintCurrentProjectDialog(tk.Toplevel):
 
         self.price_value = tk.StringVar(master=self, value="100000")
         self.ends_value = tk.StringVar(master=self)
+        self.timezone_value = tk.StringVar(
+            master=self, value=_preferred_timezone()
+        )
         self.motifs_value = tk.StringVar(
             master=self,
             value=", ".join(discover_project_motifs(project)),
@@ -95,10 +109,13 @@ class MintCurrentProjectDialog(tk.Toplevel):
         self._entry_row(body, 5, "Warna dominan", self.colors_value)
         self._entry_row(body, 6, "Lisensi", self.license_value)
         self._entry_row(body, 7, "Harga awal", self.price_value)
-        self._entry_row(body, 8, "Auction berakhir (ISO, opsional)", self.ends_value)
+        self._entry_row(
+            body, 8, "Auction berakhir (mis. 2026-08-01 17:00)", self.ends_value
+        )
+        self._timezone_row(body, 9, self.timezone_value)
 
         ttk.Label(body, text="Filosofi / deskripsi").grid(
-            row=9,
+            row=10,
             column=0,
             sticky="nw",
             pady=5,
@@ -144,6 +161,32 @@ class MintCurrentProjectDialog(tk.Toplevel):
         ttk.Label(parent, text=value).grid(row=row, column=1, sticky="w", pady=5)
 
     @staticmethod
+    def _timezone_row(parent: ttk.Frame, row: int, variable: tk.StringVar) -> None:
+        """Pemilih zona waktu untuk menafsirkan batas waktu lelang yang diketik."""
+        from batikcraft_studio.auction_time import available_timezones_sorted
+
+        ttk.Label(parent, text="Zona waktu batas lelang").grid(
+            row=row, column=0, sticky="w", pady=5
+        )
+        combo = ttk.Combobox(
+            parent,
+            textvariable=variable,
+            values=available_timezones_sorted(),
+            state="readonly",
+        )
+        combo.grid(row=row, column=1, sticky="ew", padx=(10, 0), pady=5)
+
+    def _remember_timezone(self) -> None:
+        """Simpan pilihan agar tidak perlu diatur ulang tiap kali publish."""
+        from batikcraft_studio.auction_time import AuctionTimeError, TimezonePreference
+
+        try:
+            TimezonePreference().save(self.timezone_value.get())
+        except (AuctionTimeError, OSError):
+            # Kegagalan menyimpan preferensi tidak boleh membatalkan publish.
+            pass
+
+    @staticmethod
     def _entry_row(
         parent: ttk.Frame,
         row: int,
@@ -186,6 +229,12 @@ class MintCurrentProjectDialog(tk.Toplevel):
         self.status_value.set("Membuat package ID, checksum, preview, dan listing NFT…")
         self.update_idletasks()
         try:
+            # Ubah ke ISO beroffset lebih dulu: masukan yang tidak terbaca harus
+            # gagal sebelum proyek dirender, bukan setelahnya.
+            deadline = normalize_auction_deadline(
+                self.ends_value.get(), self.timezone_value.get()
+            )
+            self._remember_timezone()
             metadata = NFTExportMetadata(
                 creator_user_id=str(self.session.account.user_id),
                 philosophy=philosophy,
@@ -205,7 +254,7 @@ class MintCurrentProjectDialog(tk.Toplevel):
                 item = self.client.publish_nft_package(
                     package,
                     starting_price=self.price_value.get(),
-                    auction_ends_at=self.ends_value.get(),
+                    auction_ends_at=deadline,
                 )
         except ListingFeeRequiredError as exc:
             self.mint_button.configure(state="normal")

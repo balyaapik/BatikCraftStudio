@@ -13,7 +13,12 @@ from PIL import Image, ImageTk
 from batikcraft_studio.config import APP_VERSION
 from batikcraft_studio.domain import LayerObject, Project
 from batikcraft_studio.imaging.raster import normalize_raster_image
-from batikcraft_studio.web_bridge import BatikCraftWebClient, BatikCraftWebError, WebSession
+from batikcraft_studio.web_bridge import (
+    BatikCraftWebClient,
+    BatikCraftWebError,
+    WebSession,
+    normalize_auction_deadline,
+)
 
 
 class PublishLibraryAssetNFTDialog(tk.Toplevel):
@@ -240,8 +245,9 @@ def publish_library_asset_nft(
             ensure_ascii=False,
         ),
     }
-    if auction_ends_at.strip():
-        fields["auction_ends_at"] = auction_ends_at.strip()
+    deadline = normalize_auction_deadline(auction_ends_at)
+    if deadline:
+        fields["auction_ends_at"] = deadline
     created = client._request_multipart(
         "POST",
         "nfts/",

@@ -158,3 +158,73 @@ def test_format_rupiah_uses_indonesian_separator() -> None:
 
     assert format_rupiah("200000.00") == "200.000"
     assert format_rupiah("11100.00") == "11.100"
+
+
+# ---------------------------------------------------------------------------
+# Zona waktu batas lelang
+# ---------------------------------------------------------------------------
+
+
+def test_local_input_gets_explicit_offset() -> None:
+    from batikcraft_studio.auction_time import local_input_to_iso
+
+    assert local_input_to_iso("2026-08-01 17:00", "Asia/Jakarta") == (
+        "2026-08-01T17:00:00+07:00"
+    )
+    # Makassar berbeda satu jam dari Jakarta; offset harus ikut berubah.
+    assert local_input_to_iso("2026-08-01 17:00", "Asia/Makassar") == (
+        "2026-08-01T17:00:00+08:00"
+    )
+
+
+def test_input_that_already_has_offset_is_left_alone() -> None:
+    from batikcraft_studio.auction_time import local_input_to_iso
+
+    value = "2026-08-01T17:00:00+09:00"
+    assert local_input_to_iso(value, "Asia/Jakarta") == value
+
+
+def test_blank_deadline_stays_blank() -> None:
+    from batikcraft_studio.auction_time import local_input_to_iso
+
+    assert local_input_to_iso("", "Asia/Jakarta") == ""
+    assert local_input_to_iso("   ", "Asia/Jakarta") == ""
+
+
+def test_unparseable_deadline_is_rejected() -> None:
+    from batikcraft_studio.auction_time import AuctionTimeError, local_input_to_iso
+
+    with pytest.raises(AuctionTimeError):
+        local_input_to_iso("besok sore", "Asia/Jakarta")
+
+
+def test_unknown_timezone_is_rejected() -> None:
+    from batikcraft_studio.auction_time import AuctionTimeError, local_input_to_iso
+
+    with pytest.raises(AuctionTimeError):
+        local_input_to_iso("2026-08-01 17:00", "Mars/Olympus")
+
+
+def test_timezone_preference_round_trip(tmp_path) -> None:
+    from batikcraft_studio.auction_time import TimezonePreference
+
+    store = TimezonePreference(tmp_path / "config.json")
+    store.save("Asia/Makassar")
+
+    assert TimezonePreference(tmp_path / "config.json").load() == "Asia/Makassar"
+
+
+def test_timezone_preference_ignores_corrupt_config(tmp_path) -> None:
+    from batikcraft_studio.auction_time import TimezonePreference, is_valid_timezone
+
+    path = tmp_path / "config.json"
+    path.write_text("{ bukan json", encoding="utf-8")
+
+    assert is_valid_timezone(TimezonePreference(path).load())
+
+
+def test_normalize_auction_deadline_wraps_errors_as_web_error() -> None:
+    from batikcraft_studio.web_bridge import normalize_auction_deadline
+
+    with pytest.raises(BatikCraftWebError):
+        normalize_auction_deadline("besok sore", "Asia/Jakarta")

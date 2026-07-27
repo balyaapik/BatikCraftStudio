@@ -8,7 +8,6 @@ bukan dari objek per objek.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Iterable
 
 from PIL import Image
 

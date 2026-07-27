@@ -11,9 +11,9 @@ tanpa Tk.
 from __future__ import annotations
 
 import tkinter as tk
+from collections.abc import Sequence
 from datetime import datetime
 from tkinter import ttk
-from typing import Sequence
 
 from PIL import Image, ImageTk
 
@@ -106,7 +106,7 @@ class LibrarySaveDialog(tk.Toplevel):
             return
         pack = self._libraries[selection[0]]
         name = self._name_var.get().strip() or auto_asset_name()
-        self.result = (getattr(pack, "pack_id"), name)
+        self.result = (pack.pack_id, name)
         self.destroy()
 
     def _cancel(self) -> None:

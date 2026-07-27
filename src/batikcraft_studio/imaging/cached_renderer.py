@@ -27,8 +27,8 @@ from __future__ import annotations
 
 import math
 from collections import OrderedDict
-from dataclasses import dataclass
 from collections.abc import Mapping
+from dataclasses import dataclass
 from typing import Any
 
 from PIL import Image, ImageChops, ImageColor, ImageEnhance
@@ -54,7 +54,6 @@ from batikcraft_studio.imaging.renderer import (
 from batikcraft_studio.imaging.shape import ShapeError, render_shape_image
 from batikcraft_studio.imaging.tile_cache import (
     TILE_SIZE,
-    tile_project_size,
     ObjectRenderCache,
     ObjectRenderCacheKey,
     TileCache,
@@ -65,10 +64,10 @@ from batikcraft_studio.imaging.tile_cache import (
     decoded_asset_cache_stats,
     display_source,
     tile_project_bounds,
+    tile_project_size,
     zoom_scale_bucket,
 )
 from batikcraft_studio.imaging.viewport_renderer import bounds_intersect
-
 
 _MAX_OBJECT_RENDER_PX = 4096
 _MAX_OBJECT_RENDER_PIXELS = 16_000_000
@@ -113,7 +112,7 @@ class _TilePlan:
     """Isi satu tile: tanda tangan, urutan gambar, dan kelayakan inkremental."""
 
     parts: tuple[Any, ...]
-    plan: list[tuple[Layer, "_LayerSpatialIndex", int]]
+    plan: list[tuple[Layer, _LayerSpatialIndex, int]]
     #: ``drawn_at[i]`` = jumlah objek yang tergambar setelah ``parts[:i]``.
     #: Ini yang memetakan panjang awalan yang cocok ke titik lanjut menggambar.
     drawn_at: tuple[int, ...]
@@ -305,7 +304,7 @@ class CachedViewportRenderer:
         # Tanpa ini, bitmap kanvas penuh di-resize ulang untuk SETIAP tile
         # (~90 ms x 24 tile = >2 detik per render) - sumber berat saat zoom
         # dan jeda munculnya goresan.
-        self._prepared_layers: "OrderedDict[tuple, Image.Image]" = OrderedDict()
+        self._prepared_layers: OrderedDict[tuple, Image.Image] = OrderedDict()
         self._prepared_bytes = 0
 
     # ------------------------------------------------------------------
@@ -400,7 +399,7 @@ class CachedViewportRenderer:
         tile_y: int,
         tile_size: int,
         project_revision: int,
-    ) -> "_TilePlan":
+    ) -> _TilePlan:
         """Rencana isi tile: (tanda tangan, daftar gambar, boleh-inkremental).
 
         Selain hash isi, dikembalikan juga urutan objek yang akan digambar dan
@@ -411,7 +410,7 @@ class CachedViewportRenderer:
 
         proj_bounds = tile_project_bounds(tile_x, tile_y, tile_size)
         parts: list[Any] = [project.canvas.background_color]
-        plan: list[tuple[Layer, "_LayerSpatialIndex", int]] = []
+        plan: list[tuple[Layer, _LayerSpatialIndex, int]] = []
         # drawn_at[i] = berapa objek sudah tergambar setelah parts[:i].
         drawn_at: list[int] = [0]
         incremental_ok = True
@@ -677,7 +676,7 @@ class CachedViewportRenderer:
     def _composite_objects(
         self,
         surface: Image.Image,
-        entries: list[tuple[Layer, "_LayerSpatialIndex", int]],
+        entries: list[tuple[Layer, _LayerSpatialIndex, int]],
         assets: Mapping[str, bytes],
         *,
         zoom_scale: float,
@@ -712,7 +711,7 @@ class CachedViewportRenderer:
         item: LayerObject,
         assets: Mapping[str, bytes],
         zoom_scale: float,
-        index: "_LayerSpatialIndex | None" = None,
+        index: _LayerSpatialIndex | None = None,
         position: int | None = None,
         total: int = 0,
     ) -> Image.Image:
