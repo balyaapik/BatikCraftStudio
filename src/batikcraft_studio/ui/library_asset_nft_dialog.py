@@ -13,6 +13,7 @@ from PIL import Image, ImageTk
 from batikcraft_studio.config import APP_VERSION
 from batikcraft_studio.domain import LayerObject, Project
 from batikcraft_studio.imaging.raster import normalize_raster_image
+from batikcraft_studio.nft_sealing import SealingError, seal_image_as_nft_package
 from batikcraft_studio.web_bridge import (
     BatikCraftWebClient,
     BatikCraftWebError,
@@ -248,16 +249,32 @@ def publish_library_asset_nft(
     deadline = normalize_auction_deadline(auction_ends_at)
     if deadline:
         fields["auction_ends_at"] = deadline
+    # Server hanya menerima gambar bersama paket bersegel. Proyek asal ikut
+    # dikemas supaya jejak asal aset tetap utuh di dalam paket.
+    try:
+        sealed = seal_image_as_nft_package(
+            raster.content,
+            title=fields["title"],
+            creator_name=project.metadata.creator,
+            creator_user_id=str(client.me().user_id),
+            description=description.strip(),
+            license_name=license_name.strip() or "Personal display license",
+            project=project,
+        )
+    except SealingError as exc:
+        raise BatikCraftWebError(str(exc)) from exc
+
     created = client._request_multipart(
         "POST",
         "nfts/",
         fields=fields,
         files={
-            "image": (
-                f"{asset.object_id}.png",
-                raster.content,
-                "image/png",
-            )
+            "image": ("preview.jpg", sealed.preview_jpeg, "image/jpeg"),
+            "package_file": (
+                sealed.package_filename,
+                sealed.package_bytes,
+                "application/zip",
+            ),
         },
     )
     nft_id = int(created["id"])

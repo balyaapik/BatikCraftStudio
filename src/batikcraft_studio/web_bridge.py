@@ -334,6 +334,9 @@ class BatikCraftWebClient:
         deadline = normalize_auction_deadline(auction_ends_at)
         if deadline:
             fields["auction_ends_at"] = deadline
+        # Kirim paket aslinya apa adanya: server memverifikasi segelnya lalu
+        # mencocokkan sidik jari gambar dengan preview.jpg di dalam paket.
+        package_bytes = Path(package_path).read_bytes()
         item = self._request_multipart(
             "POST",
             "nfts/",
@@ -343,7 +346,12 @@ class BatikCraftWebClient:
                     f"{bundle.package_id}.jpg",
                     bundle.preview_jpeg,
                     "image/jpeg",
-                )
+                ),
+                "package_file": (
+                    f"{bundle.package_id}.batikcraftnft",
+                    package_bytes,
+                    "application/zip",
+                ),
             },
         )
         nft_id = int(item["id"])
@@ -383,11 +391,35 @@ class BatikCraftWebClient:
         deadline = normalize_auction_deadline(auction_ends_at)
         if deadline:
             fields["auction_ends_at"] = deadline
+
+        # Server hanya menerima gambar yang datang bersama paket bersegel, jadi
+        # dokumen raster pun dibungkus memakai pengekspor yang sama.
+        from batikcraft_studio.nft_sealing import SealingError, seal_image_as_nft_package
+
+        account = self.me()
+        try:
+            sealed = seal_image_as_nft_package(
+                image_png,
+                title=clean_title,
+                creator_name=account.public_name,
+                creator_user_id=str(account.user_id),
+                description=str(description or ""),
+            )
+        except SealingError as exc:
+            raise BatikCraftWebError(str(exc)) from exc
+
         item = self._request_multipart(
             "POST",
             "nfts/",
             fields=fields,
-            files={"image": (f"{_slugify(clean_title)}.png", image_png, "image/png")},
+            files={
+                "image": ("preview.jpg", sealed.preview_jpeg, "image/jpeg"),
+                "package_file": (
+                    sealed.package_filename,
+                    sealed.package_bytes,
+                    "application/zip",
+                ),
+            },
         )
         nft_id = int(item["id"])
         return self._request_json("POST", f"nfts/{nft_id}/publish/", payload={})
