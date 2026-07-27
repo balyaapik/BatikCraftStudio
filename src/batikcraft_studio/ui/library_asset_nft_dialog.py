@@ -249,11 +249,9 @@ def publish_library_asset_nft(
     deadline = normalize_auction_deadline(auction_ends_at)
     if deadline:
         fields["auction_ends_at"] = deadline
-    # Server hanya menerima gambar bersama paket bersegel. Proyek asal ikut
-    # dikemas supaya jejak asal aset tetap utuh di dalam paket.
-    # Proyek asli ikut dikemas bila tersedia, supaya jejak asal aset tetap utuh.
-    # Pemanggil yang hanya menyediakan objek ringkas tetap dilayani dengan
-    # proyek pembungkus minimal.
+    # Server hanya menerima gambar bersama paket bersegel. Proyek asli ikut
+    # dikemas bila tersedia supaya jejak asal aset tetap utuh; pemanggil yang
+    # hanya menyediakan objek ringkas dilayani dengan proyek pembungkus minimal.
     origin_project = project if isinstance(project, Project) else None
     creator_name = getattr(
         getattr(project, "metadata", None), "creator", ""

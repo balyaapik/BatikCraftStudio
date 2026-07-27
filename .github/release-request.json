@@ -1,5 +1,5 @@
 {
-  "release_tag": "v0.9.15",
-  "requested_at": "2026-07-24T01:00:00Z",
-  "reason": "Publish BatikCraft Studio 0.9.15: fixes heavy flickering zoom and delayed stroke appearance on the main canvas. The raster canting layer bitmap was being resized at full canvas size once per visible tile (about 90 ms x 24 tiles, over 2 seconds per full render) on every zoom change and every stroke. Prepared layer images are now cached per zoom level so the resize happens once, cutting a full 24-tile render from about 1.9 s to 0.1 s. Canting tile signatures now key on the layer asset instead of the global project revision, so unrelated edits no longer invalidate canting tiles and undo hits the tile cache instantly."
+  "release_tag": "v0.9.16",
+  "requested_at": "2026-07-27T12:30:00Z",
+  "reason": "Publish BatikCraft Studio 0.9.16. Fixes a crash that made JPEG export fail every time: the export worker reassigned the target path, turning it into a local variable so the earlier read raised UnboundLocalError, which the surrounding except clause did not catch, leaving the progress dialog hanging forever. Restores a green CI pipeline, which had been failing at the lint step since before 0.9.15 and therefore skipping the test suite entirely. Adds a timezone setting for auction deadlines so local times typed by creators are sent to BatikCraftWeb with an explicit UTC offset instead of being guessed by the server. Wraps every NFT publish path in a sealed .batikcraftnft package so the marketplace can verify that an artwork image really comes from a Studio project."
 }
