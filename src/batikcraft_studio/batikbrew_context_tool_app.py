@@ -12,6 +12,7 @@ from batikcraft_studio.ai.local_lora_training import default_training_root
 from batikcraft_studio.web_bridge import (
     BatikCraftWebClient,
     BatikCraftWebError,
+    ListingFeeRequiredError,
     WebSession,
 )
 
@@ -314,6 +315,11 @@ class ContextToolApplication(_ProgressApplication):
                 description=info["description"],
                 starting_price=info["price"],
             )
+        except ListingFeeRequiredError as exc:
+            from .ui.listing_fee_prompt import handle_listing_fee_required
+
+            handle_listing_fee_required(self.root, exc)
+            return ""
         except (BatikCraftWebError, ValueError) as exc:
             messagebox.showerror("Gagal publish", str(exc), parent=self.root)
             return ""

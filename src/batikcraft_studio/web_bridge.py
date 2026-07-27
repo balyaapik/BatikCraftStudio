@@ -11,6 +11,7 @@ import urllib.request
 import uuid
 import zipfile
 from dataclasses import dataclass
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -19,6 +20,51 @@ from batikcraft_studio.persistence.nft_package import load_batikcraft_nft
 
 _DEFAULT_WEB_URL = "http://127.0.0.1:8000"
 _CONFIG_SCHEMA = 1
+
+
+class ListingFeeRequiredError(RuntimeError):
+    """Publish ditolak karena fee bidding creator belum lunas.
+
+    Fee dihitung dari persentase harga terendah yang dicantumkan creator dan
+    ditambah PPN. Fee tidak dikembalikan walaupun karya tidak terjual, jadi UI
+    wajib menampilkan rinciannya sebelum creator melanjutkan pembayaran.
+    """
+
+    def __init__(self, detail: str, fee: Mapping[str, Any] | None = None) -> None:
+        super().__init__(detail)
+        self.detail = detail
+        self.fee: dict[str, Any] = dict(fee or {})
+
+    @property
+    def checkout_url(self) -> str:
+        return str(self.fee.get("checkout_url", "") or "")
+
+    @property
+    def total_amount(self) -> str:
+        return str(self.fee.get("total_amount", "") or "")
+
+    def summary(self) -> str:
+        """Ringkasan siap tampil untuk dialog Studio."""
+        if not self.fee:
+            return self.detail
+        return (
+            f"{self.detail}\n\n"
+            f"Harga terendah: Rp{format_rupiah(self.fee.get('base_amount'))}\n"
+            f"Fee bidding ({self.fee.get('fee_percent', '-')}%): "
+            f"Rp{format_rupiah(self.fee.get('fee_amount'))}\n"
+            f"PPN ({self.fee.get('vat_percent', '-')}%): "
+            f"Rp{format_rupiah(self.fee.get('vat_amount'))}\n"
+            f"Total dibayar: Rp{format_rupiah(self.fee.get('total_amount'))}\n\n"
+            "Fee ini tidak dikembalikan, baik karya terjual maupun tidak."
+        )
+
+
+def format_rupiah(value: Any) -> str:
+    """Format nominal rupiah dengan pemisah ribuan gaya Indonesia."""
+    try:
+        return f"{Decimal(str(value)):,.0f}".replace(",", ".")
+    except (InvalidOperation, TypeError, ValueError):
+        return str(value)
 
 
 class BatikCraftWebError(RuntimeError):
@@ -325,6 +371,22 @@ class BatikCraftWebClient:
         nft_id = int(item["id"])
         return self._request_json("POST", f"nfts/{nft_id}/publish/", payload={})
 
+    def listing_fee(self, nft_id: int) -> dict[str, Any]:
+        """Rincian fee bidding untuk sebuah NFT.
+
+        Mengembalikan estimasi bila tagihan belum diterbitkan, sehingga creator
+        dapat melihat biaya sebelum memutuskan untuk publish.
+        """
+        return self._request_json("GET", f"nfts/{int(nft_id)}/listing-fee/")
+
+    def issue_listing_fee(self, nft_id: int) -> dict[str, Any]:
+        """Terbitkan tagihan fee bidding resmi untuk sebuah NFT."""
+        return self._request_json(
+            "POST",
+            f"nfts/{int(nft_id)}/listing-fee/",
+            payload={},
+        )
+
     def list_models(self) -> list[dict[str, Any]]:
         return _result_list(self._request_json("GET", "models/"))
 
@@ -513,6 +575,15 @@ class BatikCraftWebClient:
             with urllib.request.urlopen(request, timeout=self.timeout) as response:
                 return response.read(), dict(response.headers.items())
         except urllib.error.HTTPError as exc:
+            if exc.code == 402:
+                payload = _http_error_payload(exc)
+                raise ListingFeeRequiredError(
+                    str(
+                        payload.get("detail")
+                        or "Fee bidding harus dilunasi sebelum NFT tayang."
+                    ),
+                    payload.get("listing_fee"),
+                ) from exc
             detail = _http_error_detail(exc)
             if exc.code == 401:
                 detail = "Login tidak valid atau sesi sudah berakhir."
@@ -601,6 +672,15 @@ def _encode_multipart(
     return b"".join(chunks), f"multipart/form-data; boundary={boundary}"
 
 
+def _http_error_payload(exc: urllib.error.HTTPError) -> dict[str, Any]:
+    """Baca body error sebagai JSON. Body hanya dapat dibaca satu kali."""
+    try:
+        payload = json.loads(exc.read().decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
 def _http_error_detail(exc: urllib.error.HTTPError) -> str:
     try:
         payload = json.loads(exc.read().decode("utf-8"))
@@ -624,6 +704,8 @@ def _filename_from_disposition(value: str) -> str:
 __all__ = [
     "BatikCraftWebClient",
     "BatikCraftWebError",
+    "ListingFeeRequiredError",
+    "format_rupiah",
     "WebAccount",
     "WebSession",
     "WebSessionStore",

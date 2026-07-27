@@ -16,7 +16,13 @@ from batikcraft_studio.project_export import (
     discover_project_motifs,
     render_project_jpeg,
 )
-from batikcraft_studio.web_bridge import BatikCraftWebClient, BatikCraftWebError, WebSession
+from batikcraft_studio.ui.listing_fee_prompt import handle_listing_fee_required
+from batikcraft_studio.web_bridge import (
+    BatikCraftWebClient,
+    BatikCraftWebError,
+    ListingFeeRequiredError,
+    WebSession,
+)
 
 
 class MintCurrentProjectDialog(tk.Toplevel):
@@ -201,6 +207,12 @@ class MintCurrentProjectDialog(tk.Toplevel):
                     starting_price=self.price_value.get(),
                     auction_ends_at=self.ends_value.get(),
                 )
+        except ListingFeeRequiredError as exc:
+            self.mint_button.configure(state="normal")
+            self.configure(cursor="")
+            self.status_value.set(exc.detail)
+            handle_listing_fee_required(self, exc)
+            return
         except (
             BatikNFTError,
             BatikCraftWebError,

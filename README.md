@@ -20,6 +20,11 @@ Aplikasi desktop menangani proses penciptaan motif:
 
 Bidding, transaksi, dan pengelolaan lisensi dilakukan di website BatikCraft.
 
+Sebelum karya tayang di market, creator membayar fee bidding di web: persentase
+dari harga terendah yang dicantumkan, ditambah PPN 11%, dan tidak dikembalikan
+walaupun karya tidak terjual. Studio menampilkan rinciannya dan membuka halaman
+pembayaran ketika publish ditolak. Lihat [`docs/WEB_LISTING_FEE.md`](docs/WEB_LISTING_FEE.md).
+
 ## Layout Editor
 
 Editor utama hanya memiliki tiga area permanen:
