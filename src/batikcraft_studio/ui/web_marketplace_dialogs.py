@@ -8,9 +8,11 @@ from pathlib import Path
 from tkinter import filedialog, messagebox, simpledialog, ttk
 
 from batikcraft_studio.ai.model_pack import OfflineModelLibrary
+from batikcraft_studio.ui.listing_fee_prompt import handle_listing_fee_required
 from batikcraft_studio.web_bridge import (
     BatikCraftWebClient,
     BatikCraftWebError,
+    ListingFeeRequiredError,
     WebSession,
 )
 
@@ -580,6 +582,9 @@ class PublishNFTDialog(tk.Toplevel):
                 starting_price=self.price_value.get(),
                 auction_ends_at=self.ends_value.get(),
             )
+        except ListingFeeRequiredError as exc:
+            handle_listing_fee_required(self, exc)
+            return
         except (BatikCraftWebError, OSError, ValueError) as exc:
             messagebox.showerror("Publish NFT gagal", str(exc), parent=self)
             return
