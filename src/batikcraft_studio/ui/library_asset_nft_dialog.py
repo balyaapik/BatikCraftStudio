@@ -251,15 +251,22 @@ def publish_library_asset_nft(
         fields["auction_ends_at"] = deadline
     # Server hanya menerima gambar bersama paket bersegel. Proyek asal ikut
     # dikemas supaya jejak asal aset tetap utuh di dalam paket.
+    # Proyek asli ikut dikemas bila tersedia, supaya jejak asal aset tetap utuh.
+    # Pemanggil yang hanya menyediakan objek ringkas tetap dilayani dengan
+    # proyek pembungkus minimal.
+    origin_project = project if isinstance(project, Project) else None
+    creator_name = getattr(
+        getattr(project, "metadata", None), "creator", ""
+    ) or "BatikCraft Creator"
     try:
         sealed = seal_image_as_nft_package(
             raster.content,
             title=fields["title"],
-            creator_name=project.metadata.creator,
+            creator_name=creator_name,
             creator_user_id=str(client.me().user_id),
             description=description.strip(),
             license_name=license_name.strip() or "Personal display license",
-            project=project,
+            project=origin_project,
         )
     except SealingError as exc:
         raise BatikCraftWebError(str(exc)) from exc

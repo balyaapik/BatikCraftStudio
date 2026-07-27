@@ -85,9 +85,22 @@ def test_library_asset_nft_uses_existing_nft_api_with_asset_metadata() -> None:
             self.multipart = (method, path, fields, files)
             return {"id": 17}
 
-        def _request_json(self, method, path, *, payload):
+        def _request_json(self, method, path, *, payload=None, **kwargs):
+            if path == "me/":
+                return {
+                    "id": 7,
+                    "username": "creator",
+                    "public_name": "Creator Uji",
+                    "email": "creator@contoh.test",
+                    "role": "creator",
+                }
             self.publish = (method, path, payload)
             return {"id": 17, "title": "Asset NFT", "status": "listed"}
+
+        def me(self):
+            from batikcraft_studio.web_bridge import WebAccount
+
+            return WebAccount.from_mapping(self._request_json("GET", "me/"))
 
     client = FakeClient()
     project = SimpleNamespace(project_id="project-001")
@@ -115,7 +128,11 @@ def test_library_asset_nft_uses_existing_nft_api_with_asset_metadata() -> None:
     assert metadata["source_type"] == "library_asset"
     assert metadata["asset_category"] == "ornamen"
     assert metadata["project_id"] == "project-001"
-    assert files["image"][2] == "image/png"
+    # Gambar kini dikirim sebagai preview JPEG bersama paket bersegel, karena
+    # server menolak gambar yang tidak dapat ditelusuri ke paket Studio.
+    assert files["image"][0] == "preview.jpg"
+    assert files["image"][2] == "image/jpeg"
+    assert files["package_file"][0].endswith(".batikcraftnft")
     assert client.publish == ("POST", "nfts/17/publish/", {})
 
 
