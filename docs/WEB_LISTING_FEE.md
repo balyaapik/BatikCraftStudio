@@ -4,7 +4,7 @@ How BatikCraft Studio adapts to the BatikCraftWeb payment flow.
 
 ## Flow Summary
 
-1. The creator signs in from the Studio and uploads a `.batikcraft` file to the web.
+1. The creator signs in from the Studio and uploads a sealed listing package to the web.
 2. The creator sets a starting price (`starting_price`).
 3. Before the piece goes live, the creator pays a **listing fee** through the payment
    gateway. The fee is a percentage of the starting price, subject to a minimum, plus
@@ -20,7 +20,8 @@ How BatikCraft Studio adapts to the BatikCraftWeb payment flow.
 
 `POST /api/v1/nfts/{id}/publish/` replies **402 Payment Required** while the fee is
 outstanding. `BatikCraftWebClient` translates that response into a
-`ListingFeeRequiredError` carrying the charge breakdown and a `checkout_url`.
+`ListingFeeRequiredError` carrying the charge breakdown, draft `nft_id`, and a
+`checkout_url`.
 
 ```python
 from batikcraft_studio.web_bridge import ListingFeeRequiredError
@@ -42,6 +43,31 @@ create a second marketplace record.
 The retry identifier is read from `listing_fee.nft_id` when the server provides it. For
 compatibility with older BatikCraftWeb deployments, Studio can also recover the identifier
 from the checkout URL generated for that invoice.
+
+## Sealed Asset-Library Listings
+
+A standalone `.batikpack` is installable, but it does not bind a separately uploaded
+marketplace preview to its contents. Studio therefore does not upload it directly as
+provenance evidence.
+
+For **Jual Pustaka Ini**, Studio creates this structure:
+
+```text
+listing.batikcraftnft
+├── manifest.json
+├── seal.json
+├── preview.jpg
+├── project/project.json
+└── project/assets/library/<pack-id>.batikpack
+```
+
+The outer `.batikcraftnft` locks the preview and the exact `.batikpack` bytes under one
+manifest and seal. BatikCraftWeb verifies both archives, stores the outer envelope for
+audit, and extracts the verified inner `.batikpack` for authorised downloads. The creator
+and the paid buyer therefore receive an installable `.batikpack`, not the listing wrapper.
+
+Direct `.batikpack` upload remains rejected by the secure API contract. This prevents an
+unrelated preview from being attached to a library package.
 
 ## Windows Timezone Data
 
