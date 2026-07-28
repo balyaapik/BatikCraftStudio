@@ -1,5 +1,5 @@
 {
-  "release_tag": "v0.9.19",
-  "requested_at": "2026-07-28T03:30:00Z",
-  "reason": "Publish BatikCraft Studio 0.9.19. Fixes the eraser on the main raster canvas refusing to remove lines. Lines became raster in 0.9.17 but were stored as separate stroke objects floating above the canvas, while the eraser on a raster paint layer only clears that layer's own bitmap, so a line drawn on the main canvas looked immune to the eraser. A line drawn while a raster canvas layer is active is now merged into that layer's bitmap, exactly like a brush stroke, and the eraser removes it. Lines drawn on object layers keep behaving as stroke objects. Verified by checking that pixel alpha under the line drops to zero after erasing, rather than assuming it."
+  "release_tag": "v0.9.20",
+  "requested_at": "2026-07-28T04:15:00Z",
+  "reason": "Publish BatikCraft Studio 0.9.20. The eraser in the brush toolbar still could not remove lines after 0.9.19. Root cause: the brush and eraser resolve their target through ensure_active_raster_paint_layer(), which creates a raster canvas layer when the active layer is not one, while the line tool used its own stricter check that gave up in exactly that situation and produced a separate stroke object instead. Line and eraser therefore wrote to different layers. The line tool now uses the same layer resolution as the brush, so both always act on the same bitmap. Lines drawn on an explicitly named object layer still become stroke objects."
 }

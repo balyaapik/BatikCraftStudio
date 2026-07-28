@@ -15,6 +15,17 @@ def _session():
     return session
 
 
+def _object_session():
+    """Sesi dengan lapis objek eksplisit.
+
+    Tanpa lapis tujuan, garis kini melebur ke kanvas raster mengikuti kuas.
+    Test yang memang menguji semantik objek harus menyebut lapisnya sendiri.
+    """
+    session = _session()
+    layer = session.create_object_layer("Motif")
+    return session, layer.layer_id
+
+
 def _active_layer_id(session):
     project = session.require_project()
     for layer in project.layers:
@@ -28,9 +39,9 @@ def _all_objects(session):
 
 
 def test_line_becomes_a_raster_stroke_not_a_vector_shape():
-    session = _session()
+    session, oid = _object_session()
 
-    session.create_shape_layer("line", (10.0, 10.0), (200.0, 160.0))
+    session.create_shape_layer("line", (10.0, 10.0), (200.0, 160.0), target_layer_id=oid)
 
     objects = _all_objects(session)
     assert len(objects) == 1
@@ -55,9 +66,9 @@ def test_other_shapes_stay_vector():
 
 def test_line_can_be_erased_like_a_brush_stroke():
     """Inilah inti permintaannya: penghapus harus mengenai garis."""
-    session = _session()
-    session.create_shape_layer("line", (20.0, 20.0), (220.0, 180.0))
-    layer_id = _active_layer_id(session)
+    session, oid = _object_session()
+    session.create_shape_layer("line", (20.0, 20.0), (220.0, 180.0), target_layer_id=oid)
+    layer_id = oid
 
     session.apply_paint_stroke(
         layer_id,
@@ -73,9 +84,9 @@ def test_line_can_be_erased_like_a_brush_stroke():
 
 
 def test_line_has_pixels_and_a_bounding_box():
-    session = _session()
+    session, oid = _object_session()
 
-    session.create_shape_layer("line", (10.0, 10.0), (200.0, 160.0))
+    session.create_shape_layer("line", (10.0, 10.0), (200.0, 160.0), target_layer_id=oid)
 
     line = _all_objects(session)[0]
     assert line.bounds.width > 0
@@ -86,19 +97,23 @@ def test_line_has_pixels_and_a_bounding_box():
 
 def test_line_width_is_honoured():
     """Garis tebal menghasilkan kotak pembatas yang lebih besar."""
-    tipis = _session()
-    tipis.create_shape_layer("line", (50.0, 50.0), (250.0, 50.0), stroke_width=2.0)
-    tebal = _session()
-    tebal.create_shape_layer("line", (50.0, 50.0), (250.0, 50.0), stroke_width=40.0)
+    tipis, oid_a = _object_session()
+    tipis.create_shape_layer(
+        "line", (50.0, 50.0), (250.0, 50.0), stroke_width=2.0, target_layer_id=oid_a
+    )
+    tebal, oid_b = _object_session()
+    tebal.create_shape_layer(
+        "line", (50.0, 50.0), (250.0, 50.0), stroke_width=40.0, target_layer_id=oid_b
+    )
 
     assert _all_objects(tebal)[0].bounds.height > _all_objects(tipis)[0].bounds.height
 
 
 def test_shift_constrains_the_line():
-    session = _session()
+    session, oid = _object_session()
 
     session.create_shape_layer(
-        "line", (50.0, 50.0), (250.0, 70.0), constrain=True
+        "line", (50.0, 50.0), (250.0, 70.0), constrain=True, target_layer_id=oid
     )
 
     line = _all_objects(session)[0]
@@ -123,10 +138,10 @@ def test_degenerate_line_is_rejected():
 
 
 def test_lines_are_numbered_sequentially():
-    session = _session()
+    session, oid = _object_session()
 
-    session.create_shape_layer("line", (10.0, 10.0), (100.0, 100.0))
-    session.create_shape_layer("line", (20.0, 20.0), (120.0, 120.0))
+    session.create_shape_layer("line", (10.0, 10.0), (100.0, 100.0), target_layer_id=oid)
+    session.create_shape_layer("line", (20.0, 20.0), (120.0, 120.0), target_layer_id=oid)
 
     names = [i.name for i in _all_objects(session)]
     assert "Garis 1" in names
@@ -134,8 +149,8 @@ def test_lines_are_numbered_sequentially():
 
 
 def test_line_survives_undo_and_redo():
-    session = _session()
-    session.create_shape_layer("line", (10.0, 10.0), (200.0, 160.0))
+    session, oid = _object_session()
+    session.create_shape_layer("line", (10.0, 10.0), (200.0, 160.0), target_layer_id=oid)
     assert len(_all_objects(session)) == 1
 
     session.undo()
@@ -228,3 +243,44 @@ def test_object_layers_still_get_object_lines():
     objects = _all_objects(session)
     assert len(objects) == 1
     assert objects[0].properties["source_format"] == "RASTER_LINE"
+
+
+def test_line_uses_the_same_layer_the_brush_would_use():
+    """Garis dan penghapus wajib menulis ke lapis yang sama.
+
+    Kuas memakai ensure_active_raster_paint_layer(), yang membuat lapis kanvas
+    raster bila belum ada. Sebelum perbaikan ini alat garis menyerah dalam
+    keadaan itu dan membuat objek terpisah, sehingga penghapus di toolbar kuas
+    tampak tidak mempan terhadap garis.
+    """
+    from io import BytesIO
+
+    from PIL import Image
+
+    session = ProjectSession()
+    session.new_project(title="Kosong", creator="Penguji", width=400, height=300)
+
+    # Belum ada lapis raster sama sekali.
+    session.create_shape_layer("line", (50.0, 150.0), (350.0, 150.0), stroke_width=20.0)
+
+    assert _all_objects(session) == [], "garis tidak boleh menjadi objek terpisah"
+    layer = _raster_layer(session)
+    assert layer is not None, "lapis raster harus terbentuk seperti pada kuas"
+
+    def alpha_at(x, y):
+        current = _raster_layer(session)
+        with Image.open(BytesIO(session.assets[current.asset_ref])) as img:
+            img.load()
+            return img.convert("RGBA").getpixel((x, y))[3]
+
+    assert alpha_at(200, 150) > 0
+
+    session.apply_raster_paint_stroke(
+        layer.layer_id,
+        points=[(180.0, 150.0), (220.0, 150.0)],
+        brush_size=60.0,
+        color="#000000",
+        erase=True,
+    )
+
+    assert alpha_at(200, 150) == 0, "penghapus toolbar kuas harus menghapus garis"

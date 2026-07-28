@@ -130,7 +130,7 @@ class RasterLineProjectSession(AIBatikBackgroundProjectSession):
         # bitmap-nya, bukan menjadi objek yang mengambang di atasnya. Penghapus
         # pada kanvas raster hanya mengenai bitmap; objek terpisah akan tampak
         # kebal terhadap penghapus, dan itulah gejala yang dilaporkan.
-        raster_target = self._active_raster_layer(target_layer_id)
+        raster_target = self._raster_target(target_layer_id)
         if raster_target is not None:
             return self.apply_raster_paint_stroke(
                 raster_target.layer_id,
@@ -202,25 +202,28 @@ class RasterLineProjectSession(AIBatikBackgroundProjectSession):
         return item
 
 
-    def _active_raster_layer(self, target_layer_id: str | None):
-        """Lapis kanvas raster yang sedang aktif, atau None bila bukan raster."""
-        project = self.require_project()
-        candidate = None
+    def _raster_target(self, target_layer_id: str | None):
+        """Lapis tujuan garis, mengikuti aturan yang sama dengan kuas.
+
+        Kuas dan penghapus memakai ensure_active_raster_paint_layer(), yang
+        membuat lapis kanvas raster bila yang aktif belum raster. Alat garis
+        wajib memakai resolusi yang sama; kalau tidak, garis dan penghapus bisa
+        menulis ke lapis yang berbeda dan penghapus tampak tidak mempan.
+
+        Bila pemanggil menyebut lapis tujuan secara eksplisit, pilihan itu
+        dihormati: garis pada lapis objek tetap menjadi objek goresan.
+        """
         if target_layer_id:
+            project = self.require_project()
             try:
                 candidate = project.get_layer(target_layer_id)
             except Exception:  # noqa: BLE001 - lapis hilang diperlakukan bukan raster
                 return None
-        else:
-            active_id = getattr(project, "active_layer_id", None)
-            if active_id:
-                try:
-                    candidate = project.get_layer(active_id)
-                except Exception:  # noqa: BLE001
-                    return None
-        if candidate is None:
+            return candidate if self._is_raster_paint_layer(candidate) else None
+        try:
+            return self.ensure_active_raster_paint_layer()
+        except Exception:  # noqa: BLE001 - mis. lapis terkunci; jatuh ke jalur objek
             return None
-        return candidate if self._is_raster_paint_layer(candidate) else None
 
 
 def _endpoints_from_geometry(geometry) -> tuple[tuple[float, float], tuple[float, float]]:
