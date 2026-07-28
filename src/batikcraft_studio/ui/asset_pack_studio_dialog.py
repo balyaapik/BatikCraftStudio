@@ -10,7 +10,6 @@ BatikCraftWeb.
 
 from __future__ import annotations
 
-import hashlib
 import json
 import threading
 import tkinter as tk
@@ -35,7 +34,16 @@ from batikcraft_studio.assets.personal_store import (
 )
 from batikcraft_studio.assets.preview import compose_collage_preview
 from batikcraft_studio.config import APP_VERSION
-from batikcraft_studio.web_bridge import BatikCraftWebClient, BatikCraftWebError
+from batikcraft_studio.nft_sealing import (
+    SealingError,
+    seal_asset_pack_as_nft_package,
+)
+from batikcraft_studio.ui.listing_fee_prompt import handle_listing_fee_required
+from batikcraft_studio.web_bridge import (
+    BatikCraftWebClient,
+    BatikCraftWebError,
+    ListingFeeRequiredError,
+)
 
 
 class CreateLibraryDialog(tk.Toplevel):
@@ -158,6 +166,7 @@ class AssetPackStudioWindow(tk.Toplevel):
         self.client_provider = client_provider
         self._packs: list[Any] = []
         self._records: list[Any] = []
+        self._pending_sale_nft_ids: dict[str, int] = {}
 
         body = ttk.Frame(self, padding=(12, 10))
         body.grid(row=0, column=0, sticky="nsew")
@@ -309,14 +318,19 @@ class AssetPackStudioWindow(tk.Toplevel):
             )
 
     def _update_action_states(self) -> None:
-        has_pack = self._selected_pack() is not None
+        pack = self._selected_pack()
+        has_pack = pack is not None
         has_assets = bool(self._records)
         self.import_button.configure(state="normal" if has_pack else "disabled")
         self.export_button.configure(
             state="normal" if has_pack and has_assets else "disabled"
         )
         sellable = has_pack and has_assets and self.client_provider is not None
-        self.sell_button.configure(state="normal" if sellable else "disabled")
+        pending = bool(pack and pack.pack_id in self._pending_sale_nft_ids)
+        self.sell_button.configure(
+            state="normal" if sellable else "disabled",
+            text="Cek Pembayaran & Publish" if pending else "Jual Pustaka Ini…",
+        )
 
     def _refresh_preview(self, *, force_auto: bool = False) -> None:
         """Susun kolase preview otomatis dari isi pustaka terpilih."""
@@ -482,70 +496,130 @@ class AssetPackStudioWindow(tk.Toplevel):
                 parent=self,
             )
             return
-        try:
-            candidates = self._candidates()
-        except (AssetLibraryError, OSError) as exc:
-            messagebox.showerror("Baca aset gagal", str(exc), parent=self)
-            return
 
-        import tempfile
-
+        pending_nft_id = self._pending_sale_nft_ids.get(pack.pack_id)
+        candidates: list[AssetCandidate] = []
+        archive = b""
+        preview = b""
         library_type, philosophy = parse_library_description(pack.description)
-        with tempfile.TemporaryDirectory() as tmp:
-            pack_path = self.export_pack(str(Path(tmp) / "pustaka.batikpack"))
-            if pack_path is None:
-                return
-            archive = pack_path.read_bytes()
 
-        checksum = hashlib.sha256(archive).hexdigest()
-        if self._preview_bytes is None:
-            self._refresh_preview(force_auto=True)
-        preview = self._preview_bytes or candidates[0].content
-        self.status_value.set("Mengunggah pustaka ke BatikCraftWeb…")
+        if pending_nft_id is None:
+            try:
+                candidates = self._candidates()
+            except (AssetLibraryError, OSError) as exc:
+                messagebox.showerror("Baca aset gagal", str(exc), parent=self)
+                return
+
+            import tempfile
+
+            with tempfile.TemporaryDirectory() as tmp:
+                pack_path = self.export_pack(str(Path(tmp) / "pustaka.batikpack"))
+                if pack_path is None:
+                    return
+                archive = pack_path.read_bytes()
+
+            if self._preview_bytes is None:
+                self._refresh_preview(force_auto=True)
+            preview = self._preview_bytes or candidates[0].content
+            self.status_value.set("Menyegel dan mengunggah pustaka ke BatikCraftWeb…")
+        else:
+            self.status_value.set(
+                f"Memeriksa pembayaran dan melanjutkan draft NFT #{pending_nft_id}…"
+            )
         self.sell_button.configure(state="disabled")
 
         def worker() -> None:
+            nft_id = pending_nft_id
             try:
-                item = client._request_multipart(  # noqa: SLF001 - API internal satu paket
-                    "POST",
-                    "nfts/",
-                    fields={
-                        "title": pack.name,
-                        "description": philosophy or pack.description,
-                        "source_project_id": f"asset-library-{pack.pack_id}"[:128],
-                        "source_app_version": APP_VERSION,
-                        "starting_price": str(self.price_value.get()),
-                        "metadata": json.dumps(
-                            {
-                                "source_type": "asset_library",
-                                "library_name": pack.name,
-                                "library_author": pack.author,
-                                "library_type": library_type,
-                                "philosophy": philosophy,
-                                "asset_count": len(candidates),
-                                "asset_names": [c.name for c in candidates][:50],
-                                "sha256": checksum,
-                            },
-                            ensure_ascii=False,
-                        ),
-                    },
-                    files={
-                        "image": ("preview.png", preview, "image/png"),
-                        "package_file": (
-                            f"{pack.pack_id}.batikpack",
-                            archive,
-                            "application/zip",
-                        ),
-                    },
-                )
-                nft_id = int(item["id"])
+                if nft_id is None:
+                    account = client.me()
+                    sealed = seal_asset_pack_as_nft_package(
+                        archive,
+                        preview,
+                        pack_id=pack.pack_id,
+                        title=pack.name,
+                        creator_name=account.public_name,
+                        creator_user_id=str(account.user_id),
+                        description=philosophy or pack.description,
+                    )
+                    item = client._request_multipart(  # noqa: SLF001 - API internal satu paket
+                        "POST",
+                        "nfts/",
+                        fields={
+                            "title": pack.name,
+                            "description": philosophy or pack.description,
+                            "source_project_id": f"asset-library-{pack.pack_id}"[:128],
+                            "source_app_version": APP_VERSION,
+                            "starting_price": str(self.price_value.get()),
+                            "metadata": json.dumps(
+                                {
+                                    "source_type": "asset_library",
+                                    "library_name": pack.name,
+                                    "library_author": pack.author,
+                                    "library_type": library_type,
+                                    "philosophy": philosophy,
+                                    "asset_count": len(candidates),
+                                    "asset_names": [c.name for c in candidates][:50],
+                                    "sha256": sealed.embedded_asset_sha256,
+                                    "embedded_asset_path": sealed.embedded_asset_path,
+                                    "embedded_asset_filename": sealed.embedded_asset_filename,
+                                },
+                                ensure_ascii=False,
+                            ),
+                        },
+                        files={
+                            "image": (
+                                "preview.jpg",
+                                sealed.preview_jpeg,
+                                "image/jpeg",
+                            ),
+                            "package_file": (
+                                sealed.package_filename,
+                                sealed.package_bytes,
+                                "application/zip",
+                            ),
+                        },
+                    )
+                    nft_id = int(item["id"])
                 client._request_json("POST", f"nfts/{nft_id}/publish/", payload={})
-            except (BatikCraftWebError, OSError, KeyError, ValueError, TypeError) as exc:
-                self.after(0, lambda: self._sell_failed(str(exc)))
+            except ListingFeeRequiredError as exc:
+                self.after(
+                    0,
+                    lambda error=exc, pack_id=pack.pack_id, draft_id=nft_id: (
+                        self._sell_fee_required(pack_id, draft_id, error)
+                    ),
+                )
                 return
-            self.after(0, lambda: self._sell_done(pack.name))
+            except (
+                BatikCraftWebError,
+                OSError,
+                KeyError,
+                SealingError,
+                ValueError,
+                TypeError,
+            ) as exc:
+                self.after(0, lambda message=str(exc): self._sell_failed(message))
+                return
+            self.after(
+                0,
+                lambda pack_id=pack.pack_id, name=pack.name: self._sell_done(pack_id, name),
+            )
 
         threading.Thread(target=worker, daemon=True).start()
+
+    def _sell_fee_required(
+        self,
+        pack_id: str,
+        nft_id: int | None,
+        error: ListingFeeRequiredError,
+    ) -> None:
+        if not self.winfo_exists():
+            return
+        if nft_id is not None:
+            self._pending_sale_nft_ids[pack_id] = nft_id
+        self._update_action_states()
+        self.status_value.set(error.detail)
+        handle_listing_fee_required(self, error)
 
     def _sell_failed(self, message: str) -> None:
         if not self.winfo_exists():
@@ -554,9 +628,10 @@ class AssetPackStudioWindow(tk.Toplevel):
         self.status_value.set(message)
         messagebox.showerror("Penjualan pustaka gagal", message, parent=self)
 
-    def _sell_done(self, name: str) -> None:
+    def _sell_done(self, pack_id: str, name: str) -> None:
         if not self.winfo_exists():
             return
+        self._pending_sale_nft_ids.pop(pack_id, None)
         self._update_action_states()
         self.status_value.set(f"Pustaka {name!r} tampil di NFT Marketplace.")
         messagebox.showinfo(

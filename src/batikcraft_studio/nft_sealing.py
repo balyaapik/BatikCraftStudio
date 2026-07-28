@@ -6,10 +6,15 @@ jalur publish: dari proyek penuh, dari satu aset pustaka, dan dari dokumen
 raster. Dua jalur terakhir semula mengirim gambar telanjang, sehingga akan
 ditolak server. Modul ini membungkus keduanya memakai pengekspor paket yang sama
 dengan jalur proyek, jadi aturan di server tetap seragam dan dapat diverifikasi.
+
+Pustaka aset memakai envelope yang sama. File ``.batikpack`` asli disimpan
+sebagai payload project di dalam envelope, sehingga preview marketplace dan
+paket yang nanti diunduh pembeli terkunci oleh satu manifest dan satu seal.
 """
 
 from __future__ import annotations
 
+import hashlib
 import tempfile
 from dataclasses import dataclass
 from io import BytesIO
@@ -24,7 +29,12 @@ from batikcraft_studio.persistence.nft_package import (
     export_batikcraft_nft,
 )
 
-__all__ = ["SealedArtwork", "SealingError", "seal_image_as_nft_package"]
+__all__ = [
+    "SealedArtwork",
+    "SealingError",
+    "seal_asset_pack_as_nft_package",
+    "seal_image_as_nft_package",
+]
 
 # Preview di dalam paket wajib JPEG; ini kualitas yang dipakai jalur proyek.
 _PREVIEW_QUALITY = 92
@@ -42,6 +52,9 @@ class SealedArtwork:
     package_bytes: bytes
     preview_jpeg: bytes
     package_filename: str
+    embedded_asset_path: str = ""
+    embedded_asset_filename: str = ""
+    embedded_asset_sha256: str = ""
 
 
 def _to_preview_jpeg(image_bytes: bytes) -> tuple[bytes, int, int]:
@@ -125,6 +138,61 @@ def seal_image_as_nft_package(
         preview_jpeg=preview,
         package_filename=f"{_slug(clean_title)}.batikcraftnft",
     )
+
+
+def seal_asset_pack_as_nft_package(
+    asset_pack_bytes: bytes,
+    preview_image: bytes,
+    *,
+    pack_id: str,
+    title: str,
+    creator_name: str,
+    creator_user_id: str,
+    description: str = "",
+    license_name: str = "All rights reserved",
+) -> SealedArtwork:
+    """Buat envelope listing bersegel yang memuat ``.batikpack`` asli.
+
+    BatikCraftWeb memverifikasi envelope dan preview seperti NFT biasa. File
+    pustaka di dalam payload tetap utuh agar Web dapat menyajikannya kembali
+    sebagai ``.batikpack`` yang langsung dapat dipasang oleh pembeli.
+    """
+    if not isinstance(asset_pack_bytes, bytes) or not asset_pack_bytes:
+        raise SealingError("Paket pustaka aset kosong.")
+
+    safe_id = _safe_identifier(pack_id)
+    embedded_filename = f"{safe_id}.batikpack"
+    # Pengekspor project hanya mengizinkan asset di bawah root assets/, masks/,
+    # metadata/, atau renders/. Pustaka ditempatkan di assets/library/ agar tetap
+    # menjadi payload project kanonik dan dapat diverifikasi loader yang sama.
+    project_asset_path = f"assets/library/{embedded_filename}"
+    envelope_path = f"project/{project_asset_path}"
+    sealed = seal_image_as_nft_package(
+        preview_image,
+        title=title,
+        creator_name=creator_name,
+        creator_user_id=creator_user_id,
+        description=description,
+        license_name=license_name,
+        assets={project_asset_path: asset_pack_bytes},
+    )
+    return SealedArtwork(
+        package_bytes=sealed.package_bytes,
+        preview_jpeg=sealed.preview_jpeg,
+        package_filename=sealed.package_filename,
+        embedded_asset_path=envelope_path,
+        embedded_asset_filename=embedded_filename,
+        embedded_asset_sha256=hashlib.sha256(asset_pack_bytes).hexdigest(),
+    )
+
+
+def _safe_identifier(value: str) -> str:
+    text = str(value or "").strip()
+    cleaned = "".join(
+        character if character.isalnum() or character in "-_." else "-"
+        for character in text
+    ).strip("-.")
+    return cleaned[:120] or "asset-library"
 
 
 def _slug(value: str) -> str:
