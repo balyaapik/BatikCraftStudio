@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import tkinter as tk
 from tkinter import ttk
+from typing import Any
 
 from batikcraft_studio.application import PaintLayerError, ProjectSessionError
 from batikcraft_studio.imaging.paint import PaintStrokeError
@@ -27,8 +28,7 @@ class RefinedPaintLayerEditorWorkspaceView(PaintLayerEditorWorkspaceView):
         self._brush_cursor_position: tuple[float, float] | None = None
         super().__init__(*args, **kwargs)
 
-        self.canvas.bind("<Motion>", self._on_brush_cursor_motion, add="+")
-        self.canvas.bind("<Leave>", self._on_brush_cursor_leave, add="+")
+        self._bind_brush_cursor_events(self.canvas)
         for variable in (
             self.brush_size_value,
             self.brush_opacity_value,
@@ -253,6 +253,23 @@ class RefinedPaintLayerEditorWorkspaceView(PaintLayerEditorWorkspaceView):
             target = candidates[0] if candidates else BRUSH_SIZE_STEPS[-1]
         self._set_brush_size(target)
         return "break"
+
+    def _bind_brush_cursor_events(self, canvas: Any) -> None:
+        """Pasang penanda kursor kuas/penghapus pada gerakan pointer.
+
+        ``<Motion>`` saja tidak cukup. Begitu tombol kiri DITEKAN, Tk berhenti
+        mengirim ``<Motion>`` dan menggantinya dengan ``<B1-Motion>``. Karena
+        hanya ``<Motion>`` yang terpasang, lingkaran penghapus membeku di titik
+        klik dan tidak ikut bergerak selama diseret -- padahal justru saat
+        menyeret itulah pengguna perlu tahu persis di mana kuasnya berada.
+
+        Semua binding memakai ``add="+"`` supaya penangan seret utama yang
+        sudah terpasang lebih dulu tetap berjalan.
+        """
+
+        canvas.bind("<Motion>", self._on_brush_cursor_motion, add="+")
+        canvas.bind("<B1-Motion>", self._on_brush_cursor_motion, add="+")
+        canvas.bind("<Leave>", self._on_brush_cursor_leave, add="+")
 
     def _on_brush_cursor_motion(self, event: tk.Event[tk.Canvas]) -> None:
         self._brush_cursor_position = (event.x, event.y)

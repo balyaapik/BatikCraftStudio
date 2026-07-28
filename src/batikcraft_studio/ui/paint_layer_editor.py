@@ -328,7 +328,11 @@ class PaintLayerEditorWorkspaceView(NativeLayerEditorWorkspaceView):
 
     def _preview_style(self) -> tuple[str, str]:
         if self._active_tool == "eraser":
-            return "#FFFFFF", "gray50"
+            # Latar kanvas bawaan juga #FFFFFF, jadi pratinjau putih praktis
+            # tidak terlihat: penghapus tampak "tidak jalan" padahal jalan.
+            # Warna peringatan ber-stipple senada dengan cincin kursor
+            # penghapus dan terbaca di atas latar terang maupun gelap.
+            return COLORS["warning"], "gray50"
         return self.brush_color_value.get(), ""
 
     def _preview_width(self) -> int:

@@ -260,3 +260,52 @@ def test_missing_asset_falls_back_to_bounding_box_behaviour() -> None:
     )
     assert precise_point_hits_object(item, {}, 100.0, 100.0) is True
     assert precise_point_hits_object(item, {}, 500.0, 500.0) is False
+
+
+# ---------------------------------------------------------------------------
+# Kursor kuas/penghapus selama menyeret
+# ---------------------------------------------------------------------------
+
+
+class _RecordingCanvas:
+    """Kanvas palsu yang hanya mencatat pemanggilan ``bind``."""
+
+    def __init__(self) -> None:
+        self.bindings: list[tuple[str, str]] = []
+
+    def bind(self, sequence: str, handler: object, add: str = "") -> None:
+        self.bindings.append((sequence, add))
+
+
+def test_brush_cursor_also_tracks_motion_while_the_button_is_held() -> None:
+    """Tk mengirim <B1-Motion>, bukan <Motion>, selama tombol kiri ditekan.
+
+    Tanpa binding kedua ini lingkaran penghapus membeku di titik klik dan tidak
+    ikut bergerak saat diseret.
+    """
+
+    from batikcraft_studio.ui.refined_paint_editor import (
+        RefinedPaintLayerEditorWorkspaceView,
+    )
+
+    canvas = _RecordingCanvas()
+    RefinedPaintLayerEditorWorkspaceView._bind_brush_cursor_events(
+        object.__new__(RefinedPaintLayerEditorWorkspaceView), canvas
+    )
+
+    sequences = [sequence for sequence, _add in canvas.bindings]
+    assert "<Motion>" in sequences
+    assert "<B1-Motion>" in sequences
+    assert "<Leave>" in sequences
+    # Penangan seret utama sudah terpasang lebih dulu dan tidak boleh tergusur.
+    assert all(add == "+" for _sequence, add in canvas.bindings)
+
+
+def test_eraser_preview_is_not_white_on_a_white_canvas() -> None:
+    from batikcraft_studio.ui.paint_layer_editor import PaintLayerEditorWorkspaceView
+
+    view = object.__new__(PaintLayerEditorWorkspaceView)
+    view._active_tool = "eraser"
+    fill, stipple = PaintLayerEditorWorkspaceView._preview_style(view)
+    assert fill.upper() != "#FFFFFF"
+    assert stipple == "gray50"
