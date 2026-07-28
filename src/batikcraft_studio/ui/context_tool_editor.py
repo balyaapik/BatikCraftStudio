@@ -502,6 +502,29 @@ class ContextToolEditorWorkspaceView(DirectStyleEditorWorkspaceView):
                 continue
             erased_names.append(updated.name)
 
+        # Garis yang digambar saat lapis aktifnya kanvas raster DILEBUR ke
+        # bitmap lapis, bukan menjadi objek (lihat raster_line_session).
+        # Pemindaian objek di atas tidak akan pernah menemukannya, jadi goresan
+        # yang sama juga diterapkan sebagai hapusan bitmap pada setiap lapis
+        # kanvas raster yang tintanya tersentuh.
+        for raster_layer in self._raster_layers_touched(points, brush_size):
+            try:
+                self.session.apply_raster_paint_stroke(
+                    raster_layer.layer_id,
+                    points=points,
+                    brush_size=brush_size,
+                    color="#FFFFFF",
+                    erase=True,
+                    opacity=self._percentage(self.brush_opacity_value),
+                    hardness=self._percentage(self.brush_hardness_value),
+                    smoothing=self._percentage(self.brush_smoothing_value),
+                )
+            except (ProjectSessionError, ValueError) as exc:
+                _LOG.info("Penghapus melewati lapis %r: %s", raster_layer.name, exc)
+                last_error = str(exc)
+                continue
+            erased_names.append(raster_layer.name)
+
         self._clear_context_eraser()
         if erased_names:
             _LOG.info(
@@ -573,6 +596,73 @@ class ContextToolEditorWorkspaceView(DirectStyleEditorWorkspaceView):
                         touched.append(item)
                         break
         return touched
+
+    def _raster_layers_touched(
+        self,
+        points: tuple[tuple[float, float], ...],
+        brush_size: float,
+    ) -> list[Any]:
+        """Lapis kanvas raster yang tintanya berada di bawah goresan.
+
+        Pemeriksaan tinta dilakukan dulu pada kotak batas goresan supaya
+        sapuan di ruang kosong tidak menghasilkan mutasi maupun langkah undo.
+        """
+
+        session = self.session
+        project = session.project
+        is_raster = getattr(session, "_is_raster_paint_layer", None)
+        apply_stroke = getattr(session, "apply_raster_paint_stroke", None)
+        if project is None or not callable(is_raster) or not callable(apply_stroke):
+            return []
+        touched: list[Any] = []
+        for layer in project.layers:
+            try:
+                if not is_raster(layer):
+                    continue
+                if not project.is_layer_effectively_visible(layer.layer_id):
+                    continue
+                if layer.locked:
+                    continue
+                if self._raster_layer_has_ink_under(layer, points, brush_size):
+                    touched.append(layer)
+            except Exception:  # noqa: BLE001 - satu lapis rusak jangan mematikan sisanya
+                _LOG.exception("Gagal memeriksa lapis raster %r", layer.name)
+        return touched
+
+    def _raster_layer_has_ink_under(
+        self,
+        layer: Any,
+        points: tuple[tuple[float, float], ...],
+        brush_size: float,
+    ) -> bool:
+        from io import BytesIO
+
+        from PIL import Image
+
+        from batikcraft_studio.imaging import live_bitmap_store
+
+        image = live_bitmap_store.get(layer.asset_ref)
+        if image is None:
+            content = self.session.assets.get(layer.asset_ref) if layer.asset_ref else None
+            if content is None:
+                return False
+            try:
+                with Image.open(BytesIO(content)) as decoded:
+                    decoded.load()
+                    image = decoded.convert("RGBA")
+            except (OSError, ValueError):
+                return False
+        radius = brush_size / 2.0 + 2.0
+        xs = [point[0] for point in points]
+        ys = [point[1] for point in points]
+        left = max(0, int(min(xs) - radius))
+        top = max(0, int(min(ys) - radius))
+        right = min(image.width, int(max(xs) + radius) + 1)
+        bottom = min(image.height, int(max(ys) + radius) + 1)
+        if right <= left or bottom <= top:
+            return False
+        extrema = image.getchannel("A").crop((left, top, right, bottom)).getextrema()
+        return extrema[1] > 0
 
     def _hit_topmost_erasable_object(self, point: tuple[float, float]):
         """Objek paling atas yang TINTA-nya benar-benar berada di *point*.

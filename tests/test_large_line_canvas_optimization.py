@@ -425,3 +425,73 @@ def test_noop_erase_is_rejected_and_creates_no_new_asset(tmp_path: Path) -> None
             target.object_id, points=((300.0, 1300.0),), brush_size=10.0
         )
     assert set(session.assets) == assets_before
+
+
+# ---------------------------------------------------------------------------
+# Penghapus juga mengenai garis yang dilebur ke lapis kanvas raster
+# ---------------------------------------------------------------------------
+
+
+def _raster_line_project(tmp_path: Path):
+    """Proyek gaya-user: garis digambar tanpa target -> dilebur ke kanvas raster."""
+
+    from batikcraft_studio.application import ProjectSession
+
+    session = ProjectSession(tmp_path / "models")
+    session.new_project(title="Raster", creator="Tester", width=1200, height=900)
+    session.create_shape_layer("line", (100, 100), (1100, 800), stroke_width=8.0)
+    return session
+
+
+class _EraserView:
+    """Cukup untuk memanggil helper penghapus tanpa Tk."""
+
+    from batikcraft_studio.ui.context_tool_editor import (
+        ContextToolEditorWorkspaceView as _CT,
+    )
+
+    _erasable_objects_touched = _CT._erasable_objects_touched
+    _raster_layers_touched = _CT._raster_layers_touched
+    _raster_layer_has_ink_under = _CT._raster_layer_has_ink_under
+
+    def __init__(self, session) -> None:
+        self.session = session
+
+
+def _layer_alpha_sum(session, layer) -> int:
+    refreshed = session.require_project().get_layer(layer.layer_id)
+    image = Image.open(BytesIO(session.assets[refreshed.asset_ref])).convert("RGBA")
+    return sum(image.getchannel("A").tobytes())
+
+
+def test_line_fused_into_raster_canvas_is_not_an_object(tmp_path: Path) -> None:
+    session = _raster_line_project(tmp_path)
+    # Inilah kenapa pemindaian objek saja tidak pernah menemukan garis user.
+    assert session.require_project().object_count == 0
+
+
+def test_eraser_sweep_erases_ink_from_the_raster_canvas_layer(tmp_path: Path) -> None:
+    session = _raster_line_project(tmp_path)
+    view = _EraserView(session)
+
+    sweep = tuple((600.0, 300.0 + i * 25.0) for i in range(10))
+    assert view._erasable_objects_touched(sweep, 30.0) == []
+    layers = view._raster_layers_touched(sweep, 30.0)
+    assert len(layers) == 1
+
+    before = _layer_alpha_sum(session, layers[0])
+    session.apply_raster_paint_stroke(
+        layers[0].layer_id,
+        points=sweep,
+        brush_size=30.0,
+        color="#FFFFFF",
+        erase=True,
+    )
+    assert _layer_alpha_sum(session, layers[0]) < before
+
+
+def test_eraser_sweep_in_empty_space_touches_no_raster_layer(tmp_path: Path) -> None:
+    session = _raster_line_project(tmp_path)
+    view = _EraserView(session)
+    empty = tuple((60.0, 820.0 + i * 5.0) for i in range(5))
+    assert view._raster_layers_touched(empty, 30.0) == []
