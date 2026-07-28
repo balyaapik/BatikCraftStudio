@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import inspect
 from io import BytesIO
 from pathlib import Path
@@ -75,6 +76,49 @@ def test_create_library_then_fill_then_export(tmp_path: Path) -> None:
     assert installed.name == "Pustaka Parang"
 
 
+def test_asset_pack_listing_envelope_contains_original_installable_pack(tmp_path: Path) -> None:
+    from batikcraft_studio.nft_sealing import seal_asset_pack_as_nft_package
+    from batikcraft_studio.persistence.nft_package import load_batikcraft_nft
+
+    pack_path = build_asset_pack(
+        [
+            AssetCandidate(
+                asset_id="sekar-1",
+                name="Sekar Satu",
+                category="ornamen",
+                content=_png((80, 120, 40, 255)),
+            )
+        ],
+        AssetPackMetadata(
+            pack_id="pustaka-sekar",
+            name="Pustaka Sekar",
+            author="Balya",
+        ),
+        tmp_path / "pustaka-sekar.batikpack",
+    )
+    pack_bytes = pack_path.read_bytes()
+
+    sealed = seal_asset_pack_as_nft_package(
+        pack_bytes,
+        _png((244, 233, 216, 255)),
+        pack_id="pustaka-sekar",
+        title="Pustaka Sekar",
+        creator_name="Balya",
+        creator_user_id="12",
+        description="Pustaka ornamen sekar.",
+    )
+
+    envelope = tmp_path / "listing.batikcraftnft"
+    envelope.write_bytes(sealed.package_bytes)
+    loaded = load_batikcraft_nft(envelope)
+
+    assert sealed.embedded_asset_path == "project/library/pustaka-sekar.batikpack"
+    assert sealed.embedded_asset_filename == "pustaka-sekar.batikpack"
+    assert sealed.embedded_asset_sha256 == hashlib.sha256(pack_bytes).hexdigest()
+    assert loaded.project_assets["library/pustaka-sekar.batikpack"] == pack_bytes
+    assert loaded.preview_jpeg == sealed.preview_jpeg
+
+
 def test_asset_menu_hosts_all_library_functions() -> None:
     from batikcraft_studio import batikbrew_context_tool_app as app
     from batikcraft_studio.ui import asset_pack_studio_dialog, context_tool_editor_hotfixes
@@ -91,6 +135,9 @@ def test_asset_menu_hosts_all_library_functions() -> None:
     assert "CreateLibraryDialog" in studio_source
     assert "Filosofi" in studio_source
     assert "LIBRARY_TYPES" in studio_source
+    assert "seal_asset_pack_as_nft_package" in studio_source
+    assert '"package_file"' in studio_source
+    assert '"application/zip"' in studio_source
 
     editor_source = inspect.getsource(context_tool_editor_hotfixes)
     assert "Buat wadah pustaka dulu" in editor_source or "Buat pustaka dulu" in editor_source
