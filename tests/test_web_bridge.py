@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import inspect
 import json
+import tomllib
 import zipfile
+from pathlib import Path
 
 import pytest
 
@@ -158,6 +160,51 @@ def test_format_rupiah_uses_indonesian_separator() -> None:
 
     assert format_rupiah("200000.00") == "200.000"
     assert format_rupiah("11100.00") == "11.100"
+
+
+def test_listing_fee_retry_recovers_existing_draft_id() -> None:
+    from batikcraft_studio.ui.marketplace_mint_dialog import _listing_fee_nft_id
+    from batikcraft_studio.web_bridge import ListingFeeRequiredError
+
+    payload = _fee_payload()
+    error = ListingFeeRequiredError(payload["detail"], payload["listing_fee"])
+    assert _listing_fee_nft_id(error) == 12
+
+    payload["listing_fee"]["nft_id"] = 27
+    error = ListingFeeRequiredError(payload["detail"], payload["listing_fee"])
+    assert _listing_fee_nft_id(error) == 27
+
+
+def test_marketplace_dialog_rows_do_not_overlap() -> None:
+    from batikcraft_studio.ui.marketplace_mint_dialog import MintCurrentProjectDialog
+
+    source = inspect.getsource(MintCurrentProjectDialog._build)
+    assert "self.philosophy_text.grid(row=10" in source
+    assert ").grid(row=11, column=0, columnspan=2" in source
+    assert ").grid(row=12, column=0, columnspan=2" in source
+    assert "actions.grid(row=13" in source
+
+
+def test_async_error_callbacks_bind_messages_before_after_runs() -> None:
+    from batikcraft_studio.ui import asset_pack_studio_dialog, nft_economics_dialog
+
+    asset_source = inspect.getsource(asset_pack_studio_dialog.AssetPackStudioWindow.sell_pack)
+    economics_source = inspect.getsource(nft_economics_dialog.NFTEconomicsWindow._load_nfts)
+
+    assert "except ListingFeeRequiredError as exc" in asset_source
+    assert "lambda message=str(exc)" in asset_source
+    assert "lambda message=str(exc)" in economics_source
+
+
+def test_windows_timezone_database_is_declared() -> None:
+    pyproject = tomllib.loads(
+        (Path(__file__).resolve().parents[1] / "pyproject.toml").read_text(encoding="utf-8")
+    )
+    dependencies = pyproject["project"]["dependencies"]
+    assert any(
+        dependency.startswith("tzdata") and "win32" in dependency
+        for dependency in dependencies
+    )
 
 
 # ---------------------------------------------------------------------------
