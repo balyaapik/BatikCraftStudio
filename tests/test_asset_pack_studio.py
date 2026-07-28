@@ -112,10 +112,13 @@ def test_asset_pack_listing_envelope_contains_original_installable_pack(tmp_path
     envelope.write_bytes(sealed.package_bytes)
     loaded = load_batikcraft_nft(envelope)
 
-    assert sealed.embedded_asset_path == "project/library/pustaka-sekar.batikpack"
+    assert (
+        sealed.embedded_asset_path
+        == "project/assets/library/pustaka-sekar.batikpack"
+    )
     assert sealed.embedded_asset_filename == "pustaka-sekar.batikpack"
     assert sealed.embedded_asset_sha256 == hashlib.sha256(pack_bytes).hexdigest()
-    assert loaded.project_assets["library/pustaka-sekar.batikpack"] == pack_bytes
+    assert loaded.project_assets["assets/library/pustaka-sekar.batikpack"] == pack_bytes
     assert loaded.preview_jpeg == sealed.preview_jpeg
 
 
