@@ -15,7 +15,8 @@ dependencies = [
   "Pillow>=10.4",
   "tkinterdnd2>=0.4.3,<1",
   "tqdm>=4.66,<5",
-  "packaging>=24,<26"
+  "packaging>=24,<26",
+  "tzdata>=2024.1; sys_platform == 'win32'"
 ]
 
 [project.optional-dependencies]
@@ -137,7 +138,7 @@ select = ["E", "F", "I", "UP", "B"]
 "src/batikcraft_studio/persistence/nft_package.py" = ["E501"]
 "src/batikcraft_studio/ui/ai_batik_background_dialog.py" = ["E501"]
 "src/batikcraft_studio/ui/ai_runtime_settings_dialog.py" = ["E501", "UP035"]
-"src/batikcraft_studio/ui/asset_pack_studio_dialog.py" = ["E501", "F821", "F841", "UP035"]
+"src/batikcraft_studio/ui/asset_pack_studio_dialog.py" = ["E501", "UP035"]
 "src/batikcraft_studio/ui/batikbrew_output_mode_dialog.py" = ["E501"]
 "src/batikcraft_studio/ui/batikbrew_request_dialog.py" = ["E501"]
 "src/batikcraft_studio/ui/batikbrew_variation_dialog.py" = ["E501"]
@@ -157,7 +158,6 @@ select = ["E", "F", "I", "UP", "B"]
 "src/batikcraft_studio/ui/library_asset_nft_dialog.py" = ["E501"]
 "src/batikcraft_studio/ui/local_training_dialog.py" = ["E501"]
 "src/batikcraft_studio/ui/marketplace_mint_dialog.py" = ["E501", "UP035"]
-"src/batikcraft_studio/ui/nft_economics_dialog.py" = ["F821", "F841"]
 "src/batikcraft_studio/ui/object_tree_editor.py" = ["E501"]
 "src/batikcraft_studio/ui/offline_ai_dialogs_global.py" = ["E501", "F401"]
 "src/batikcraft_studio/ui/process_dialog.py" = ["E501"]
