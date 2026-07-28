@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import tempfile
 import tkinter as tk
 from collections.abc import Mapping
@@ -36,6 +37,19 @@ def _preferred_timezone() -> str:
         return system_timezone_name()
 
 
+def _listing_fee_nft_id(error: ListingFeeRequiredError) -> int | None:
+    """Ambil draft NFT dari payload baru atau checkout URL server lama."""
+    raw = error.fee.get("nft_id")
+    try:
+        nft_id = int(raw)
+    except (TypeError, ValueError):
+        nft_id = 0
+    if nft_id > 0:
+        return nft_id
+    match = re.search(r"/nfts/(\d+)/listing-fee(?:/|$)", error.checkout_url)
+    return int(match.group(1)) if match else None
+
+
 class MintCurrentProjectDialog(tk.Toplevel):
     """Mint an immutable package internally and publish it without exporting a file."""
 
@@ -53,6 +67,7 @@ class MintCurrentProjectDialog(tk.Toplevel):
         self.session = session
         self.project = project
         self.assets = dict(assets)
+        self._pending_nft_id: int | None = None
 
         self.price_value = tk.StringVar(master=self, value="100000")
         self.ends_value = tk.StringVar(master=self)
@@ -74,8 +89,8 @@ class MintCurrentProjectDialog(tk.Toplevel):
         )
 
         self.title("Marketplace — Mint & Publish NFT")
-        self.geometry("760x600")
-        self.minsize(680, 540)
+        self.geometry("760x640")
+        self.minsize(680, 580)
         self.transient(parent.winfo_toplevel())
         self.protocol("WM_DELETE_WINDOW", self.destroy)
         self._build()
@@ -121,7 +136,7 @@ class MintCurrentProjectDialog(tk.Toplevel):
             pady=5,
         )
         self.philosophy_text = tk.Text(body, height=8, wrap="word")
-        self.philosophy_text.grid(row=9, column=1, sticky="ew", pady=5)
+        self.philosophy_text.grid(row=10, column=1, sticky="ew", pady=5)
         self.philosophy_text.insert("1.0", self.project.metadata.description)
 
         ttk.Label(
@@ -134,16 +149,16 @@ class MintCurrentProjectDialog(tk.Toplevel):
             style="Muted.TLabel",
             wraplength=700,
             justify="left",
-        ).grid(row=10, column=0, columnspan=2, sticky="ew", pady=(10, 4))
+        ).grid(row=11, column=0, columnspan=2, sticky="ew", pady=(10, 4))
         ttk.Label(
             body,
             textvariable=self.status_value,
             style="Muted.TLabel",
             wraplength=700,
-        ).grid(row=11, column=0, columnspan=2, sticky="ew", pady=(0, 8))
+        ).grid(row=12, column=0, columnspan=2, sticky="ew", pady=(0, 8))
 
         actions = ttk.Frame(body)
-        actions.grid(row=12, column=0, columnspan=2, sticky="e", pady=(12, 0))
+        actions.grid(row=13, column=0, columnspan=2, sticky="e", pady=(12, 0))
         ttk.Button(actions, text="Batal", command=self.destroy).pack(
             side="right",
             padx=(8, 0),
@@ -203,8 +218,40 @@ class MintCurrentProjectDialog(tk.Toplevel):
         )
 
     def _mint(self) -> None:
+        self.mint_button.configure(state="disabled")
+        self.configure(cursor="watch")
+
+        if self._pending_nft_id is not None:
+            self.status_value.set(
+                f"Mencoba mempublikasikan kembali draft NFT #{self._pending_nft_id}…"
+            )
+            self.update_idletasks()
+            try:
+                item = self.client._request_json(  # noqa: SLF001 - retry draft API
+                    "POST",
+                    f"nfts/{self._pending_nft_id}/publish/",
+                    payload={},
+                )
+            except ListingFeeRequiredError as exc:
+                self.mint_button.configure(state="normal")
+                self.configure(cursor="")
+                self.status_value.set(exc.detail)
+                handle_listing_fee_required(self, exc)
+                return
+            except BatikCraftWebError as exc:
+                self.mint_button.configure(state="normal")
+                self.configure(cursor="")
+                self.status_value.set(str(exc))
+                messagebox.showerror("Mint NFT gagal", str(exc), parent=self)
+                return
+            self._pending_nft_id = None
+            self._mint_done(item)
+            return
+
         philosophy = self.philosophy_text.get("1.0", "end").strip()
         if not philosophy:
+            self.mint_button.configure(state="normal")
+            self.configure(cursor="")
             messagebox.showerror(
                 "Filosofi diperlukan",
                 "Isi filosofi atau deskripsi motif sebelum minting.",
@@ -214,9 +261,13 @@ class MintCurrentProjectDialog(tk.Toplevel):
         try:
             price = float(self.price_value.get())
         except ValueError:
+            self.mint_button.configure(state="normal")
+            self.configure(cursor="")
             messagebox.showerror("Harga tidak valid", "Harga awal harus berupa angka.", parent=self)
             return
         if price <= 0:
+            self.mint_button.configure(state="normal")
+            self.configure(cursor="")
             messagebox.showerror(
                 "Harga tidak valid",
                 "Harga awal harus lebih dari nol.",
@@ -224,8 +275,6 @@ class MintCurrentProjectDialog(tk.Toplevel):
             )
             return
 
-        self.mint_button.configure(state="disabled")
-        self.configure(cursor="watch")
         self.status_value.set("Membuat package ID, checksum, preview, dan listing NFT…")
         self.update_idletasks()
         try:
@@ -257,6 +306,10 @@ class MintCurrentProjectDialog(tk.Toplevel):
                     auction_ends_at=deadline,
                 )
         except ListingFeeRequiredError as exc:
+            pending_nft_id = _listing_fee_nft_id(exc)
+            if pending_nft_id is not None:
+                self._pending_nft_id = pending_nft_id
+                self.mint_button.configure(text="Cek Pembayaran & Publish")
             self.mint_button.configure(state="normal")
             self.configure(cursor="")
             self.status_value.set(exc.detail)
@@ -274,6 +327,9 @@ class MintCurrentProjectDialog(tk.Toplevel):
             self.status_value.set(str(exc))
             messagebox.showerror("Mint NFT gagal", str(exc), parent=self)
             return
+        self._mint_done(item)
+
+    def _mint_done(self, item: Mapping[str, object]) -> None:
         messagebox.showinfo(
             "NFT dipublikasikan",
             f"{item.get('title', self.project.metadata.title)} sekarang tampil di NFT Market.",
