@@ -254,6 +254,26 @@ class RefinedPaintLayerEditorWorkspaceView(PaintLayerEditorWorkspaceView):
         self._set_brush_size(target)
         return "break"
 
+    def _brush_cursor_center(
+        self,
+        point: tuple[float, float],
+        widget_x: float,
+        widget_y: float,
+    ) -> tuple[float, float]:
+        """Pusat lingkaran kursor dalam koordinat KANVAS.
+
+        Editor viewport menyediakan ``_screen_point``, kebalikan persis dari
+        ``_project_point``; memakainya menjamin lingkaran sejajar dengan titik
+        yang benar-benar akan dihapus. Kelas dasar ini juga dipakai tanpa
+        viewport, jadi ada jalur cadangan yang setidaknya memperhitungkan
+        gulir kanvas.
+        """
+
+        screen_point = getattr(self, "_screen_point", None)
+        if callable(screen_point):
+            return screen_point(point)
+        return (self.canvas.canvasx(widget_x), self.canvas.canvasy(widget_y))
+
     def _bind_brush_cursor_events(self, canvas: Any) -> None:
         """Pasang penanda kursor kuas/penghapus pada gerakan pointer.
 
@@ -296,8 +316,24 @@ class RefinedPaintLayerEditorWorkspaceView(PaintLayerEditorWorkspaceView):
         ):
             return
 
+        # Lingkaran ini HARUS digambar di titik yang sama dengan yang nanti
+        # dihapus. Versi lama memakai (x, y) mentah dari event, yaitu koordinat
+        # WIDGET, padahal ``create_oval`` memakai koordinat KANVAS. Begitu
+        # kanvas digulir, keduanya berbeda persis sebesar jarak gulir, sehingga
+        # lingkaran melenceng dari kursor.
+        #
+        # Memutar balik lewat ``_project_point`` lalu ``_screen_point``
+        # memakai transformasi yang sama persis dengan jalur klik penghapus,
+        # jadi lingkaran dijamin sejajar berapa pun gulir, zoom, atau lebar
+        # penggaris yang berlaku.
+        center_x, center_y = self._brush_cursor_center(point, x, y)
         radius = self._preview_width() / 2
-        bounds = (x - radius, y - radius, x + radius, y + radius)
+        bounds = (
+            center_x - radius,
+            center_y - radius,
+            center_x + radius,
+            center_y + radius,
+        )
         self.canvas.create_oval(
             *bounds,
             outline="#FFFFFF",

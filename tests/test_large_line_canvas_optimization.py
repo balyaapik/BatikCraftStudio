@@ -309,3 +309,42 @@ def test_eraser_preview_is_not_white_on_a_white_canvas() -> None:
     fill, stipple = PaintLayerEditorWorkspaceView._preview_style(view)
     assert fill.upper() != "#FFFFFF"
     assert stipple == "gray50"
+
+
+def test_brush_cursor_is_centred_on_the_erase_point_not_the_widget_point() -> None:
+    """Lingkaran kursor harus memakai koordinat KANVAS, bukan koordinat widget.
+
+    ``create_oval`` bekerja di ruang kanvas. Di kanvas yang bergulir, koordinat
+    widget dari event berbeda persis sebesar jarak gulir, sehingga lingkaran
+    melenceng dari kursor.
+    """
+
+    from batikcraft_studio.ui.refined_paint_editor import (
+        RefinedPaintLayerEditorWorkspaceView,
+    )
+
+    view = object.__new__(RefinedPaintLayerEditorWorkspaceView)
+
+    # Editor viewport menyediakan _screen_point; itu yang harus dipakai.
+    view._screen_point = lambda point: (point[0] * 2.0, point[1] * 2.0)
+    assert view._brush_cursor_center((10.0, 20.0), 999.0, 999.0) == (20.0, 40.0)
+
+
+def test_brush_cursor_falls_back_to_canvas_scroll_conversion() -> None:
+    from batikcraft_studio.ui.refined_paint_editor import (
+        RefinedPaintLayerEditorWorkspaceView,
+    )
+
+    class _ScrolledCanvas:
+        def canvasx(self, value: float) -> float:
+            return value + 300.0
+
+        def canvasy(self, value: float) -> float:
+            return value + 150.0
+
+    view = object.__new__(RefinedPaintLayerEditorWorkspaceView)
+    view.canvas = _ScrolledCanvas()
+    # Tanpa viewport, _screen_point tidak tersedia; jalur cadangan harus tetap
+    # memperhitungkan gulir kanvas dan bukan memakai koordinat widget mentah.
+    view._screen_point = None
+    assert view._brush_cursor_center((0.0, 0.0), 40.0, 60.0) == (340.0, 210.0)

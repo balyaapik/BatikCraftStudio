@@ -21,6 +21,8 @@ from .tooltip import ToolTip
 
 install_context_tool_translations()
 
+_LOG = logging.getLogger(__name__)
+
 _PAINT_VARIANTS = frozenset({"canting", "brush", "pencil", "eraser"})
 _SHAPE_VARIANTS = frozenset({"line", "rectangle", "ellipse", "polygon"})
 
@@ -433,11 +435,30 @@ class ContextToolEditorWorkspaceView(DirectStyleEditorWorkspaceView):
         point = self._project_point(event.x, event.y)
         project = self.session.project
         if point is None or project is None:
+            _LOG.warning(
+                "Penghapus batal di press: point=%s project_terbuka=%s",
+                point,
+                project is not None,
+            )
             return
         hit = self._hit_topmost_erasable_object(point)
         if hit is None:
+            _LOG.warning(
+                "Penghapus tidak menemukan objek di titik proyek (%.1f, %.1f). "
+                "Jumlah objek di proyek: %d.",
+                point[0],
+                point[1],
+                project.object_count,
+            )
             self.set_status(tr("context.eraser_object_required"))
             return
+        _LOG.info(
+            "Penghapus mengunci objek %r (%s) di (%.1f, %.1f).",
+            hit.name,
+            hit.kind,
+            point[0],
+            point[1],
+        )
         self._eraser_session.select_object_for_editing(hit.object_id)
         self._eraser_target_object_id = hit.object_id
         self._stroke_points = [point]
@@ -467,6 +488,9 @@ class ContextToolEditorWorkspaceView(DirectStyleEditorWorkspaceView):
             return
         object_id = self._eraser_target_object_id
         if object_id is None:
+            _LOG.warning(
+                "Penghapus dilepas tanpa objek terkunci: press tidak menemukan sasaran."
+            )
             self._clear_context_eraser()
             return
         point = self._project_point(event.x, event.y)
@@ -482,10 +506,16 @@ class ContextToolEditorWorkspaceView(DirectStyleEditorWorkspaceView):
                 smoothing=self._percentage(self.brush_smoothing_value),
             )
         except (ProjectSessionError, ValueError) as exc:
+            _LOG.warning("Penghapus gagal pada objek %s: %s", object_id, exc)
             self.set_status(str(exc))
             self._clear_context_eraser()
             self._schedule_render()
             return
+        _LOG.info(
+            "Penghapus selesai pada %r; %d titik goresan diterapkan.",
+            updated.name,
+            len(self._stroke_points),
+        )
         self._clear_context_eraser()
         self.refresh_context()
         self.set_status(tr("context.eraser_applied", name=updated.name))
