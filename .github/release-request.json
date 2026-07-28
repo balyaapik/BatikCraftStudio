@@ -1,5 +1,5 @@
 {
-  "release_tag": "v0.9.17",
-  "requested_at": "2026-07-28T01:30:00Z",
-  "reason": "Publish BatikCraft Studio 0.9.17. The line tool now draws pixels instead of a vector shape object, so the eraser removes part of a line the same way it removes part of a brush stroke. Previously a line stayed a vector object that the eraser could only cover visually: moving the line afterwards left the erased hole behind in the old position. Rectangles, ellipses and polygons deliberately stay vector so their colour and stroke width remain editable. Lines in already saved projects are left as vector and keep opening exactly as they were saved. Drawing a line is committed as a single undo step."
+  "release_tag": "v0.9.18",
+  "requested_at": "2026-07-28T02:30:00Z",
+  "reason": "Publish BatikCraft Studio 0.9.18. Brush and eraser strokes are now rendered only inside the box they actually touch instead of across the whole canvas. Every stroke previously allocated and PNG-encoded a full-canvas image three times and decoded it twice, so stroke latency grew with canvas area: measured 718 ms per stroke on a 4096x4096 canvas, 184 ms at 2048x2048 and 55 ms at 1024x1024. Stroke cost is now roughly 5 ms and no longer depends on canvas size, a 148x improvement on large canvases. Output is verified pixel-identical to the previous full-canvas path across brush size, hardness, opacity, smoothing and eraser strokes. Also repairs the test suite: TileCacheKey gained a tile_size field and the tile cache tests were never updated, leaving CI red since before 0.9.16."
 }
