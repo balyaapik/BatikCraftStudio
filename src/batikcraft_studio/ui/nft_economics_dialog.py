@@ -72,7 +72,7 @@ class NFTEconomicsWindow(tk.Toplevel):
             try:
                 items = self.client.list_nfts()
             except BatikCraftWebError as exc:
-                self.after(0, lambda: self._show_message(str(exc)))
+                self.after(0, lambda message=str(exc): self._show_message(message))
                 return
             self.after(0, lambda: self._apply_nfts(items))
 
