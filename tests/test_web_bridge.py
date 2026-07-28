@@ -179,10 +179,20 @@ def test_marketplace_dialog_rows_do_not_overlap() -> None:
     from batikcraft_studio.ui.marketplace_mint_dialog import MintCurrentProjectDialog
 
     source = inspect.getsource(MintCurrentProjectDialog._build)
-    assert "self.philosophy_text.grid(row=10" in source
-    assert ").grid(row=11, column=0, columnspan=2" in source
+    assert '"Reserve price (opsional)"' in source
+    assert "self.philosophy_text.grid(row=11" in source
     assert ").grid(row=12, column=0, columnspan=2" in source
-    assert "actions.grid(row=13" in source
+    assert ").grid(row=13, column=0, columnspan=2" in source
+    assert "actions.grid(row=14" in source
+
+
+def test_marketplace_dialog_requires_deadline_and_valid_reserve() -> None:
+    from batikcraft_studio.ui.marketplace_mint_dialog import MintCurrentProjectDialog
+
+    source = inspect.getsource(MintCurrentProjectDialog._mint)
+    assert "if reserve is not None and reserve < price" in source
+    assert "if not self.ends_value.get().strip()" in source
+    assert "reserve_price=reserve_text" in source
 
 
 def test_async_error_callbacks_bind_messages_before_after_runs() -> None:

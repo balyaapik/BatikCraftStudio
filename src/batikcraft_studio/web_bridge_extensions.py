@@ -113,9 +113,10 @@ def publish_nft_package(
     package_path: str | Path,
     *,
     starting_price: str,
+    reserve_price: str = "",
     auction_ends_at: str = "",
 ) -> dict[str, Any]:
-    """Upload both the preview and original editable/licensable NFT package."""
+    """Upload a sealed NFT package together with completable auction settings."""
 
     source = Path(package_path)
     bundle = load_batikcraft_nft(source)
@@ -141,6 +142,8 @@ def publish_nft_package(
             ensure_ascii=False,
         ),
     }
+    if reserve_price.strip():
+        fields["reserve_price"] = reserve_price.strip()
     if auction_ends_at.strip():
         fields["auction_ends_at"] = auction_ends_at.strip()
     item = self._request_multipart(
