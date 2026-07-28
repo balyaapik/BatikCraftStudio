@@ -132,7 +132,6 @@ def test_layer_dengan_objek_di_tile_tetap_digambar():
         Transform,
     )
     from batikcraft_studio.imaging.cached_renderer import CachedViewportRenderer
-
     from batikcraft_studio.imaging.shape import build_shape_geometry
 
     geometry = build_shape_geometry("rectangle", (75.0, 75.0), (125.0, 125.0))
