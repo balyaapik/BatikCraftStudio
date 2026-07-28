@@ -162,7 +162,10 @@ def seal_asset_pack_as_nft_package(
 
     safe_id = _safe_identifier(pack_id)
     embedded_filename = f"{safe_id}.batikpack"
-    project_asset_path = f"library/{embedded_filename}"
+    # Pengekspor project hanya mengizinkan asset di bawah root assets/, masks/,
+    # metadata/, atau renders/. Pustaka ditempatkan di assets/library/ agar tetap
+    # menjadi payload project kanonik dan dapat diverifikasi loader yang sama.
+    project_asset_path = f"assets/library/{embedded_filename}"
     envelope_path = f"project/{project_asset_path}"
     sealed = seal_image_as_nft_package(
         preview_image,
