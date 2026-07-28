@@ -1,5 +1,5 @@
 {
-  "release_tag": "v0.9.16",
-  "requested_at": "2026-07-27T12:30:00Z",
-  "reason": "Publish BatikCraft Studio 0.9.16. Fixes a crash that made JPEG export fail every time: the export worker reassigned the target path, turning it into a local variable so the earlier read raised UnboundLocalError, which the surrounding except clause did not catch, leaving the progress dialog hanging forever. Restores a green CI pipeline, which had been failing at the lint step since before 0.9.15 and therefore skipping the test suite entirely. Adds a timezone setting for auction deadlines so local times typed by creators are sent to BatikCraftWeb with an explicit UTC offset instead of being guessed by the server. Wraps every NFT publish path in a sealed .batikcraftnft package so the marketplace can verify that an artwork image really comes from a Studio project."
+  "release_tag": "v0.9.17",
+  "requested_at": "2026-07-28T01:30:00Z",
+  "reason": "Publish BatikCraft Studio 0.9.17. The line tool now draws pixels instead of a vector shape object, so the eraser removes part of a line the same way it removes part of a brush stroke. Previously a line stayed a vector object that the eraser could only cover visually: moving the line afterwards left the erased hole behind in the old position. Rectangles, ellipses and polygons deliberately stay vector so their colour and stroke width remain editable. Lines in already saved projects are left as vector and keep opening exactly as they were saved. Drawing a line is committed as a single undo step."
 }

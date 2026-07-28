@@ -75,6 +75,7 @@ from batikcraft_studio.application.process_session import (
     BATIK_PROCESS_EXTENSION,
     BatikProcessProjectSession,
 )
+from batikcraft_studio.application.raster_line_session import RasterLineProjectSession
 from batikcraft_studio.application.session import (
     LayerLockedError,
     NoActiveProjectError,
@@ -97,7 +98,7 @@ from batikcraft_studio.application.viewport_session import (
 
 # The desktop session includes AI backgrounds, pretrained Batification, image import,
 # outline cleanup, and the existing manual editing stack.
-ProjectSession = AIBatikBackgroundProjectSession
+ProjectSession = RasterLineProjectSession
 
 __all__ = [
     "BATIK_PROCESS_EXTENSION",
@@ -120,6 +121,7 @@ __all__ = [
     "EditableObjectProjectSession",
     "ExternalImageProjectSession",
     "FinalHotfixProjectSession",
+    "RasterLineProjectSession",
     "GradientProjectSession",
     "HotfixProjectSession",
     "InteractiveTransformProjectSession",
