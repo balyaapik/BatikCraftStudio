@@ -10,7 +10,7 @@ membawa offset eksplisit, sehingga tidak ada lagi yang perlu ditebak.
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone, tzinfo
+from datetime import UTC, datetime, tzinfo
 from pathlib import Path
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError, available_timezones
 
@@ -71,7 +71,7 @@ def is_valid_timezone(name: str) -> bool:
 def _system_local_zone() -> tzinfo:
     """Kembalikan offset lokal OS tanpa bergantung pada database IANA."""
 
-    return datetime.now().astimezone().tzinfo or timezone.utc
+    return datetime.now().astimezone().tzinfo or UTC
 
 
 def system_timezone_name() -> str:
