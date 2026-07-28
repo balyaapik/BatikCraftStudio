@@ -1,5 +1,5 @@
 {
-  "release_tag": "v0.9.22",
-  "requested_at": "2026-07-28T13:40:00Z",
-  "reason": "Publish BatikCraft Studio 0.9.22. This release completes the creator marketplace flow: secure asset-library envelopes, Windows timezone data, same-draft listing-fee retries, explicit finite auction deadlines, optional reserve prices, and a direct handoff to the BatikCraftWeb creator dashboard. It pairs with the Web creator-flow release that adds payout account settings and status visibility, manual and automatic payment paths, next-bidder recovery, and auction reopening after a declined or expired invoice."
+  "release_tag": "v0.9.23",
+  "requested_at": "2026-07-28T14:15:00Z",
+  "reason": "Publish BatikCraft Studio 0.9.23 as an urgent Windows compatibility hotfix. Version 0.9.22 could crash before opening Mint & Publish when an older virtual environment had no IANA timezone database, and mandatory auction deadlines could not be normalized. The hotfix falls back to the operating system local offset, guards the timezone selector with a Waktu lokal sistem mode, accepts already-offset ISO deadlines without an IANA database, and adds missing-TZPATH regression coverage."
 }
