@@ -108,7 +108,15 @@ class DestructiveEraserProjectSession(DirectStyleProjectSession):
         )
         region = (region_left, region_top, region_right, region_bottom)
         patch = source.crop(region)
-        patch.putalpha(ImageChops.subtract(patch.getchannel("A"), window))
+        alpha_before = patch.getchannel("A")
+        alpha_after = ImageChops.subtract(alpha_before, window)
+        if alpha_after.tobytes() == alpha_before.tobytes():
+            # Goresan hanya melewati bagian transparan objek. Tanpa pengaman
+            # ini, setiap sapuan gaya-Paint yang menyeberangi kotak batas objek
+            # akan membuat aset PNG baru dan langkah undo baru tanpa mengubah
+            # satu piksel pun.
+            raise ProjectSessionError("Goresan penghapus tidak mengenai tinta objek.")
+        patch.putalpha(alpha_after)
         source.paste(patch, region)
 
         output = BytesIO()

@@ -7,6 +7,7 @@ import math
 import tkinter as tk
 from collections.abc import Callable
 from tkinter import ttk
+from typing import Any
 
 from batikcraft_studio.application import DestructiveEraserProjectSession, ProjectSessionError
 from batikcraft_studio.i18n import tr
@@ -441,26 +442,12 @@ class ContextToolEditorWorkspaceView(DirectStyleEditorWorkspaceView):
                 project is not None,
             )
             return
-        hit = self._hit_topmost_erasable_object(point)
-        if hit is None:
-            _LOG.warning(
-                "Penghapus tidak menemukan objek di titik proyek (%.1f, %.1f). "
-                "Jumlah objek di proyek: %d.",
-                point[0],
-                point[1],
-                project.object_count,
-            )
-            self.set_status(tr("context.eraser_object_required"))
-            return
-        _LOG.info(
-            "Penghapus mengunci objek %r (%s) di (%.1f, %.1f).",
-            hit.name,
-            hit.kind,
-            point[0],
-            point[1],
-        )
-        self._eraser_session.select_object_for_editing(hit.object_id)
-        self._eraser_target_object_id = hit.object_id
+        # Gaya Paint: goresan boleh MULAI di mana saja, termasuk ruang kosong.
+        # Dulu titik pertama wajib mengenai sebuah objek; sapuan yang dimulai
+        # di samping garis lalu melintasinya dibuang diam-diam, sehingga
+        # penghapus terasa mati. Objek yang tersentuh sekarang dicari saat
+        # tombol dilepas, di sepanjang goresan, bukan hanya di titik pertama.
+        self._eraser_target_object_id = None
         self._stroke_points = [point]
         self._stroke_last_screen = (event.x, event.y)
         self.canvas.delete("paint-preview")
@@ -470,7 +457,7 @@ class ContextToolEditorWorkspaceView(DirectStyleEditorWorkspaceView):
         if self._active_tool != "eraser":
             super()._on_canvas_drag(event)
             return
-        if self._eraser_target_object_id is None or self._stroke_last_screen is None:
+        if self._stroke_last_screen is None:
             return
         point = self._project_point(event.x, event.y)
         if point is None:
@@ -486,39 +473,106 @@ class ContextToolEditorWorkspaceView(DirectStyleEditorWorkspaceView):
         if self._active_tool != "eraser":
             super()._on_canvas_release(event)
             return
-        object_id = self._eraser_target_object_id
-        if object_id is None:
-            _LOG.warning(
-                "Penghapus dilepas tanpa objek terkunci: press tidak menemukan sasaran."
-            )
+        if not self._stroke_points:
             self._clear_context_eraser()
             return
         point = self._project_point(event.x, event.y)
-        if point is not None and (not self._stroke_points or point != self._stroke_points[-1]):
+        if point is not None and point != self._stroke_points[-1]:
             self._stroke_points.append(point)
-        try:
-            updated = self._eraser_session.erase_object_pixels(
-                object_id,
-                points=tuple(self._stroke_points),
-                brush_size=float(self.brush_size_value.get()),
-                opacity=self._percentage(self.brush_opacity_value),
-                hardness=self._percentage(self.brush_hardness_value),
-                smoothing=self._percentage(self.brush_smoothing_value),
-            )
-        except (ProjectSessionError, ValueError) as exc:
-            _LOG.warning("Penghapus gagal pada objek %s: %s", object_id, exc)
-            self.set_status(str(exc))
-            self._clear_context_eraser()
-            self._schedule_render()
-            return
-        _LOG.info(
-            "Penghapus selesai pada %r; %d titik goresan diterapkan.",
-            updated.name,
-            len(self._stroke_points),
-        )
+        points = tuple(self._stroke_points)
+        brush_size = float(self.brush_size_value.get())
+
+        erased_names: list[str] = []
+        last_error: str | None = None
+        for item in self._erasable_objects_touched(points, brush_size):
+            try:
+                updated = self._eraser_session.erase_object_pixels(
+                    item.object_id,
+                    points=points,
+                    brush_size=brush_size,
+                    opacity=self._percentage(self.brush_opacity_value),
+                    hardness=self._percentage(self.brush_hardness_value),
+                    smoothing=self._percentage(self.brush_smoothing_value),
+                )
+            except (ProjectSessionError, ValueError) as exc:
+                # Objek terkunci, goresan hanya menyentuh bagian transparan,
+                # dan sebagainya: lewati objek ini, lanjutkan ke yang lain.
+                _LOG.info("Penghapus melewati %r: %s", item.name, exc)
+                last_error = str(exc)
+                continue
+            erased_names.append(updated.name)
+
         self._clear_context_eraser()
-        self.refresh_context()
-        self.set_status(tr("context.eraser_applied", name=updated.name))
+        if erased_names:
+            _LOG.info(
+                "Penghapus selesai pada %d objek (%s); %d titik goresan.",
+                len(erased_names),
+                ", ".join(erased_names),
+                len(points),
+            )
+            self.refresh_context()
+            self.set_status(tr("context.eraser_applied", name=", ".join(erased_names)))
+            return
+        _LOG.warning(
+            "Goresan penghapus (%d titik, kuas %.0f) tidak menyentuh objek apa pun.",
+            len(points),
+            brush_size,
+        )
+        self.set_status(last_error or tr("context.eraser_object_required"))
+        self._schedule_render()
+
+    def _erasable_objects_touched(
+        self,
+        points: tuple[tuple[float, float], ...],
+        brush_size: float,
+    ) -> list[Any]:
+        """Objek (atas ke bawah) yang kotak lokalnya tersentuh goresan.
+
+        Uji kasarnya murah: setiap titik goresan dibalik ke ruang lokal objek
+        dan dibandingkan dengan setengah ukuran objek plus jari-jari kuas.
+        Penyaringan halusnya terjadi di sesi — hapusan yang tidak mengubah
+        tinta ditolak di sana, jadi objek yang cuma dilewati kotak batasnya
+        tidak pernah menghasilkan aset baru maupun langkah undo.
+        """
+
+        from batikcraft_studio.domain import LayerNodeKind, ObjectKind
+        from batikcraft_studio.imaging.affine_object import (
+            inverse_transform_point,
+            object_linear_matrix,
+        )
+
+        erasable_kinds = {
+            ObjectKind.SHAPE,
+            ObjectKind.RASTER,
+            ObjectKind.PAINT_STROKE,
+            ObjectKind.MOTIF,
+            ObjectKind.ISEN,
+        }
+        project = self.session.project
+        if project is None:
+            return []
+        touched: list[Any] = []
+        for layer in reversed(project.layers):
+            if layer.node_kind is LayerNodeKind.GROUP:
+                continue
+            if not project.is_layer_effectively_visible(layer.layer_id):
+                continue
+            for item in reversed(layer.objects):
+                if not item.visible or item.kind not in erasable_kinds:
+                    continue
+                a, b, c, d = object_linear_matrix(item)
+                world_scale = math.sqrt(max(abs(a * d - b * c), 1e-8))
+                local_radius = (brush_size / 2.0) / world_scale + 1.0
+                half_width = item.bounds.width / 2 + local_radius
+                half_height = item.bounds.height / 2 + local_radius
+                for world_x, world_y in points:
+                    local = inverse_transform_point(item, world_x, world_y)
+                    if local is None:
+                        break
+                    if abs(local[0]) <= half_width and abs(local[1]) <= half_height:
+                        touched.append(item)
+                        break
+        return touched
 
     def _hit_topmost_erasable_object(self, point: tuple[float, float]):
         """Objek paling atas yang TINTA-nya benar-benar berada di *point*.

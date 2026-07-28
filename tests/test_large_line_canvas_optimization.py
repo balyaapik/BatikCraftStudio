@@ -8,7 +8,10 @@ from pathlib import Path
 import pytest
 from PIL import Image, ImageChops, ImageDraw
 
-from batikcraft_studio.application import DestructiveEraserProjectSession
+from batikcraft_studio.application import (
+    DestructiveEraserProjectSession,
+    ProjectSessionError,
+)
 from batikcraft_studio.domain import (
     Layer,
     LayerKind,
@@ -348,3 +351,77 @@ def test_brush_cursor_falls_back_to_canvas_scroll_conversion() -> None:
     # memperhitungkan gulir kanvas dan bukan memakai koordinat widget mentah.
     view._screen_point = None
     assert view._brush_cursor_center((0.0, 0.0), 40.0, 60.0) == (340.0, 210.0)
+
+
+# ---------------------------------------------------------------------------
+# Penghapus gaya Paint: goresan boleh mulai di ruang kosong
+# ---------------------------------------------------------------------------
+
+
+def _two_crossing_lines(tmp_path: Path) -> DestructiveEraserProjectSession:
+    session = DestructiveEraserProjectSession(tmp_path / "models")
+    session.new_project(title="Silang", creator="Tester", width=2000, height=1500)
+    layer = session.create_object_layer("Objek")
+    session.create_shape_layer(
+        "line", (100, 100), (1900, 1400), target_layer_id=layer.layer_id, stroke_width=6.0
+    )
+    session.create_shape_layer(
+        "line", (100, 1400), (1900, 100), target_layer_id=layer.layer_id, stroke_width=6.0
+    )
+    return session
+
+
+def test_stroke_starting_in_empty_space_touches_every_crossed_object(
+    tmp_path: Path,
+) -> None:
+    from batikcraft_studio.ui.context_tool_editor import ContextToolEditorWorkspaceView
+
+    session = _two_crossing_lines(tmp_path)
+
+    class _View:
+        pass
+
+    view = _View()
+    view.session = session
+
+    sweep = tuple((1000.0, 600.0 + i * 30.0) for i in range(11))
+    touched = ContextToolEditorWorkspaceView._erasable_objects_touched(view, sweep, 40.0)
+    assert len(touched) == 2
+
+    for item in touched:
+        updated = session.erase_object_pixels(item.object_id, points=sweep, brush_size=40.0)
+        assert updated.object_id == item.object_id
+
+
+def test_stroke_far_from_all_objects_touches_nothing(tmp_path: Path) -> None:
+    from batikcraft_studio.ui.context_tool_editor import ContextToolEditorWorkspaceView
+
+    session = _two_crossing_lines(tmp_path)
+
+    class _View:
+        pass
+
+    view = _View()
+    view.session = session
+    # Sudut kanan atas: jauh dari kotak-lokal kedua garis diagonal? Tidak --
+    # kotak batas garis diagonal menutup kanvas, jadi uji kasar akan lolos dan
+    # penyaringan tinta di sesi yang harus menolaknya.
+    corner = ((1850.0, 1350.0),)
+    touched = ContextToolEditorWorkspaceView._erasable_objects_touched(view, corner, 10.0)
+    for item in touched:
+        with pytest.raises((ProjectSessionError, ValueError)):
+            session.erase_object_pixels(item.object_id, points=corner, brush_size=10.0)
+
+
+def test_noop_erase_is_rejected_and_creates_no_new_asset(tmp_path: Path) -> None:
+    session = _two_crossing_lines(tmp_path)
+    project = session.require_project()
+    target = next(
+        item for layer in project.layers for item in layer.objects
+    )
+    assets_before = set(session.assets)
+    with pytest.raises(ProjectSessionError):
+        session.erase_object_pixels(
+            target.object_id, points=((300.0, 1300.0),), brush_size=10.0
+        )
+    assert set(session.assets) == assets_before
