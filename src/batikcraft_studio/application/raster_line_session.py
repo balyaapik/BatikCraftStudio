@@ -126,6 +126,23 @@ class RasterLineProjectSession(AIBatikBackgroundProjectSession):
         line_start, line_end = _endpoints_from_geometry(geometry)
         line_width = float(geometry.properties["stroke_width"])
 
+        # Kalau lapis aktif adalah kanvas raster, garis harus dilebur ke
+        # bitmap-nya, bukan menjadi objek yang mengambang di atasnya. Penghapus
+        # pada kanvas raster hanya mengenai bitmap; objek terpisah akan tampak
+        # kebal terhadap penghapus, dan itulah gejala yang dilaporkan.
+        raster_target = self._active_raster_layer(target_layer_id)
+        if raster_target is not None:
+            return self.apply_raster_paint_stroke(
+                raster_target.layer_id,
+                points=[line_start, line_end],
+                brush_size=line_width,
+                color=stroke_color,
+                erase=False,
+                opacity=1.0,
+                hardness=_LINE_HARDNESS,
+                smoothing=_LINE_SMOOTHING,
+            )
+
         target, add_target = self._resolve_object_layer(
             target_layer_id, name="Layer Garis"
         )
@@ -183,6 +200,27 @@ class RasterLineProjectSession(AIBatikBackgroundProjectSession):
 
         self._commit_mutation(_mutation)
         return item
+
+
+    def _active_raster_layer(self, target_layer_id: str | None):
+        """Lapis kanvas raster yang sedang aktif, atau None bila bukan raster."""
+        project = self.require_project()
+        candidate = None
+        if target_layer_id:
+            try:
+                candidate = project.get_layer(target_layer_id)
+            except Exception:  # noqa: BLE001 - lapis hilang diperlakukan bukan raster
+                return None
+        else:
+            active_id = getattr(project, "active_layer_id", None)
+            if active_id:
+                try:
+                    candidate = project.get_layer(active_id)
+                except Exception:  # noqa: BLE001
+                    return None
+        if candidate is None:
+            return None
+        return candidate if self._is_raster_paint_layer(candidate) else None
 
 
 def _endpoints_from_geometry(geometry) -> tuple[tuple[float, float], tuple[float, float]]:

@@ -144,3 +144,87 @@ def test_line_survives_undo_and_redo():
 
     assert after_undo == 0
     assert len(_all_objects(session)) == 1
+
+
+# ---------------------------------------------------------------------------
+# Kanvas raster utama: garis harus melebur ke bitmap, bukan mengambang di atasnya
+# ---------------------------------------------------------------------------
+
+
+def _raster_session():
+    session = ProjectSession()
+    session.new_project(title="Kanvas", creator="Penguji", width=400, height=300)
+    session.ensure_active_raster_paint_layer()
+    return session
+
+
+def _raster_layer(session):
+    for layer in session.require_project().layers:
+        if session._is_raster_paint_layer(layer):
+            return layer
+    return None
+
+
+def test_line_on_raster_canvas_melts_into_the_bitmap():
+    """Di kanvas utama garis tidak boleh menjadi objek terpisah."""
+    session = _raster_session()
+
+    session.create_shape_layer("line", (40.0, 40.0), (300.0, 220.0))
+
+    # Tidak ada objek goresan baru yang mengambang di atas kanvas.
+    assert _all_objects(session) == []
+    assert _raster_layer(session) is not None
+
+
+def test_eraser_on_raster_canvas_actually_removes_the_line():
+    """Inti laporan: penghapus di kanvas utama harus mengenai garis."""
+    from io import BytesIO
+
+    from PIL import Image
+
+    session = _raster_session()
+    layer = _raster_layer(session)
+    session.create_shape_layer("line", (50.0, 150.0), (350.0, 150.0), stroke_width=20.0)
+
+    def alpha_at(x, y):
+        current = _raster_layer(session)
+        with Image.open(BytesIO(session.assets[current.asset_ref])) as img:
+            img.load()
+            return img.convert("RGBA").getpixel((x, y))[3]
+
+    assert alpha_at(200, 150) > 0, "garis harus tergambar dulu"
+
+    session.apply_raster_paint_stroke(
+        layer.layer_id,
+        points=[(180.0, 150.0), (220.0, 150.0)],
+        brush_size=60.0,
+        color="#000000",
+        erase=True,
+    )
+
+    assert alpha_at(200, 150) == 0, "penghapus harus benar-benar menghapus garis"
+
+
+def test_line_on_raster_canvas_is_one_undo_step():
+    session = _raster_session()
+    before = len(session.require_project().layers)
+
+    session.create_shape_layer("line", (40.0, 40.0), (300.0, 220.0))
+    session.undo()
+
+    assert len(session.require_project().layers) == before
+
+
+def test_object_layers_still_get_object_lines():
+    """Di luar kanvas raster, garis tetap menjadi objek goresan seperti 0.9.17."""
+    session = ProjectSession()
+    session.new_project(title="Objek", creator="Penguji", width=400, height=300)
+    layer = session.create_object_layer("Motif")
+
+    session.create_shape_layer(
+        "line", (40.0, 40.0), (300.0, 220.0), target_layer_id=layer.layer_id
+    )
+
+    objects = _all_objects(session)
+    assert len(objects) == 1
+    assert objects[0].properties["source_format"] == "RASTER_LINE"
