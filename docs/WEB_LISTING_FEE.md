@@ -34,8 +34,22 @@ except ListingFeeRequiredError as exc:
 
 The Studio dialog renders that breakdown through
 `batikcraft_studio.ui.listing_fee_prompt.handle_listing_fee_required`, which opens the
-payment page in a browser and then asks the creator to retry publishing once the status
-turns to paid.
+payment page in a browser. The dialog keeps the draft NFT identifier from that failed
+publish attempt. Clicking **Check Payment & Publish** retries
+`POST /api/v1/nfts/{id}/publish/` for the same draft; it does not upload the package or
+create a second marketplace record.
+
+The retry identifier is read from `listing_fee.nft_id` when the server provides it. For
+compatibility with older BatikCraftWeb deployments, Studio can also recover the identifier
+from the checkout URL generated for that invoice.
+
+## Windows Timezone Data
+
+Auction deadlines are converted from local wall time to an ISO-8601 value with an explicit
+offset. Windows does not ship the IANA timezone database used by Python's `zoneinfo`, so
+BatikCraft Studio declares `tzdata` as a Windows-only runtime dependency. A normal
+installation with `pip install -e .` or the packaged desktop build must therefore populate
+the timezone combobox without requiring a separate manual `pip install tzdata` command.
 
 ## Checking the Cost Before Publishing
 
