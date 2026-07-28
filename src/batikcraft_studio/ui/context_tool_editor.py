@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import math
 import tkinter as tk
 from collections.abc import Callable
@@ -512,16 +513,22 @@ class ContextToolEditorWorkspaceView(DirectStyleEditorWorkspaceView):
 
         from batikcraft_studio.domain import LayerNodeKind
 
-        for layer in reversed(project.layers):
-            if layer.node_kind is LayerNodeKind.GROUP:
-                continue
-            if not project.is_layer_effectively_visible(layer.layer_id):
-                continue
-            for item in reversed(layer.objects):
-                if not item.visible:
+        try:
+            for layer in reversed(project.layers):
+                if layer.node_kind is LayerNodeKind.GROUP:
                     continue
-                if precise_point_hits_object(item, assets, point[0], point[1]):
-                    return item
+                if not project.is_layer_effectively_visible(layer.layer_id):
+                    continue
+                for item in reversed(layer.objects):
+                    if not item.visible:
+                        continue
+                    if precise_point_hits_object(item, assets, point[0], point[1]):
+                        return item
+        except Exception:  # noqa: BLE001 - lolos tinta tidak boleh mematikan penghapus
+            # Uji berbasis tinta hanyalah penyempurnaan. Apa pun yang gagal di
+            # sini harus jatuh ke perilaku kotak batas, bukan membuat klik
+            # penghapus tidak melakukan apa-apa sama sekali.
+            logging.getLogger(__name__).exception("Uji tumbukan tinta gagal")
         return self._hit_topmost_object(point)
 
     def _clear_context_eraser(self) -> None:
