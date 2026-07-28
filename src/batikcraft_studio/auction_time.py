@@ -10,17 +10,19 @@ membawa offset eksplisit, sehingga tidak ada lagi yang perlu ditebak.
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from datetime import datetime, timezone, tzinfo
 from pathlib import Path
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError, available_timezones
 
 __all__ = [
     "AuctionTimeError",
+    "SYSTEM_LOCAL_TIMEZONE",
     "TimezonePreference",
     "available_timezones_sorted",
     "is_valid_timezone",
     "local_input_to_iso",
     "system_timezone_name",
+    "timezone_database_missing",
 ]
 
 # Format yang diterima dari kotak isian, dari yang paling longgar ke ISO penuh.
@@ -33,6 +35,7 @@ _INPUT_FORMATS = (
 )
 
 _DEFAULT_TIMEZONE = "Asia/Jakarta"
+SYSTEM_LOCAL_TIMEZONE = "Waktu lokal sistem"
 
 
 class AuctionTimeError(ValueError):
@@ -40,7 +43,19 @@ class AuctionTimeError(ValueError):
 
 
 def available_timezones_sorted() -> list[str]:
-    return sorted(available_timezones())
+    try:
+        return sorted(available_timezones())
+    except (OSError, ZoneInfoNotFoundError):
+        return []
+
+
+def timezone_database_missing() -> bool:
+    """Benar ketika Python tidak menemukan database zona waktu IANA apa pun."""
+
+    try:
+        return not bool(available_timezones())
+    except (OSError, ZoneInfoNotFoundError):
+        return True
 
 
 def is_valid_timezone(name: str) -> bool:
@@ -53,27 +68,50 @@ def is_valid_timezone(name: str) -> bool:
     return True
 
 
+def _system_local_zone() -> tzinfo:
+    """Kembalikan offset lokal OS tanpa bergantung pada database IANA."""
+
+    return datetime.now().astimezone().tzinfo or timezone.utc
+
+
 def system_timezone_name() -> str:
-    """Zona waktu sistem bila dikenali, jika tidak pakai default marketplace."""
+    """Zona waktu sistem bila dikenali, lalu default atau mode lokal sebagai fallback."""
+
     local = datetime.now().astimezone().tzinfo
     name = getattr(local, "key", "") or str(local or "")
-    return name if is_valid_timezone(name) else _DEFAULT_TIMEZONE
+    if is_valid_timezone(name):
+        return name
+    if timezone_database_missing():
+        return SYSTEM_LOCAL_TIMEZONE
+    return _DEFAULT_TIMEZONE
+
+
+def _timezone_for_input(timezone_name: str) -> tzinfo:
+    if timezone_name == SYSTEM_LOCAL_TIMEZONE:
+        return _system_local_zone()
+    try:
+        return ZoneInfo(timezone_name)
+    except (ZoneInfoNotFoundError, ValueError, KeyError) as exc:
+        if timezone_database_missing():
+            return _system_local_zone()
+        raise AuctionTimeError(f"Zona waktu tidak dikenal: {timezone_name!r}") from exc
 
 
 def local_input_to_iso(value: str, timezone_name: str) -> str:
     """Ubah waktu lokal yang diketik creator menjadi ISO-8601 beroffset.
 
     Masukan yang sudah membawa offset dibiarkan apa adanya, karena maksudnya
-    sudah tidak ambigu. Masukan kosong menghasilkan string kosong supaya
-    pemanggil dapat memperlakukannya sebagai "tanpa batas waktu".
+    sudah tidak ambigu. Ketika database IANA tidak tersedia, masukan lokal
+    ditafsirkan memakai offset lokal sistem agar publish tetap dapat dilakukan.
+    Masukan kosong menghasilkan string kosong supaya pemanggil dapat
+    memperlakukannya sebagai "tanpa batas waktu".
     """
+
     text = (value or "").strip()
     if not text:
         return ""
-    if not is_valid_timezone(timezone_name):
-        raise AuctionTimeError(f"Zona waktu tidak dikenal: {timezone_name!r}")
 
-    # Sudah beroffset atau berakhiran Z: tidak perlu ditafsirkan ulang.
+    # Sudah beroffset atau berakhiran Z: tidak perlu database zona waktu.
     try:
         parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
     except ValueError:
@@ -81,12 +119,13 @@ def local_input_to_iso(value: str, timezone_name: str) -> str:
     if parsed is not None and parsed.tzinfo is not None:
         return parsed.isoformat()
 
+    zone = _timezone_for_input(timezone_name)
     for fmt in _INPUT_FORMATS:
         try:
             naive = datetime.strptime(text, fmt)
         except ValueError:
             continue
-        return naive.replace(tzinfo=ZoneInfo(timezone_name)).isoformat()
+        return naive.replace(tzinfo=zone).isoformat()
 
     raise AuctionTimeError(
         "Format waktu tidak dikenali. Contoh yang diterima: "
