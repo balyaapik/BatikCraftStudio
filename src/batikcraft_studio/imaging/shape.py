@@ -12,6 +12,15 @@ from PIL import Image, ImageColor, ImageDraw
 from batikcraft_studio.domain import Layer, LayerKind
 
 SHAPE_TYPES = ("line", "rectangle", "ellipse", "polygon")
+#: Luas keluaran maksimum yang masih memakai supersample 4x. Batas ini
+#: mencakup persis wilayah aturan lama (sisi terpanjang <= 2048 px), jadi
+#: shape kecil dan sedang tetap dirender pada kualitas yang sama.
+_SUPERSAMPLE_4_MAX_AREA = 4_200_000
+#: Di atas itu 2x dipakai sampai luas keluaran ~48 MP. Lebih besar lagi,
+#: supersample tidak lagi sepadan: goresannya sendiri sudah puluhan piksel.
+_SUPERSAMPLE_2_MAX_AREA = 48_000_000
+#: Anggaran luas satu pita saat render bertahap. 4 juta piksel RGBA = 16 MB.
+_MAX_BAND_PIXELS = 4_000_000
 MAX_POLYGON_SIDES = 12
 MIN_POLYGON_SIDES = 3
 MAX_SHAPE_STROKE_WIDTH = 1024.0
@@ -209,31 +218,32 @@ def parse_shape_properties(layer: Layer) -> dict[str, Any]:
     }
 
 
-def render_shape_image(layer: Layer, width: int, height: int) -> Image.Image:
-    """Render one shape layer into an antialiased transparent RGBA image."""
+def _supersample_factor(width: int, height: int) -> int:
+    """Faktor supersample untuk ukuran keluaran *width* x *height*.
 
-    if width < 1 or height < 1:
-        raise ShapeError("Rendered shape dimensions must be positive.")
-    values = parse_shape_properties(layer)
-    supersample = 4 if max(width, height) <= 2048 else 2
-    output_size = (width * supersample, height * supersample)
-    image = Image.new("RGBA", output_size, (0, 0, 0, 0))
-    draw = ImageDraw.Draw(image)
+    Aturan lama, ``4 if max(width, height) <= 2048 else 2``, hanya melihat sisi
+    terpanjang. Akibatnya sebuah GARIS diagonal besar (bounding box 6010x4510)
+    tetap memakai faktor 2 dan mengalokasikan buffer 12020x9020 = 434 MB hanya
+    untuk menggambar satu garis tipis. Anggaran berbasis LUAS mengukur biaya
+    yang sebenarnya dan berlaku sama untuk setiap rasio sisi.
+    """
 
-    scale_x = width / values["pixel_width"] * supersample
-    scale_y = height / values["pixel_height"] * supersample
-    padding_x = values["padding"] * scale_x
-    padding_y = values["padding"] * scale_y
-    bounds = (
-        padding_x,
-        padding_y,
-        output_size[0] - padding_x,
-        output_size[1] - padding_y,
-    )
-    line_width = max(
-        1,
-        round(values["stroke_width"] * min(scale_x, scale_y)),
-    )
+    area = max(1, width * height)
+    if area <= _SUPERSAMPLE_4_MAX_AREA:
+        return 4
+    if area <= _SUPERSAMPLE_2_MAX_AREA:
+        return 2
+    return 1
+
+
+def _draw_shape(
+    draw: ImageDraw.ImageDraw,
+    values: dict[str, Any],
+    bounds: tuple[float, float, float, float],
+    line_width: int,
+) -> None:
+    """Gambar satu shape ke dalam *draw* memakai *bounds* ruang supersample."""
+
     stroke = values["stroke_color"] if values["stroke_enabled"] else None
     fill = values["fill_color"] if values["fill_enabled"] else None
     shape_type = values["shape_type"]
@@ -256,7 +266,78 @@ def render_shape_image(layer: Layer, width: int, height: int) -> Image.Image:
                 joint="curve",
             )
 
-    return image.resize((width, height), Image.Resampling.LANCZOS)
+
+def render_shape_image(layer: Layer, width: int, height: int) -> Image.Image:
+    """Render one shape layer into an antialiased transparent RGBA image.
+
+    Optimisasi kanvas (garis berukuran besar)
+    -----------------------------------------
+    Tiga perubahan menjaga biaya rasterisasi tetap terkendali tanpa mengubah
+    hasil visual secara berarti:
+
+    1. Faktor supersample dipilih dari anggaran LUAS, bukan sisi terpanjang.
+    2. Turun-skala memakai ``BOX``. Untuk faktor bulat, rata-rata kotak justru
+       *lebih benar* daripada ``LANCZOS`` (tidak ada ringing di tepi garis)
+       sekaligus sekitar dua kali lebih cepat.
+    3. Bila buffer supersample masih besar, shape digambar per-pita horizontal
+       lalu tiap pita langsung diturunkan skalanya. Hasil pikselnya identik
+       dengan render sekali jalan, tetapi memori puncaknya tetap kecil.
+    """
+
+    if width < 1 or height < 1:
+        raise ShapeError("Rendered shape dimensions must be positive.")
+    values = parse_shape_properties(layer)
+    supersample = _supersample_factor(width, height)
+    output_size = (width * supersample, height * supersample)
+
+    scale_x = width / values["pixel_width"] * supersample
+    scale_y = height / values["pixel_height"] * supersample
+    padding_x = values["padding"] * scale_x
+    padding_y = values["padding"] * scale_y
+    bounds = (
+        padding_x,
+        padding_y,
+        output_size[0] - padding_x,
+        output_size[1] - padding_y,
+    )
+    line_width = max(
+        1,
+        round(values["stroke_width"] * min(scale_x, scale_y)),
+    )
+
+    if supersample == 1:
+        image = Image.new("RGBA", output_size, (0, 0, 0, 0))
+        _draw_shape(ImageDraw.Draw(image), values, bounds, line_width)
+        return image
+
+    band_rows = _band_rows(width, height, supersample)
+    if band_rows >= height:
+        image = Image.new("RGBA", output_size, (0, 0, 0, 0))
+        _draw_shape(ImageDraw.Draw(image), values, bounds, line_width)
+        return image.resize((width, height), Image.Resampling.BOX)
+
+    left, top, right, bottom = bounds
+    result = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+    for band_top in range(0, height, band_rows):
+        band_height = min(band_rows, height - band_top)
+        offset = band_top * supersample
+        band = Image.new("RGBA", (output_size[0], band_height * supersample), (0, 0, 0, 0))
+        _draw_shape(
+            ImageDraw.Draw(band),
+            values,
+            (left, top - offset, right, bottom - offset),
+            line_width,
+        )
+        result.paste(band.resize((width, band_height), Image.Resampling.BOX), (0, band_top))
+    return result
+
+
+def _band_rows(width: int, height: int, supersample: int) -> int:
+    """Tinggi pita keluaran agar satu buffer pita tetap di bawah anggaran."""
+
+    per_row = max(1, width * supersample * supersample)
+    rows = max(1, _MAX_BAND_PIXELS // per_row)
+    return min(height, rows)
 
 
 def _constrained_end(

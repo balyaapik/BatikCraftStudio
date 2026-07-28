@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
+import logging
 import math
 import tkinter as tk
 from collections.abc import Callable
 from tkinter import ttk
+from typing import Any
 
 from batikcraft_studio.application import DestructiveEraserProjectSession, ProjectSessionError
 from batikcraft_studio.i18n import tr
+from batikcraft_studio.imaging.object_hit_mask import precise_point_hits_object
 
 from .context_tool_i18n import install_context_tool_translations
 from .direct_style_editor import DirectStyleEditorWorkspaceView
@@ -18,6 +21,8 @@ from .tool_icons import create_tool_icon
 from .tooltip import ToolTip
 
 install_context_tool_translations()
+
+_LOG = logging.getLogger(__name__)
 
 _PAINT_VARIANTS = frozenset({"canting", "brush", "pencil", "eraser"})
 _SHAPE_VARIANTS = frozenset({"line", "rectangle", "ellipse", "polygon"})
@@ -431,13 +436,18 @@ class ContextToolEditorWorkspaceView(DirectStyleEditorWorkspaceView):
         point = self._project_point(event.x, event.y)
         project = self.session.project
         if point is None or project is None:
+            _LOG.warning(
+                "Penghapus batal di press: point=%s project_terbuka=%s",
+                point,
+                project is not None,
+            )
             return
-        hit = self._hit_topmost_object(point)
-        if hit is None:
-            self.set_status(tr("context.eraser_object_required"))
-            return
-        self._eraser_session.select_object_for_editing(hit.object_id)
-        self._eraser_target_object_id = hit.object_id
+        # Gaya Paint: goresan boleh MULAI di mana saja, termasuk ruang kosong.
+        # Dulu titik pertama wajib mengenai sebuah objek; sapuan yang dimulai
+        # di samping garis lalu melintasinya dibuang diam-diam, sehingga
+        # penghapus terasa mati. Objek yang tersentuh sekarang dicari saat
+        # tombol dilepas, di sepanjang goresan, bukan hanya di titik pertama.
+        self._eraser_target_object_id = None
         self._stroke_points = [point]
         self._stroke_last_screen = (event.x, event.y)
         self.canvas.delete("paint-preview")
@@ -447,7 +457,7 @@ class ContextToolEditorWorkspaceView(DirectStyleEditorWorkspaceView):
         if self._active_tool != "eraser":
             super()._on_canvas_drag(event)
             return
-        if self._eraser_target_object_id is None or self._stroke_last_screen is None:
+        if self._stroke_last_screen is None:
             return
         point = self._project_point(event.x, event.y)
         if point is None:
@@ -463,30 +473,237 @@ class ContextToolEditorWorkspaceView(DirectStyleEditorWorkspaceView):
         if self._active_tool != "eraser":
             super()._on_canvas_release(event)
             return
-        object_id = self._eraser_target_object_id
-        if object_id is None:
+        if not self._stroke_points:
             self._clear_context_eraser()
             return
         point = self._project_point(event.x, event.y)
-        if point is not None and (not self._stroke_points or point != self._stroke_points[-1]):
+        if point is not None and point != self._stroke_points[-1]:
             self._stroke_points.append(point)
-        try:
-            updated = self._eraser_session.erase_object_pixels(
-                object_id,
-                points=tuple(self._stroke_points),
-                brush_size=float(self.brush_size_value.get()),
-                opacity=self._percentage(self.brush_opacity_value),
-                hardness=self._percentage(self.brush_hardness_value),
-                smoothing=self._percentage(self.brush_smoothing_value),
-            )
-        except (ProjectSessionError, ValueError) as exc:
-            self.set_status(str(exc))
-            self._clear_context_eraser()
-            self._schedule_render()
-            return
+        points = tuple(self._stroke_points)
+        brush_size = float(self.brush_size_value.get())
+
+        erased_names: list[str] = []
+        last_error: str | None = None
+        for item in self._erasable_objects_touched(points, brush_size):
+            try:
+                updated = self._eraser_session.erase_object_pixels(
+                    item.object_id,
+                    points=points,
+                    brush_size=brush_size,
+                    opacity=self._percentage(self.brush_opacity_value),
+                    hardness=self._percentage(self.brush_hardness_value),
+                    smoothing=self._percentage(self.brush_smoothing_value),
+                )
+            except (ProjectSessionError, ValueError) as exc:
+                # Objek terkunci, goresan hanya menyentuh bagian transparan,
+                # dan sebagainya: lewati objek ini, lanjutkan ke yang lain.
+                _LOG.info("Penghapus melewati %r: %s", item.name, exc)
+                last_error = str(exc)
+                continue
+            erased_names.append(updated.name)
+
+        # Garis yang digambar saat lapis aktifnya kanvas raster DILEBUR ke
+        # bitmap lapis, bukan menjadi objek (lihat raster_line_session).
+        # Pemindaian objek di atas tidak akan pernah menemukannya, jadi goresan
+        # yang sama juga diterapkan sebagai hapusan bitmap pada setiap lapis
+        # kanvas raster yang tintanya tersentuh.
+        for raster_layer in self._raster_layers_touched(points, brush_size):
+            try:
+                self.session.apply_raster_paint_stroke(
+                    raster_layer.layer_id,
+                    points=points,
+                    brush_size=brush_size,
+                    color="#FFFFFF",
+                    erase=True,
+                    opacity=self._percentage(self.brush_opacity_value),
+                    hardness=self._percentage(self.brush_hardness_value),
+                    smoothing=self._percentage(self.brush_smoothing_value),
+                )
+            except (ProjectSessionError, ValueError) as exc:
+                _LOG.info("Penghapus melewati lapis %r: %s", raster_layer.name, exc)
+                last_error = str(exc)
+                continue
+            erased_names.append(raster_layer.name)
+
         self._clear_context_eraser()
-        self.refresh_context()
-        self.set_status(tr("context.eraser_applied", name=updated.name))
+        if erased_names:
+            _LOG.info(
+                "Penghapus selesai pada %d objek (%s); %d titik goresan.",
+                len(erased_names),
+                ", ".join(erased_names),
+                len(points),
+            )
+            self.refresh_context()
+            self.set_status(tr("context.eraser_applied", name=", ".join(erased_names)))
+            return
+        _LOG.warning(
+            "Goresan penghapus (%d titik, kuas %.0f) tidak menyentuh objek apa pun.",
+            len(points),
+            brush_size,
+        )
+        self.set_status(last_error or tr("context.eraser_object_required"))
+        self._schedule_render()
+
+    def _erasable_objects_touched(
+        self,
+        points: tuple[tuple[float, float], ...],
+        brush_size: float,
+    ) -> list[Any]:
+        """Objek (atas ke bawah) yang kotak lokalnya tersentuh goresan.
+
+        Uji kasarnya murah: setiap titik goresan dibalik ke ruang lokal objek
+        dan dibandingkan dengan setengah ukuran objek plus jari-jari kuas.
+        Penyaringan halusnya terjadi di sesi — hapusan yang tidak mengubah
+        tinta ditolak di sana, jadi objek yang cuma dilewati kotak batasnya
+        tidak pernah menghasilkan aset baru maupun langkah undo.
+        """
+
+        from batikcraft_studio.domain import LayerNodeKind, ObjectKind
+        from batikcraft_studio.imaging.affine_object import (
+            inverse_transform_point,
+            object_linear_matrix,
+        )
+
+        erasable_kinds = {
+            ObjectKind.SHAPE,
+            ObjectKind.RASTER,
+            ObjectKind.PAINT_STROKE,
+            ObjectKind.MOTIF,
+            ObjectKind.ISEN,
+        }
+        project = self.session.project
+        if project is None:
+            return []
+        touched: list[Any] = []
+        for layer in reversed(project.layers):
+            if layer.node_kind is LayerNodeKind.GROUP:
+                continue
+            if not project.is_layer_effectively_visible(layer.layer_id):
+                continue
+            for item in reversed(layer.objects):
+                if not item.visible or item.kind not in erasable_kinds:
+                    continue
+                a, b, c, d = object_linear_matrix(item)
+                world_scale = math.sqrt(max(abs(a * d - b * c), 1e-8))
+                local_radius = (brush_size / 2.0) / world_scale + 1.0
+                half_width = item.bounds.width / 2 + local_radius
+                half_height = item.bounds.height / 2 + local_radius
+                for world_x, world_y in points:
+                    local = inverse_transform_point(item, world_x, world_y)
+                    if local is None:
+                        break
+                    if abs(local[0]) <= half_width and abs(local[1]) <= half_height:
+                        touched.append(item)
+                        break
+        return touched
+
+    def _raster_layers_touched(
+        self,
+        points: tuple[tuple[float, float], ...],
+        brush_size: float,
+    ) -> list[Any]:
+        """Lapis kanvas raster yang tintanya berada di bawah goresan.
+
+        Pemeriksaan tinta dilakukan dulu pada kotak batas goresan supaya
+        sapuan di ruang kosong tidak menghasilkan mutasi maupun langkah undo.
+        """
+
+        session = self.session
+        project = session.project
+        is_raster = getattr(session, "_is_raster_paint_layer", None)
+        apply_stroke = getattr(session, "apply_raster_paint_stroke", None)
+        if project is None or not callable(is_raster) or not callable(apply_stroke):
+            return []
+        touched: list[Any] = []
+        for layer in project.layers:
+            try:
+                if not is_raster(layer):
+                    continue
+                if not project.is_layer_effectively_visible(layer.layer_id):
+                    continue
+                if layer.locked:
+                    continue
+                if self._raster_layer_has_ink_under(layer, points, brush_size):
+                    touched.append(layer)
+            except Exception:  # noqa: BLE001 - satu lapis rusak jangan mematikan sisanya
+                _LOG.exception("Gagal memeriksa lapis raster %r", layer.name)
+        return touched
+
+    def _raster_layer_has_ink_under(
+        self,
+        layer: Any,
+        points: tuple[tuple[float, float], ...],
+        brush_size: float,
+    ) -> bool:
+        from io import BytesIO
+
+        from PIL import Image
+
+        from batikcraft_studio.imaging import live_bitmap_store
+
+        image = live_bitmap_store.get(layer.asset_ref)
+        if image is None:
+            content = self.session.assets.get(layer.asset_ref) if layer.asset_ref else None
+            if content is None:
+                return False
+            try:
+                with Image.open(BytesIO(content)) as decoded:
+                    decoded.load()
+                    image = decoded.convert("RGBA")
+            except (OSError, ValueError):
+                return False
+        radius = brush_size / 2.0 + 2.0
+        xs = [point[0] for point in points]
+        ys = [point[1] for point in points]
+        left = max(0, int(min(xs) - radius))
+        top = max(0, int(min(ys) - radius))
+        right = min(image.width, int(max(xs) + radius) + 1)
+        bottom = min(image.height, int(max(ys) + radius) + 1)
+        if right <= left or bottom <= top:
+            return False
+        extrema = image.getchannel("A").crop((left, top, right, bottom)).getextrema()
+        return extrema[1] > 0
+
+    def _hit_topmost_erasable_object(self, point: tuple[float, float]):
+        """Objek paling atas yang TINTA-nya benar-benar berada di *point*.
+
+        Uji kotak batas saja tidak memadai untuk penghapus. Sebuah garis
+        diagonal memiliki kotak batas selebar kanvas, jadi objek berkotak-batas
+        besar yang berada di atasnya akan selalu memenangkan uji tersebut dan
+        penghapus tidak pernah dapat mengenai garis itu sendiri.
+
+        Lolos pertama memeriksa alfa yang sesungguhnya. Bila tidak ada objek
+        yang tintanya terkena, perilaku lama berbasis kotak batas dipakai
+        kembali supaya tidak ada objek yang mendadak menjadi tak terjangkau.
+        """
+
+        project = self.session.project
+        if project is None:
+            return None
+        try:
+            assets = self.session.assets
+        except AttributeError:  # pragma: no cover - sesi minimal pada pengujian
+            assets = {}
+
+        from batikcraft_studio.domain import LayerNodeKind
+
+        try:
+            for layer in reversed(project.layers):
+                if layer.node_kind is LayerNodeKind.GROUP:
+                    continue
+                if not project.is_layer_effectively_visible(layer.layer_id):
+                    continue
+                for item in reversed(layer.objects):
+                    if not item.visible:
+                        continue
+                    if precise_point_hits_object(item, assets, point[0], point[1]):
+                        return item
+        except Exception:  # noqa: BLE001 - lolos tinta tidak boleh mematikan penghapus
+            # Uji berbasis tinta hanyalah penyempurnaan. Apa pun yang gagal di
+            # sini harus jatuh ke perilaku kotak batas, bukan membuat klik
+            # penghapus tidak melakukan apa-apa sama sekali.
+            logging.getLogger(__name__).exception("Uji tumbukan tinta gagal")
+        return self._hit_topmost_object(point)
 
     def _clear_context_eraser(self) -> None:
         self._eraser_target_object_id = None

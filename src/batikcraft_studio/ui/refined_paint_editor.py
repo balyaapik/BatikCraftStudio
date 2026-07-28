@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import tkinter as tk
 from tkinter import ttk
+from typing import Any
 
 from batikcraft_studio.application import PaintLayerError, ProjectSessionError
 from batikcraft_studio.imaging.paint import PaintStrokeError
@@ -27,8 +28,7 @@ class RefinedPaintLayerEditorWorkspaceView(PaintLayerEditorWorkspaceView):
         self._brush_cursor_position: tuple[float, float] | None = None
         super().__init__(*args, **kwargs)
 
-        self.canvas.bind("<Motion>", self._on_brush_cursor_motion, add="+")
-        self.canvas.bind("<Leave>", self._on_brush_cursor_leave, add="+")
+        self._bind_brush_cursor_events(self.canvas)
         for variable in (
             self.brush_size_value,
             self.brush_opacity_value,
@@ -254,6 +254,43 @@ class RefinedPaintLayerEditorWorkspaceView(PaintLayerEditorWorkspaceView):
         self._set_brush_size(target)
         return "break"
 
+    def _brush_cursor_center(
+        self,
+        point: tuple[float, float],
+        widget_x: float,
+        widget_y: float,
+    ) -> tuple[float, float]:
+        """Pusat lingkaran kursor dalam koordinat KANVAS.
+
+        Editor viewport menyediakan ``_screen_point``, kebalikan persis dari
+        ``_project_point``; memakainya menjamin lingkaran sejajar dengan titik
+        yang benar-benar akan dihapus. Kelas dasar ini juga dipakai tanpa
+        viewport, jadi ada jalur cadangan yang setidaknya memperhitungkan
+        gulir kanvas.
+        """
+
+        screen_point = getattr(self, "_screen_point", None)
+        if callable(screen_point):
+            return screen_point(point)
+        return (self.canvas.canvasx(widget_x), self.canvas.canvasy(widget_y))
+
+    def _bind_brush_cursor_events(self, canvas: Any) -> None:
+        """Pasang penanda kursor kuas/penghapus pada gerakan pointer.
+
+        ``<Motion>`` saja tidak cukup. Begitu tombol kiri DITEKAN, Tk berhenti
+        mengirim ``<Motion>`` dan menggantinya dengan ``<B1-Motion>``. Karena
+        hanya ``<Motion>`` yang terpasang, lingkaran penghapus membeku di titik
+        klik dan tidak ikut bergerak selama diseret -- padahal justru saat
+        menyeret itulah pengguna perlu tahu persis di mana kuasnya berada.
+
+        Semua binding memakai ``add="+"`` supaya penangan seret utama yang
+        sudah terpasang lebih dulu tetap berjalan.
+        """
+
+        canvas.bind("<Motion>", self._on_brush_cursor_motion, add="+")
+        canvas.bind("<B1-Motion>", self._on_brush_cursor_motion, add="+")
+        canvas.bind("<Leave>", self._on_brush_cursor_leave, add="+")
+
     def _on_brush_cursor_motion(self, event: tk.Event[tk.Canvas]) -> None:
         self._brush_cursor_position = (event.x, event.y)
         self._refresh_brush_cursor()
@@ -279,8 +316,24 @@ class RefinedPaintLayerEditorWorkspaceView(PaintLayerEditorWorkspaceView):
         ):
             return
 
+        # Lingkaran ini HARUS digambar di titik yang sama dengan yang nanti
+        # dihapus. Versi lama memakai (x, y) mentah dari event, yaitu koordinat
+        # WIDGET, padahal ``create_oval`` memakai koordinat KANVAS. Begitu
+        # kanvas digulir, keduanya berbeda persis sebesar jarak gulir, sehingga
+        # lingkaran melenceng dari kursor.
+        #
+        # Memutar balik lewat ``_project_point`` lalu ``_screen_point``
+        # memakai transformasi yang sama persis dengan jalur klik penghapus,
+        # jadi lingkaran dijamin sejajar berapa pun gulir, zoom, atau lebar
+        # penggaris yang berlaku.
+        center_x, center_y = self._brush_cursor_center(point, x, y)
         radius = self._preview_width() / 2
-        bounds = (x - radius, y - radius, x + radius, y + radius)
+        bounds = (
+            center_x - radius,
+            center_y - radius,
+            center_x + radius,
+            center_y + radius,
+        )
         self.canvas.create_oval(
             *bounds,
             outline="#FFFFFF",
