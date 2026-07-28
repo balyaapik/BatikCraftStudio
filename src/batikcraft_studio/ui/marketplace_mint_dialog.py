@@ -12,7 +12,12 @@ from pathlib import Path
 from tkinter import messagebox, ttk
 from zoneinfo import ZoneInfo
 
-from batikcraft_studio.auction_time import system_timezone_name
+from batikcraft_studio.auction_time import (
+    SYSTEM_LOCAL_TIMEZONE,
+    available_timezones_sorted,
+    system_timezone_name,
+    timezone_database_missing,
+)
 from batikcraft_studio.domain import Project
 from batikcraft_studio.imaging import ProjectRenderError
 from batikcraft_studio.persistence import BatikNFTError, NFTExportMetadata, export_batikcraft_nft
@@ -41,11 +46,15 @@ def _preferred_timezone() -> str:
 
 
 def _default_deadline(timezone_name: str) -> str:
-    try:
-        zone = ZoneInfo(timezone_name)
-    except (KeyError, ValueError):
-        zone = ZoneInfo("Asia/Jakarta")
-    return (datetime.now(zone) + timedelta(days=7)).strftime("%Y-%m-%d %H:%M")
+    for candidate in (timezone_name, "Asia/Jakarta"):
+        try:
+            zone = ZoneInfo(candidate)
+        except (KeyError, ValueError):
+            continue
+        return (datetime.now(zone) + timedelta(days=7)).strftime("%Y-%m-%d %H:%M")
+    # Instalasi lama mungkin belum memiliki tzdata. Jam lokal sistem tetap
+    # menyediakan offset yang cukup untuk membuat deadline ISO-8601 yang tegas.
+    return (datetime.now().astimezone() + timedelta(days=7)).strftime("%Y-%m-%d %H:%M")
 
 
 def _listing_fee_nft_id(error: ListingFeeRequiredError) -> int | None:
@@ -194,15 +203,21 @@ class MintCurrentProjectDialog(tk.Toplevel):
 
     @staticmethod
     def _timezone_row(parent: ttk.Frame, row: int, variable: tk.StringVar) -> None:
-        from batikcraft_studio.auction_time import available_timezones_sorted
-
-        ttk.Label(parent, text="Zona waktu batas lelang").grid(
-            row=row, column=0, sticky="w", pady=5
+        timezones = available_timezones_sorted()
+        missing_database = timezone_database_missing() or not timezones
+        if missing_database:
+            variable.set(SYSTEM_LOCAL_TIMEZONE)
+            timezones = [SYSTEM_LOCAL_TIMEZONE]
+        label = (
+            "Zona waktu batas lelang (jam lokal sistem)"
+            if missing_database
+            else "Zona waktu batas lelang"
         )
+        ttk.Label(parent, text=label).grid(row=row, column=0, sticky="w", pady=5)
         combo = ttk.Combobox(
             parent,
             textvariable=variable,
-            values=available_timezones_sorted(),
+            values=timezones,
             state="readonly",
         )
         combo.grid(row=row, column=1, sticky="ew", padx=(10, 0), pady=5)
