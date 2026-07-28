@@ -1,5 +1,9 @@
 # BatikCraft Studio
 
+<img width="1254" height="1254" alt="image" src="https://github.com/user-attachments/assets/def188cc-3987-42ec-98a3-c5ba45e939bb" />
+
+
+
 A native desktop studio for composing, drawing, and editing Indonesian batik motifs.
 
 BatikCraft Studio is a Python and Tkinter application built around an offline asset
