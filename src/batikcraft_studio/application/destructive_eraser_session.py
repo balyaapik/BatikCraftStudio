@@ -84,14 +84,38 @@ class DestructiveEraserProjectSession(DirectStyleProjectSession):
             mask_source.load()
             mask_crop = mask_source.convert("RGBA").getchannel("A")
 
-        mask = Image.new("L", source.size, 0)
+        # Goresan penghapus hampir selalu jauh lebih kecil daripada objeknya.
+        # Versi lama membuat mask seukuran PENUH objek lalu mengurangi alfa di
+        # seluruh gambar; pada sebuah garis dengan bounding box 6010x4510 itu
+        # berarti ~27 juta piksel disentuh untuk goresan selebar 424 px.
+        # Sekarang pengurangan hanya dikerjakan di dalam kotak batas goresan.
         left = round(stroke.center[0] - stroke.width / 2)
         top = round(stroke.center[1] - stroke.height / 2)
-        mask.paste(mask_crop, (left, top))
-        source.putalpha(ImageChops.subtract(source.getchannel("A"), mask))
+        region_left = max(0, left)
+        region_top = max(0, top)
+        region_right = min(source.width, left + mask_crop.width)
+        region_bottom = min(source.height, top + mask_crop.height)
+        if region_right <= region_left or region_bottom <= region_top:
+            raise ProjectSessionError("Goresan penghapus tidak mengenai objek yang dipilih.")
+
+        window = mask_crop.crop(
+            (
+                region_left - left,
+                region_top - top,
+                region_right - left,
+                region_bottom - top,
+            )
+        )
+        region = (region_left, region_top, region_right, region_bottom)
+        patch = source.crop(region)
+        patch.putalpha(ImageChops.subtract(patch.getchannel("A"), window))
+        source.paste(patch, region)
 
         output = BytesIO()
-        source.save(output, format="PNG", optimize=True)
+        # ``optimize=True`` menjalankan pencarian filter menyeluruh dan pada
+        # objek besar memakan waktu lebih lama daripada seluruh operasi hapus
+        # itu sendiri, dengan penghematan ukuran yang dapat diabaikan.
+        source.save(output, format="PNG", compress_level=6)
         asset_ref = f"assets/{uuid4()}.png"
         previous_ref = item.asset_ref
         properties = dict(item.properties)

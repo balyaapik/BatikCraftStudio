@@ -9,6 +9,7 @@ from tkinter import ttk
 
 from batikcraft_studio.application import DestructiveEraserProjectSession, ProjectSessionError
 from batikcraft_studio.i18n import tr
+from batikcraft_studio.imaging.object_hit_mask import precise_point_hits_object
 
 from .context_tool_i18n import install_context_tool_translations
 from .direct_style_editor import DirectStyleEditorWorkspaceView
@@ -432,7 +433,7 @@ class ContextToolEditorWorkspaceView(DirectStyleEditorWorkspaceView):
         project = self.session.project
         if point is None or project is None:
             return
-        hit = self._hit_topmost_object(point)
+        hit = self._hit_topmost_erasable_object(point)
         if hit is None:
             self.set_status(tr("context.eraser_object_required"))
             return
@@ -487,6 +488,41 @@ class ContextToolEditorWorkspaceView(DirectStyleEditorWorkspaceView):
         self._clear_context_eraser()
         self.refresh_context()
         self.set_status(tr("context.eraser_applied", name=updated.name))
+
+    def _hit_topmost_erasable_object(self, point: tuple[float, float]):
+        """Objek paling atas yang TINTA-nya benar-benar berada di *point*.
+
+        Uji kotak batas saja tidak memadai untuk penghapus. Sebuah garis
+        diagonal memiliki kotak batas selebar kanvas, jadi objek berkotak-batas
+        besar yang berada di atasnya akan selalu memenangkan uji tersebut dan
+        penghapus tidak pernah dapat mengenai garis itu sendiri.
+
+        Lolos pertama memeriksa alfa yang sesungguhnya. Bila tidak ada objek
+        yang tintanya terkena, perilaku lama berbasis kotak batas dipakai
+        kembali supaya tidak ada objek yang mendadak menjadi tak terjangkau.
+        """
+
+        project = self.session.project
+        if project is None:
+            return None
+        try:
+            assets = self.session.assets
+        except AttributeError:  # pragma: no cover - sesi minimal pada pengujian
+            assets = {}
+
+        from batikcraft_studio.domain import LayerNodeKind
+
+        for layer in reversed(project.layers):
+            if layer.node_kind is LayerNodeKind.GROUP:
+                continue
+            if not project.is_layer_effectively_visible(layer.layer_id):
+                continue
+            for item in reversed(layer.objects):
+                if not item.visible:
+                    continue
+                if precise_point_hits_object(item, assets, point[0], point[1]):
+                    return item
+        return self._hit_topmost_object(point)
 
     def _clear_context_eraser(self) -> None:
         self._eraser_target_object_id = None
