@@ -1,6 +1,6 @@
 # BatikCraft Studio
 
-<img width="1254" height="1254" alt="image" src="https://github.com/user-attachments/assets/def188cc-3987-42ec-98a3-c5ba45e939bb" />
+<img width="512" height="512" alt="image" src="https://github.com/user-attachments/assets/def188cc-3987-42ec-98a3-c5ba45e939bb" />
 
 
 
