@@ -1,5 +1,5 @@
 {
-  "release_tag": "v0.9.20",
-  "requested_at": "2026-07-28T04:15:00Z",
-  "reason": "Publish BatikCraft Studio 0.9.20. The eraser in the brush toolbar still could not remove lines after 0.9.19. Root cause: the brush and eraser resolve their target through ensure_active_raster_paint_layer(), which creates a raster canvas layer when the active layer is not one, while the line tool used its own stricter check that gave up in exactly that situation and produced a separate stroke object instead. Line and eraser therefore wrote to different layers. The line tool now uses the same layer resolution as the brush, so both always act on the same bitmap. Lines drawn on an explicitly named object layer still become stroke objects."
+  "release_tag": "v0.9.22",
+  "requested_at": "2026-07-28T13:40:00Z",
+  "reason": "Publish BatikCraft Studio 0.9.22. This release completes the creator marketplace flow: secure asset-library envelopes, Windows timezone data, same-draft listing-fee retries, explicit finite auction deadlines, optional reserve prices, and a direct handoff to the BatikCraftWeb creator dashboard. It pairs with the Web creator-flow release that adds payout account settings and status visibility, manual and automatic payment paths, next-bidder recovery, and auction reopening after a declined or expired invoice."
 }
