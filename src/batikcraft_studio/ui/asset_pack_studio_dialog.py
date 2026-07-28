@@ -10,7 +10,6 @@ BatikCraftWeb.
 
 from __future__ import annotations
 
-import hashlib
 import json
 import threading
 import tkinter as tk
@@ -35,6 +34,10 @@ from batikcraft_studio.assets.personal_store import (
 )
 from batikcraft_studio.assets.preview import compose_collage_preview
 from batikcraft_studio.config import APP_VERSION
+from batikcraft_studio.nft_sealing import (
+    SealingError,
+    seal_asset_pack_as_nft_package,
+)
 from batikcraft_studio.ui.listing_fee_prompt import handle_listing_fee_required
 from batikcraft_studio.web_bridge import (
     BatikCraftWebClient,
@@ -498,7 +501,6 @@ class AssetPackStudioWindow(tk.Toplevel):
         candidates: list[AssetCandidate] = []
         archive = b""
         preview = b""
-        checksum = ""
         library_type, philosophy = parse_library_description(pack.description)
 
         if pending_nft_id is None:
@@ -516,11 +518,10 @@ class AssetPackStudioWindow(tk.Toplevel):
                     return
                 archive = pack_path.read_bytes()
 
-            checksum = hashlib.sha256(archive).hexdigest()
             if self._preview_bytes is None:
                 self._refresh_preview(force_auto=True)
             preview = self._preview_bytes or candidates[0].content
-            self.status_value.set("Mengunggah pustaka ke BatikCraftWeb…")
+            self.status_value.set("Menyegel dan mengunggah pustaka ke BatikCraftWeb…")
         else:
             self.status_value.set(
                 f"Memeriksa pembayaran dan melanjutkan draft NFT #{pending_nft_id}…"
@@ -531,6 +532,16 @@ class AssetPackStudioWindow(tk.Toplevel):
             nft_id = pending_nft_id
             try:
                 if nft_id is None:
+                    account = client.me()
+                    sealed = seal_asset_pack_as_nft_package(
+                        archive,
+                        preview,
+                        pack_id=pack.pack_id,
+                        title=pack.name,
+                        creator_name=account.public_name,
+                        creator_user_id=str(account.user_id),
+                        description=philosophy or pack.description,
+                    )
                     item = client._request_multipart(  # noqa: SLF001 - API internal satu paket
                         "POST",
                         "nfts/",
@@ -549,16 +560,22 @@ class AssetPackStudioWindow(tk.Toplevel):
                                     "philosophy": philosophy,
                                     "asset_count": len(candidates),
                                     "asset_names": [c.name for c in candidates][:50],
-                                    "sha256": checksum,
+                                    "sha256": sealed.embedded_asset_sha256,
+                                    "embedded_asset_path": sealed.embedded_asset_path,
+                                    "embedded_asset_filename": sealed.embedded_asset_filename,
                                 },
                                 ensure_ascii=False,
                             ),
                         },
                         files={
-                            "image": ("preview.png", preview, "image/png"),
+                            "image": (
+                                "preview.jpg",
+                                sealed.preview_jpeg,
+                                "image/jpeg",
+                            ),
                             "package_file": (
-                                f"{pack.pack_id}.batikpack",
-                                archive,
+                                sealed.package_filename,
+                                sealed.package_bytes,
                                 "application/zip",
                             ),
                         },
@@ -573,7 +590,14 @@ class AssetPackStudioWindow(tk.Toplevel):
                     ),
                 )
                 return
-            except (BatikCraftWebError, OSError, KeyError, ValueError, TypeError) as exc:
+            except (
+                BatikCraftWebError,
+                OSError,
+                KeyError,
+                SealingError,
+                ValueError,
+                TypeError,
+            ) as exc:
                 self.after(0, lambda message=str(exc): self._sell_failed(message))
                 return
             self.after(
