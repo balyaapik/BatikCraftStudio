@@ -5,9 +5,12 @@ from __future__ import annotations
 import re
 import tempfile
 import tkinter as tk
+import webbrowser
 from collections.abc import Mapping
+from datetime import datetime, timedelta
 from pathlib import Path
 from tkinter import messagebox, ttk
+from zoneinfo import ZoneInfo
 
 from batikcraft_studio.auction_time import system_timezone_name
 from batikcraft_studio.domain import Project
@@ -35,6 +38,14 @@ def _preferred_timezone() -> str:
         return TimezonePreference().load()
     except OSError:
         return system_timezone_name()
+
+
+def _default_deadline(timezone_name: str) -> str:
+    try:
+        zone = ZoneInfo(timezone_name)
+    except (KeyError, ValueError):
+        zone = ZoneInfo("Asia/Jakarta")
+    return (datetime.now(zone) + timedelta(days=7)).strftime("%Y-%m-%d %H:%M")
 
 
 def _listing_fee_nft_id(error: ListingFeeRequiredError) -> int | None:
@@ -69,11 +80,14 @@ class MintCurrentProjectDialog(tk.Toplevel):
         self.assets = dict(assets)
         self._pending_nft_id: int | None = None
 
+        preferred_timezone = _preferred_timezone()
         self.price_value = tk.StringVar(master=self, value="100000")
-        self.ends_value = tk.StringVar(master=self)
-        self.timezone_value = tk.StringVar(
-            master=self, value=_preferred_timezone()
+        self.reserve_value = tk.StringVar(master=self, value="")
+        self.ends_value = tk.StringVar(
+            master=self,
+            value=_default_deadline(preferred_timezone),
         )
+        self.timezone_value = tk.StringVar(master=self, value=preferred_timezone)
         self.motifs_value = tk.StringVar(
             master=self,
             value=", ".join(discover_project_motifs(project)),
@@ -89,8 +103,8 @@ class MintCurrentProjectDialog(tk.Toplevel):
         )
 
         self.title("Marketplace — Mint & Publish NFT")
-        self.geometry("760x640")
-        self.minsize(680, 580)
+        self.geometry("780x700")
+        self.minsize(700, 640)
         self.transient(parent.winfo_toplevel())
         self.protocol("WM_DELETE_WINDOW", self.destroy)
         self._build()
@@ -110,11 +124,11 @@ class MintCurrentProjectDialog(tk.Toplevel):
             body,
             text=(
                 "BatikCraft Studio membuat paket NFT bersegel dari project aktif lalu "
-                "mengunggah preview dan metadata ke BatikCraftWeb. Tidak ada file paket "
-                "yang perlu diekspor manual dari menu File."
+                "mengunggah preview dan metadata ke BatikCraftWeb. Atur harga, reserve "
+                "price, dan batas akhir agar lelang selalu dapat diselesaikan."
             ),
             style="Muted.TLabel",
-            wraplength=700,
+            wraplength=720,
             justify="left",
         ).grid(row=1, column=0, columnspan=2, sticky="ew", pady=(4, 14))
 
@@ -124,41 +138,44 @@ class MintCurrentProjectDialog(tk.Toplevel):
         self._entry_row(body, 5, "Warna dominan", self.colors_value)
         self._entry_row(body, 6, "Lisensi", self.license_value)
         self._entry_row(body, 7, "Harga awal", self.price_value)
+        self._entry_row(body, 8, "Reserve price (opsional)", self.reserve_value)
         self._entry_row(
-            body, 8, "Auction berakhir (mis. 2026-08-01 17:00)", self.ends_value
+            body,
+            9,
+            "Auction berakhir (mis. 2026-08-01 17:00)",
+            self.ends_value,
         )
-        self._timezone_row(body, 9, self.timezone_value)
+        self._timezone_row(body, 10, self.timezone_value)
 
         ttk.Label(body, text="Filosofi / deskripsi").grid(
-            row=10,
+            row=11,
             column=0,
             sticky="nw",
             pady=5,
         )
         self.philosophy_text = tk.Text(body, height=8, wrap="word")
-        self.philosophy_text.grid(row=10, column=1, sticky="ew", pady=5)
+        self.philosophy_text.grid(row=11, column=1, sticky="ew", pady=5)
         self.philosophy_text.insert("1.0", self.project.metadata.description)
 
         ttk.Label(
             body,
             text=(
-                "Catatan: aksi ini membuat identitas NFT marketplace dan listing auction. "
-                "Transaksi minting blockchain on-chain memerlukan gateway wallet/contract "
-                "yang terpisah dari package seal BatikCraft."
+                "Catatan: package seal mengikat preview dan project. Kepemilikan "
+                "marketplace diterbitkan setelah buyer membayar dan transaksi diverifikasi."
             ),
             style="Muted.TLabel",
-            wraplength=700,
+            wraplength=720,
             justify="left",
-        ).grid(row=11, column=0, columnspan=2, sticky="ew", pady=(10, 4))
+        ).grid(row=12, column=0, columnspan=2, sticky="ew", pady=(10, 4))
         ttk.Label(
             body,
             textvariable=self.status_value,
             style="Muted.TLabel",
-            wraplength=700,
-        ).grid(row=12, column=0, columnspan=2, sticky="ew", pady=(0, 8))
+            wraplength=720,
+        ).grid(row=13, column=0, columnspan=2, sticky="ew", pady=(0, 8))
 
         actions = ttk.Frame(body)
-        actions.grid(row=13, column=0, columnspan=2, sticky="e", pady=(12, 0))
+        actions.grid(row=14, column=0, columnspan=2, sticky="e", pady=(12, 0))
         ttk.Button(actions, text="Batal", command=self.destroy).pack(
             side="right",
             padx=(8, 0),
@@ -177,7 +194,6 @@ class MintCurrentProjectDialog(tk.Toplevel):
 
     @staticmethod
     def _timezone_row(parent: ttk.Frame, row: int, variable: tk.StringVar) -> None:
-        """Pemilih zona waktu untuk menafsirkan batas waktu lelang yang diketik."""
         from batikcraft_studio.auction_time import available_timezones_sorted
 
         ttk.Label(parent, text="Zona waktu batas lelang").grid(
@@ -192,13 +208,11 @@ class MintCurrentProjectDialog(tk.Toplevel):
         combo.grid(row=row, column=1, sticky="ew", padx=(10, 0), pady=5)
 
     def _remember_timezone(self) -> None:
-        """Simpan pilihan agar tidak perlu diatur ulang tiap kali publish."""
         from batikcraft_studio.auction_time import AuctionTimeError, TimezonePreference
 
         try:
             TimezonePreference().save(self.timezone_value.get())
         except (AuctionTimeError, OSError):
-            # Kegagalan menyimpan preferensi tidak boleh membatalkan publish.
             pass
 
     @staticmethod
@@ -217,6 +231,10 @@ class MintCurrentProjectDialog(tk.Toplevel):
             pady=5,
         )
 
+    def _restore_button(self) -> None:
+        self.mint_button.configure(state="normal")
+        self.configure(cursor="")
+
     def _mint(self) -> None:
         self.mint_button.configure(state="disabled")
         self.configure(cursor="watch")
@@ -233,14 +251,12 @@ class MintCurrentProjectDialog(tk.Toplevel):
                     payload={},
                 )
             except ListingFeeRequiredError as exc:
-                self.mint_button.configure(state="normal")
-                self.configure(cursor="")
+                self._restore_button()
                 self.status_value.set(exc.detail)
                 handle_listing_fee_required(self, exc)
                 return
             except BatikCraftWebError as exc:
-                self.mint_button.configure(state="normal")
-                self.configure(cursor="")
+                self._restore_button()
                 self.status_value.set(str(exc))
                 messagebox.showerror("Mint NFT gagal", str(exc), parent=self)
                 return
@@ -250,8 +266,7 @@ class MintCurrentProjectDialog(tk.Toplevel):
 
         philosophy = self.philosophy_text.get("1.0", "end").strip()
         if not philosophy:
-            self.mint_button.configure(state="normal")
-            self.configure(cursor="")
+            self._restore_button()
             messagebox.showerror(
                 "Filosofi diperlukan",
                 "Isi filosofi atau deskripsi motif sebelum minting.",
@@ -261,13 +276,15 @@ class MintCurrentProjectDialog(tk.Toplevel):
         try:
             price = float(self.price_value.get())
         except ValueError:
-            self.mint_button.configure(state="normal")
-            self.configure(cursor="")
-            messagebox.showerror("Harga tidak valid", "Harga awal harus berupa angka.", parent=self)
+            self._restore_button()
+            messagebox.showerror(
+                "Harga tidak valid",
+                "Harga awal harus berupa angka.",
+                parent=self,
+            )
             return
         if price <= 0:
-            self.mint_button.configure(state="normal")
-            self.configure(cursor="")
+            self._restore_button()
             messagebox.showerror(
                 "Harga tidak valid",
                 "Harga awal harus lebih dari nol.",
@@ -275,14 +292,42 @@ class MintCurrentProjectDialog(tk.Toplevel):
             )
             return
 
+        reserve_text = self.reserve_value.get().strip()
+        try:
+            reserve = float(reserve_text) if reserve_text else None
+        except ValueError:
+            self._restore_button()
+            messagebox.showerror(
+                "Reserve price tidak valid",
+                "Reserve price harus berupa angka atau dikosongkan.",
+                parent=self,
+            )
+            return
+        if reserve is not None and reserve < price:
+            self._restore_button()
+            messagebox.showerror(
+                "Reserve price tidak valid",
+                "Reserve price tidak boleh lebih rendah dari harga awal.",
+                parent=self,
+            )
+            return
+        if not self.ends_value.get().strip():
+            self._restore_button()
+            messagebox.showerror(
+                "Batas lelang diperlukan",
+                "Isi waktu berakhir lelang agar pemenang dapat ditagih.",
+                parent=self,
+            )
+            return
+
         self.status_value.set("Membuat package ID, checksum, preview, dan listing NFT…")
         self.update_idletasks()
         try:
-            # Ubah ke ISO beroffset lebih dulu: masukan yang tidak terbaca harus
-            # gagal sebelum proyek dirender, bukan setelahnya.
             deadline = normalize_auction_deadline(
                 self.ends_value.get(), self.timezone_value.get()
             )
+            if not deadline:
+                raise BatikCraftWebError("Batas akhir lelang wajib diisi.")
             self._remember_timezone()
             metadata = NFTExportMetadata(
                 creator_user_id=str(self.session.account.user_id),
@@ -303,6 +348,7 @@ class MintCurrentProjectDialog(tk.Toplevel):
                 item = self.client.publish_nft_package(
                     package,
                     starting_price=self.price_value.get(),
+                    reserve_price=reserve_text,
                     auction_ends_at=deadline,
                 )
         except ListingFeeRequiredError as exc:
@@ -310,8 +356,7 @@ class MintCurrentProjectDialog(tk.Toplevel):
             if pending_nft_id is not None:
                 self._pending_nft_id = pending_nft_id
                 self.mint_button.configure(text="Cek Pembayaran & Publish")
-            self.mint_button.configure(state="normal")
-            self.configure(cursor="")
+            self._restore_button()
             self.status_value.set(exc.detail)
             handle_listing_fee_required(self, exc)
             return
@@ -322,19 +367,23 @@ class MintCurrentProjectDialog(tk.Toplevel):
             ProjectRenderError,
             ValueError,
         ) as exc:
-            self.mint_button.configure(state="normal")
-            self.configure(cursor="")
+            self._restore_button()
             self.status_value.set(str(exc))
             messagebox.showerror("Mint NFT gagal", str(exc), parent=self)
             return
         self._mint_done(item)
 
     def _mint_done(self, item: Mapping[str, object]) -> None:
-        messagebox.showinfo(
+        open_dashboard = messagebox.askyesno(
             "NFT dipublikasikan",
-            f"{item.get('title', self.project.metadata.title)} sekarang tampil di NFT Market.",
+            (
+                f"{item.get('title', self.project.metadata.title)} sekarang tampil di "
+                "NFT Market.\n\nBuka Dashboard Creator untuk memantau bid dan payout?"
+            ),
             parent=self,
         )
+        if open_dashboard:
+            webbrowser.open(f"{self.session.base_url.rstrip('/')}/dashboard/creator/", new=2)
         self.destroy()
 
 
