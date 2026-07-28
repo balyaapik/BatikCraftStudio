@@ -443,6 +443,7 @@ def test_selection_changes_do_not_invalidate_tile_cache() -> None:
     key1 = TileCacheKey(
         project_revision=1,
         zoom_bucket=1.0,
+        tile_size=256,
         tile_x=0,
         tile_y=0,
         canvas_background="#FFFFFF",
@@ -452,6 +453,7 @@ def test_selection_changes_do_not_invalidate_tile_cache() -> None:
     key2 = TileCacheKey(
         project_revision=1,
         zoom_bucket=1.0,
+        tile_size=256,
         tile_x=0,
         tile_y=0,
         canvas_background="#FFFFFF",
@@ -468,11 +470,11 @@ def test_selection_changes_do_not_invalidate_tile_cache() -> None:
 def test_canvas_background_change_invalidates_tiles() -> None:
     """Different canvas_background values produce different tile keys."""
     key_white = TileCacheKey(
-        project_revision=1, zoom_bucket=1.0, tile_x=0, tile_y=0,
+        project_revision=1, zoom_bucket=1.0, tile_size=256, tile_x=0, tile_y=0,
         canvas_background="#FFFFFF", visibility_revision=100,
     )
     key_black = TileCacheKey(
-        project_revision=1, zoom_bucket=1.0, tile_x=0, tile_y=0,
+        project_revision=1, zoom_bucket=1.0, tile_size=256, tile_x=0, tile_y=0,
         canvas_background="#000000", visibility_revision=100,
     )
     assert key_white != key_black
@@ -492,11 +494,11 @@ def test_canvas_background_change_invalidates_tiles() -> None:
 def test_layer_visibility_change_invalidates_tiles() -> None:
     """Different visibility_revision values produce different tile keys."""
     key_vis_a = TileCacheKey(
-        project_revision=1, zoom_bucket=1.0, tile_x=0, tile_y=0,
+        project_revision=1, zoom_bucket=1.0, tile_size=256, tile_x=0, tile_y=0,
         canvas_background="#FFFFFF", visibility_revision=111,
     )
     key_vis_b = TileCacheKey(
-        project_revision=1, zoom_bucket=1.0, tile_x=0, tile_y=0,
+        project_revision=1, zoom_bucket=1.0, tile_size=256, tile_x=0, tile_y=0,
         canvas_background="#FFFFFF", visibility_revision=222,
     )
     assert key_vis_a != key_vis_b
@@ -511,7 +513,7 @@ def test_scroll_within_cached_tiles_reuses_cache() -> None:
     """A tile already in cache is reused without re-rendering objects."""
     cache = TileCache(max_bytes=32 * 1024 * 1024, debug=True)
     key = TileCacheKey(
-        project_revision=1, zoom_bucket=1.0, tile_x=0, tile_y=0,
+        project_revision=1, zoom_bucket=1.0, tile_size=256, tile_x=0, tile_y=0,
         canvas_background="#FFFFFF", visibility_revision=1,
     )
     img = Image.new("RGBA", (512, 512))
@@ -534,7 +536,7 @@ def test_new_tiles_rendered_after_scroll() -> None:
     """Tiles not in cache get a cache miss (will be rendered)."""
     cache = TileCache(max_bytes=32 * 1024 * 1024, debug=True)
     key = TileCacheKey(
-        project_revision=1, zoom_bucket=1.0, tile_x=5, tile_y=3,
+        project_revision=1, zoom_bucket=1.0, tile_size=256, tile_x=5, tile_y=3,
         canvas_background="#FFFFFF", visibility_revision=1,
     )
     # Not in cache yet
@@ -557,7 +559,7 @@ def test_tile_cache_memory_limit() -> None:
     cache = TileCache(max_bytes=limit, debug=True)
     for i in range(6):
         key = TileCacheKey(
-            project_revision=1, zoom_bucket=1.0, tile_x=i, tile_y=0,
+            project_revision=1, zoom_bucket=1.0, tile_size=256, tile_x=i, tile_y=0,
             canvas_background="#FFFFFF", visibility_revision=1,
         )
         cache.put(key, Image.new("RGBA", (512, 512)))
@@ -845,9 +847,9 @@ def test_tile_cache_lru_eviction_order() -> None:
     cache = TileCache(max_bytes=limit)
     img = Image.new("RGBA", (512, 512))
 
-    k0 = TileCacheKey(1, 1.0, 0, 0, "#FFF", 1)
-    k1 = TileCacheKey(1, 1.0, 1, 0, "#FFF", 1)
-    k2 = TileCacheKey(1, 1.0, 2, 0, "#FFF", 1)
+    k0 = TileCacheKey(1, 1.0, 256, 0, 0, "#FFF", 1)
+    k1 = TileCacheKey(1, 1.0, 256, 1, 0, "#FFF", 1)
+    k2 = TileCacheKey(1, 1.0, 256, 2, 0, "#FFF", 1)
 
     cache.put(k0, img)
     cache.put(k1, img)

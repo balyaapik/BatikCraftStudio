@@ -103,7 +103,7 @@ def test_layer_tanpa_objek_di_tile_dilewati():
         kind=ObjectKind.SHAPE,
         transform=Transform(x=5000, y=5000),
         bounds=ObjectBounds(50, 50),
-        properties={"shape": "rectangle"},
+        properties={"shape_type": "rectangle"},
     )
     layer = Layer(name="Motif", kind=LayerKind.SHAPE, objects=[jauh])
     renderer = CachedViewportRenderer()
@@ -133,12 +133,15 @@ def test_layer_dengan_objek_di_tile_tetap_digambar():
     )
     from batikcraft_studio.imaging.cached_renderer import CachedViewportRenderer
 
+    from batikcraft_studio.imaging.shape import build_shape_geometry
+
+    geometry = build_shape_geometry("rectangle", (75.0, 75.0), (125.0, 125.0))
     dekat = LayerObject(
         name="dekat",
         kind=ObjectKind.SHAPE,
         transform=Transform(x=100, y=100),
         bounds=ObjectBounds(50, 50),
-        properties={"shape": "rectangle"},
+        properties=dict(geometry.properties),
     )
     layer = Layer(name="Motif", kind=LayerKind.SHAPE, objects=[dekat])
     renderer = CachedViewportRenderer()
