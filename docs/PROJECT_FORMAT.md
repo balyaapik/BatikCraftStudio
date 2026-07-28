@@ -1,46 +1,38 @@
 # BatikCraft Project Archive Format
 
-Milestone 2B memperkenalkan format proyek editable dengan ekstensi:
+An editable project uses the `.batikcraft` extension. The file is a versioned ZIP
+container. Opening a project never extracts its contents to the filesystem.
 
-```text
-.batikcraft
-```
-
-File tersebut merupakan container ZIP versioned. API persistence tidak mengekstrak isinya ke filesystem ketika membuka proyek.
-
-## Struktur Container
+## Container Layout
 
 ```text
 project.batikcraft
 ├── project.json
 ├── assets/
-│   └── ...
 ├── masks/
-│   └── ...
 ├── renders/
-│   └── ...
 └── metadata/
-    └── ...
 ```
 
-Folder tidak perlu memiliki directory entry tersendiri di ZIP. Hanya file yang tercantum dalam manifest yang diperbolehkan.
+Directories need no explicit ZIP entries. Only files listed in the manifest are allowed.
 
 ## Reserved Roots
 
-Aset harus berada di bawah salah satu root berikut:
+Every asset lives under one of these roots:
 
-- `assets/` — objek sumber, raster layer, atau data visual utama;
-- `masks/` — object mask dan selection mask;
-- `renders/` — hasil render yang dapat dibuat ulang atau preview internal;
-- `metadata/` — metadata tambahan seperti parameter generasi AI.
+| Root | Holds |
+| --- | --- |
+| `assets/` | Source objects, raster layers, primary visual data |
+| `masks/` | Object masks and selection masks |
+| `renders/` | Reproducible renders and internal previews |
+| `metadata/` | Supplementary metadata such as AI generation parameters |
 
-`project.json` adalah satu-satunya file yang diperbolehkan di root archive.
+`project.json` is the only file permitted at the archive root.
 
 ## Canonical Path Rules
 
-Semua path archive menggunakan POSIX `/` dan harus sudah canonical.
-
-Path berikut ditolak:
+Archive paths use POSIX `/` separators and must already be canonical. These are all
+rejected:
 
 ```text
 ../escape.png
@@ -52,22 +44,21 @@ C:/assets/file.png
 other/file.png
 ```
 
-Perbandingan duplicate entry dilakukan secara case-insensitive untuk menghindari konflik ketika proyek dipindahkan ke filesystem Windows atau macOS.
+Duplicate detection is case-insensitive, so a project does not break when it moves to a
+Windows or macOS filesystem.
 
 ## Manifest
-
-Contoh ringkas:
 
 ```json
 {
   "format": "batikcraft-project",
-  "schema_version": "1.0",
+  "schema_version": "1.1",
   "project": {
     "id": "4e894bf2-f2b1-4540-87b5-e376a2c46589",
     "metadata": {
       "title": "Flora Otomotif",
       "creator": "Balya Rochmadi",
-      "description": "Motif eksperimental.",
+      "description": "Experimental motif.",
       "tags": ["Batik", "Kontemporer"]
     },
     "canvas": {
@@ -91,48 +82,46 @@ Contoh ringkas:
 }
 ```
 
-Manifest memakai field yang ketat. Field hilang atau field yang belum dikenal ditolak agar perubahan schema harus dilakukan secara sadar melalui migrasi versi.
+The manifest schema is strict. A missing field or an unrecognised field is rejected, so
+schema changes must go through a deliberate version migration. Projects written against
+schema `1.0` are migrated to `1.1` on open.
 
 ## Layer Asset References
 
-`asset_ref` pada layer:
+A layer's `asset_ref` must:
 
-- harus berupa path archive canonical;
-- harus tercantum pada `assets` manifest;
-- harus benar-benar tersedia sebagai member ZIP;
-- harus lolos verifikasi size dan SHA-256.
+- be a canonical archive path;
+- appear in the manifest `assets` list;
+- exist as an actual ZIP member;
+- pass both size and SHA-256 verification.
 
-Aset yang tidak dipakai layer tetap dapat disimpan, misalnya mask atau metadata generasi.
+Assets no layer references may still be stored — masks and generation metadata, for
+example.
 
-## Integrity and Limits
+## Integrity Limits
 
-Reader menerapkan batas awal:
+| Limit | Value |
+| --- | --- |
+| Archive members | 4,096 |
+| `project.json` size | 2 MiB |
+| Single asset size | 128 MiB |
+| Total uncompressed data | 512 MiB |
 
-- maksimal 4.096 member archive;
-- maksimal 2 MiB untuk `project.json`;
-- maksimal 128 MiB per asset;
-- maksimal 512 MiB total data tidak terkompresi;
-- encrypted ZIP entry tidak didukung;
-- directory entry eksplisit tidak diperbolehkan;
-- file yang tidak dideklarasikan manifest ditolak.
-
-Batas ini dapat dievaluasi kembali ketika kebutuhan dataset dan resolusi produksi sudah diketahui.
+Encrypted ZIP entries are unsupported, explicit directory entries are disallowed, and
+any file not declared in the manifest is rejected. These limits are provisional and will
+be revisited once production dataset and resolution needs are known.
 
 ## Atomic Save
 
-Save dilakukan dengan urutan:
+1. Validate the domain, paths, assets, and manifest.
+2. Write the ZIP to a temporary file in the destination directory.
+3. Flush the file.
+4. Swap the target into place with `os.replace`.
+5. Mark the project revision as saved.
 
-1. validasi domain, path, asset, dan manifest;
-2. tulis ZIP ke temporary file pada direktori tujuan;
-3. flush file;
-4. ganti target menggunakan `os.replace`;
-5. tandai revision proyek sebagai saved.
-
-Jika penulisan atau replacement gagal:
-
-- file target lama tidak diubah;
-- temporary file dibersihkan;
-- proyek tetap berstatus dirty.
+If writing or replacement fails, the previous target file is untouched, the temporary
+file is cleaned up, and the project stays dirty. An interrupted save cannot destroy the
+last good version.
 
 ## Public API
 
@@ -152,5 +141,3 @@ bundle = ProjectArchive.load("motif.batikcraft")
 project = bundle.project
 source_bytes = bundle.get_asset("assets/source.png")
 ```
-
-GUI file dialog dan recent-project integration menjadi scope Milestone 2C.

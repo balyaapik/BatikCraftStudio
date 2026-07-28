@@ -1,29 +1,26 @@
-# Fee bidding creator dan PPN pada BatikCraftWeb
+# Creator Listing Fee and VAT on BatikCraftWeb
 
-Dokumen ini menjelaskan penyesuaian BatikCraft Studio terhadap alur pembayaran
-BatikCraftWeb.
+How BatikCraft Studio adapts to the BatikCraftWeb payment flow.
 
-## Ringkasan alur
+## Flow Summary
 
-1. Creator login dari Studio dan mengunggah `.batikcraft` ke web.
-2. Creator menetapkan harga terendah (`starting_price`).
-3. Sebelum karya tayang, creator membayar **fee bidding** melalui payment
-   gateway. Fee dihitung dari persentase harga terendah, dengan batas fee
-   minimum, lalu ditambah **PPN 11%**.
-4. Fee **tidak dikembalikan**. Terjual maupun tidak terjual, creator tetap
-   membayar fee beserta PPN-nya.
-5. Buyer melakukan bidding. Bid tertinggi yang disetujui creator menghasilkan
-   invoice untuk buyer.
-6. Invoice buyer memuat subtotal (nilai bid), PPN 11%, dan total tagihan.
-7. Setelah buyer melunasi invoice, NFT diterbitkan ke akun buyer dan payout
-   senilai subtotal dicatat untuk creator. PPN bukan hak creator sehingga tidak
-   ikut dibayarkan pada payout.
+1. The creator signs in from the Studio and uploads a `.batikcraft` file to the web.
+2. The creator sets a starting price (`starting_price`).
+3. Before the piece goes live, the creator pays a **listing fee** through the payment
+   gateway. The fee is a percentage of the starting price, subject to a minimum, plus
+   **11% VAT**.
+4. **The fee is non-refundable.** Sold or unsold, the creator pays the fee and its VAT.
+5. Buyers place bids. The highest bid the creator accepts generates a buyer invoice.
+6. The buyer's invoice shows the subtotal (the bid value), 11% VAT, and the total.
+7. Once the buyer settles the invoice, the NFT is issued to the buyer's account and a
+   payout equal to the subtotal is recorded for the creator. VAT does not belong to the
+   creator and is therefore excluded from the payout.
 
-## Dampak pada Studio
+## Effect on the Studio
 
-`POST /api/v1/nfts/{id}/publish/` membalas **402 Payment Required** selama fee
-belum lunas. `BatikCraftWebClient` menerjemahkan respons tersebut menjadi
-`ListingFeeRequiredError`, yang membawa rincian tagihan dan `checkout_url`.
+`POST /api/v1/nfts/{id}/publish/` replies **402 Payment Required** while the fee is
+outstanding. `BatikCraftWebClient` translates that response into a
+`ListingFeeRequiredError` carrying the charge breakdown and a `checkout_url`.
 
 ```python
 from batikcraft_studio.web_bridge import ListingFeeRequiredError
@@ -31,21 +28,21 @@ from batikcraft_studio.web_bridge import ListingFeeRequiredError
 try:
     client.publish_nft_package(package, starting_price="200000")
 except ListingFeeRequiredError as exc:
-    print(exc.summary())      # rincian fee + PPN + catatan non-refundable
-    print(exc.checkout_url)   # halaman pembayaran gateway
+    print(exc.summary())      # fee + VAT breakdown and the non-refundable note
+    print(exc.checkout_url)   # payment gateway page
 ```
 
-Dialog Studio menampilkan rincian tersebut melalui
-`batikcraft_studio.ui.listing_fee_prompt.handle_listing_fee_required`, yang
-membuka halaman pembayaran di browser lalu meminta creator mengulang publish
-setelah status berubah menjadi lunas.
+The Studio dialog renders that breakdown through
+`batikcraft_studio.ui.listing_fee_prompt.handle_listing_fee_required`, which opens the
+payment page in a browser and then asks the creator to retry publishing once the status
+turns to paid.
 
-## Melihat biaya sebelum publish
+## Checking the Cost Before Publishing
 
 ```python
-quote = client.listing_fee(nft_id)     # estimasi, status "not_issued" bila belum terbit
-invoice = client.issue_listing_fee(nft_id)  # terbitkan tagihan resmi
+quote = client.listing_fee(nft_id)          # estimate; status "not_issued" if not yet raised
+invoice = client.issue_listing_fee(nft_id)  # raise the formal invoice
 ```
 
-Tarif yang sedang berlaku juga tersedia pada blok `billing` di endpoint
-kemampuan server (`GET /api/v1/capabilities/`).
+The current rates are also exposed in the `billing` block of the server capabilities
+endpoint (`GET /api/v1/capabilities/`).

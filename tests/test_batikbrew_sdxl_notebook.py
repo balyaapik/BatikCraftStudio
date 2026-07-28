@@ -48,7 +48,7 @@ def test_documentation_explains_family_requirement() -> None:
     )
     assert "BatikBrew" in doc
     assert "sdxl" in doc
-    assert "Pasang .batikmodel" in doc
+    assert "Install .batikmodel" in doc
 
 
 def test_notebook_locks_silhouette_with_controlnet() -> None:

@@ -1,82 +1,173 @@
 # BatikCraft Studio
 
-BatikCraft Studio adalah aplikasi desktop native berbasis Python dan Tkinter untuk
-merakit, menggambar, dan menyunting motif batik dari pustaka asset offline yang dapat
-dibangun dari dataset Kaggle.
+A native desktop studio for composing, drawing, and editing Indonesian batik motifs.
 
-> Status: Milestone 3G — Kaggle Asset Pack Builder.
+BatikCraft Studio is a Python and Tkinter application built around an offline asset
+library. It combines a non-destructive object model, raster painting tools, and
+optional AI assistance so that a designer can build a complete batik composition
+without an internet connection.
 
-## Fokus Produk
+**Version 0.9.21** · Python 3.11+ · Windows, macOS, Linux
 
-Aplikasi desktop menangani proses penciptaan motif:
+---
 
-- memasang pustaka Motif Pokok, Isen-Isen, ornamen, tekstur, dan asset custom;
-- mencari serta menggabungkan banyak asset menjadi komposisi baru;
-- mengelola Folder, Subfolder, Sublapis, dan banyak objek dalam satu lapis;
-- mengubah posisi, ukuran, rotasi, opacity, susunan, metadata, dan humanize;
-- menggambar melalui menu Brush, Eraser, Shape, Cap Motif, dan Cap Isen;
-- menyimpan proyek editable;
-- menyiapkan asset final untuk pattern, AI, publikasi, dan lisensi.
+## Table of Contents
 
-Bidding, transaksi, dan pengelolaan lisensi dilakukan di website BatikCraft.
+- [What It Does](#what-it-does)
+- [Screens and Layout](#screens-and-layout)
+- [Installation](#installation)
+- [Quick Start](#quick-start)
+- [Document Model](#document-model)
+- [Asset Packs](#asset-packs)
+- [Kaggle Asset Builder](#kaggle-asset-builder)
+- [AI Features](#ai-features)
+- [Development](#development)
+- [Roadmap](#roadmap)
+- [Documentation](#documentation)
+- [Project Team](#project-team)
+- [License and Notices](#license-and-notices)
 
-Sebelum karya tayang di market, creator membayar fee bidding di web: persentase
-dari harga terendah yang dicantumkan, ditambah PPN 11%, dan tidak dikembalikan
-walaupun karya tidak terjual. Studio menampilkan rinciannya dan membuka halaman
-pembayaran ketika publish ditolak. Lihat [`docs/WEB_LISTING_FEE.md`](docs/WEB_LISTING_FEE.md).
+---
 
-## Layout Editor
+## What It Does
 
-Editor utama hanya memiliki tiga area permanen:
+The desktop application covers the creative half of the batik workflow. Bidding,
+transactions, and licence administration happen on the BatikCraft website; the studio
+prepares and packages the work.
+
+Implemented and working today:
+
+- **Native shell** — Tkinter interface with an offline icon toolbar and menu bar.
+- **Project format** — `.batikcraft` archives with integrity validation and atomic
+  saves. Schema `1.0` projects migrate to `1.1` on open.
+- **Asset formats** — `.batikasset` for a single portable asset, `.batikpack` for a
+  library pack with manifest, tags, categories, thumbnails, and versioning.
+- **Asset library** — install, replace, uninstall, search, filter, preview, and
+  double-click placement. Packs live in a per-user global library so thousands of
+  assets are never copied into every project.
+- **Document structure** — folders, subfolders, sublayers, many objects per layer, and
+  object-sized selection.
+- **Object editing** — visibility, lock, ordering, duplicate, delete, numeric
+  transform, and full undo/redo.
+- **Painting** — brush and eraser. Strokes merge into a raster canvas layer, and the
+  eraser removes pixels from objects and raster layers alike.
+- **Shapes** — rectangle, ellipse, and polygon stay non-destructive vector objects.
+  Lines are rasterised on creation so they erase like brush strokes.
+- **Procedural motifs** — Kawung, Truntum, Ceplok, and Lereng fallbacks plus automatic
+  isen-isen filling.
+- **Humanize** — non-destructive irregularity applied to placed objects.
+- **Asset pipeline** — Kaggle notebooks for discovery, deduplication, extraction, alpha
+  cleaning, review, thumbnails, and validated pack export.
+
+Optional AI features (local SDXL, OpenAI, Gemini) are described in
+[AI Features](#ai-features).
+
+---
+
+## Screens and Layout
+
+The main editor keeps only three permanent regions:
 
 ```text
-Pustaka Asset | Canvas | Susunan Lapis
+Asset Library  |  Canvas  |  Layer Stack
 ```
 
-Pengaturan menggambar tidak memenuhi dock dengan tab. Menu **Draw**, **Edit**, dan
-**Asset** membuka jendela kecil ketika diperlukan.
+Drawing settings never crowd the docks with tabs. The **Draw**, **Edit**, and **Asset**
+menus open small windows on demand and close again when the work is done.
 
-## Fitur yang Sudah Berfungsi
+---
 
-- shell Tkinter native dengan toolbar ikon offline dan menu bar;
-- format proyek `.batikcraft` dengan validasi integritas;
-- format asset portable `.batikasset`;
-- format pustaka `.batikpack` dengan manifest, tags, kategori, thumbnail, dan version;
-- install, replace, uninstall, search, filter, preview, dan double-click placement;
-- asset library global per-user agar ribuan asset tidak disalin ke setiap proyek;
-- Folder, Subfolder, Sublapis, banyak objek per layer, dan object-sized selection;
-- visibility, lock, ordering, duplicate, delete, transform, dan Undo/Redo;
-- Brush dan Eraser sebagai cropped objects;
-- Line, Rectangle, Ellipse, dan Polygon non-destruktif;
-- fallback procedural Motif Pokok dan Isen-Isen;
-- Humanize non-destruktif;
-- notebook Kaggle untuk discovery, deduplication, extraction, alpha cleaning, review,
-  thumbnail, `.batikasset`, manifest, dan `.batikpack`;
-- builder pack reusable yang divalidasi oleh installer aplikasi;
-- migrasi project schema `1.0` ke `1.1`;
-- CI menggunakan Ruff dan Pytest.
+## Installation
 
-## Struktur Dokumen
+### Requirements
+
+- Python 3.11 or newer
+- Tkinter (bundled with most CPython builds; on Debian/Ubuntu install `python3-tk`)
+
+### From source
+
+```bash
+git clone https://github.com/balyaapik/BatikCraftStudio.git
+cd BatikCraftStudio
+python -m venv .venv
+```
+
+Activate the environment:
+
+```bash
+# Linux / macOS
+source .venv/bin/activate
+
+# Windows PowerShell
+.venv\Scripts\Activate.ps1
+```
+
+Install and run:
+
+```bash
+python -m pip install --upgrade pip
+python -m pip install -e ".[dev]"
+python -m batikcraft_studio
+```
+
+### Optional extras
+
+| Extra | Installs | Use it for |
+| --- | --- | --- |
+| `dev` | pytest, ruff | Running the test suite and linter |
+| `model-downloader` | huggingface-hub, tqdm | Downloading AI runtimes from the app |
+| `ai-local` | torch, diffusers, transformers, peft | Offline SDXL generation |
+| `ai-openai` | openai, keyring | OpenAI image generation |
+| `ai-gemini` | google-genai, keyring | Google Gemini image generation |
+
+Install one with, for example, `python -m pip install -e ".[dev,ai-local]"`.
+
+### Desktop builds
+
+Packaged Windows executables are produced by the `build-desktop` GitHub Actions
+workflow (`.github/workflows/build-desktop.yml`).
+
+---
+
+## Quick Start
+
+1. Create or open a project.
+2. Install a pack through **Asset → Install Asset Pack…**.
+3. Search or filter assets in the left panel.
+4. Select a destination sublayer in the right panel.
+5. Double-click an asset to place it on the canvas.
+6. Arrange objects on the canvas or in the tree.
+7. Use **Edit → Transform…** for numeric transforms.
+8. Use **Asset → Metadata** or **Humanize** as needed.
+9. Open **Draw** only when you need to paint or draw a shape.
+10. Save as `.batikcraft`.
+
+---
+
+## Document Model
 
 ```text
 Folder
 ├── Subfolder
-│   └── Sublapis
-│       ├── Objek Asset 1
-│       ├── Objek Asset 2
-│       └── Objek Asset 3
-└── Lapis Canting
-    ├── Gores Canting 1
-    ├── Gores Canting 2
-    └── Hapus 3
+│   └── Sublayer
+│       ├── Asset Object 1
+│       ├── Asset Object 2
+│       └── Asset Object 3
+└── Canting Layer
+    ├── Canting Stroke 1
+    ├── Canting Stroke 2
+    └── Erase 3
 ```
 
-Folder mengatur susunan. Sublapis menampung banyak objek. Objek adalah unit selection
-terkecil. Asset library baru disalin ke proyek ketika benar-benar ditempatkan pada canvas.
+Folders organise the stack. Sublayers hold many objects. An object is the smallest
+selectable unit. A library asset is copied into the project only when it is actually
+placed on the canvas.
 
-## Asset Pack
+---
 
-Paket asset memakai ekstensi `.batikpack`:
+## Asset Packs
+
+A pack uses the `.batikpack` extension and this layout:
 
 ```text
 manifest.json
@@ -86,48 +177,29 @@ thumbnails/
   asset-001.png
 ```
 
-Kategori resmi:
+Official categories: `motif-pokok`, `isen-isen`, `ornamen`, `tekstur`, `lainnya`.
 
-- `motif-pokok`;
-- `isen-isen`;
-- `ornamen`;
-- `tekstur`;
-- `lainnya`.
+Installed packs are stored per user:
 
-Windows menyimpan pack terpasang di:
+| Platform | Location |
+| --- | --- |
+| Windows | `%LOCALAPPDATA%\BatikCraftStudio\asset-library` |
+| Linux, macOS | `$XDG_DATA_HOME/BatikCraftStudio/asset-library`, defaulting to `~/.local/share/…` |
 
-```text
-%LOCALAPPDATA%\BatikCraftStudio\asset-library
-```
+Set `BATIKCRAFT_ASSET_LIBRARY` to override the location.
+
+---
 
 ## Kaggle Asset Builder
 
-Notebook:
+Turning a raw batik photo dataset into a curated pack:
 
 ```text
-notebooks/kaggle_batik_asset_pack_builder.ipynb
-```
-
-Modul ekstraksi notebook:
-
-```text
-notebooks/kaggle_asset_pipeline.py
-```
-
-Builder format yang juga dipakai test aplikasi:
-
-```text
-src/batikcraft_studio/assets/builder.py
-```
-
-Pipeline:
-
-```text
-dataset batik
-→ exact dan visual deduplication
-→ full/component/grid candidates
+batik dataset
+→ exact and visual deduplication
+→ full / component / grid candidates
 → alpha cleaning
-→ category/tag suggestion
+→ category and tag suggestion
 → contact sheets + review.csv
 → human curation
 → canonical .batikasset + thumbnail
@@ -135,128 +207,117 @@ dataset batik
 → validated .batikpack
 ```
 
-Segmentasi tidak dianggap 100% otomatis. Motif historis, Isen-Isen, dan bagian kain
-yang saling menyatu tetap memerlukan kurasi manusia.
+| Path | Purpose |
+| --- | --- |
+| `notebooks/kaggle_batik_asset_pack_builder.ipynb` | The notebook |
+| `notebooks/kaggle_asset_pipeline.py` | Extraction module |
+| `src/batikcraft_studio/assets/builder.py` | Pack format builder, shared with the tests |
 
-## Roadmap
+Segmentation is deliberately not treated as fully automatic. Historical motifs,
+isen-isen, and interlocking areas of cloth still require human curation.
 
-### Milestone 1 — Application Foundation ✅
+---
 
-- package Python, shell Tkinter, tema, menu, status bar, shortcut, dokumentasi, dan CI.
+## AI Features
 
-### Milestone 2 — Project and Workspace Core ✅
+AI is optional and off by default. The application runs completely offline without it.
 
-- project domain, serializer `.batikcraft`, atomic save, raster editing, dan Undo/Redo.
+- **Local SDXL** — install the `ai-local` extra and download a runtime from the
+  Dependencies window. Generation runs entirely on your machine.
+- **Cloud providers** — OpenAI, Google Gemini, and IBM watsonx.ai. API keys are stored
+  in the system keyring.
+- **Style LoRA training** — Kaggle notebooks under `notebooks/` train a batik style
+  adapter that can be activated for generation. See
+  [`docs/KAGGLE_BATIKBREW_SDXL_STYLE_LORA.md`](docs/KAGGLE_BATIKBREW_SDXL_STYLE_LORA.md).
 
-### Milestone 3 — Manual and Asset-Based Motif Tools
+See [`docs/AI_NFT_MARKETPLACE_AUDIT.md`](docs/AI_NFT_MARKETPLACE_AUDIT.md) for the
+current state of every provider and the training-to-marketplace flow.
 
-#### 3A — Basic Paint Layer ✅
+A Settings toggle chooses between online and offline model behaviour, and the runtime
+integrity checks refuse to load an incomplete model rather than failing halfway.
 
-- Brush, Eraser, color picker, dan satu completed stroke per history entry.
+---
 
-#### 3B — Brush Refinement ✅
-
-- smoothing, opacity, hardness, partial eraser, preset, dan circular cursor.
-
-#### 3C — Shape and Line Tools ✅
-
-- Line, Rectangle, Ellipse, Polygon, fill, stroke, dan modifier keyboard.
-
-#### 3D — Cap Isen dan Pola Susun ✅
-
-- isen procedural, palet batik, cermin, putar, dan preview susun.
-
-#### Patch 3D.1 — Motif Pokok dan Isen Otomatis ✅
-
-- Kawung, Truntum, Ceplok, Lereng, dan pengisian isen otomatis.
-
-#### 3E — Object Tree, Asset, dan Humanize ✅
-
-- Folder/Sublapis/Objek, `.batikasset`, metadata, dan Humanize.
-
-#### 3F — Pustaka Asset dan UI Ringkas ✅
-
-- `.batikpack`, pack management, Pustaka Asset permanen, dan menu-driven tool windows.
-
-#### 3G — Kaggle Asset Pack Builder ✅
-
-- discovery, duplicate filtering, segmentation/crop, alpha cleaning;
-- category/tag suggestion;
-- contact sheets dan review queue;
-- curated export ke `.batikasset`, thumbnail, manifest, dan `.batikpack`;
-- validation menggunakan installer aplikasi.
-
-#### Tahap Manual Berikutnya
-
-- group transform;
-- vector path dan node editing;
-- pressure curve per titik stroke;
-- simetri canting real-time;
-- recolor region asset;
-- curation manager langsung di aplikasi.
-
-### Milestone 4 — Object Batikfication MVP
-
-- background removal dan mask correction;
-- pilihan gaya Batik;
-- Outline, Fill, dan Generative;
-- hasil masuk sebagai objek editable.
-
-### Milestone 5 — Pattern Engine
-
-- straight, mirror, half-drop, half-brick, rotational repeat, dan seamless export.
-
-### Milestone 6 — AI Integration
-
-- model loader, conditioning, worker thread, progress, cancellation, dan recovery.
-
-### Milestone 7 — Licensing and Website Bridge
-
-- design version, hash, lisensi, watermark, publish manifest, dan upload.
-
-## Menjalankan Aplikasi
-
-```bash
-python -m venv .venv
-```
-
-Windows PowerShell:
-
-```powershell
-.venv\Scripts\Activate.ps1
-```
-
-Instal dan jalankan:
-
-```bash
-python -m pip install --upgrade pip
-python -m pip install -e ".[dev]"
-python -m batikcraft_studio
-```
-
-## Workflow Editor
-
-1. Buat atau buka proyek.
-2. Install `.batikpack` melalui **Asset → Install Asset Pack…**.
-3. Cari/filter asset di panel kiri.
-4. Pilih Sublapis tujuan pada panel kanan.
-5. Double-click asset untuk memasukkannya ke canvas.
-6. Pilih dan susun objek melalui canvas atau tree.
-7. Gunakan **Edit → Transform…** untuk transform numerik.
-8. Gunakan **Asset → Metadata/Humanize** bila diperlukan.
-9. Gunakan **Draw** hanya ketika perlu menggambar.
-10. Simpan sebagai `.batikcraft`.
-
-## Validasi
+## Development
 
 ```bash
 ruff check .
 pytest
 ```
 
-## Dokumentasi
+Both run in CI on every push. See [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) for the
+project layout and [`docs/TESTING.md`](docs/TESTING.md) for how the suite is organised.
 
-- `docs/PROJECT_FORMAT.md` — format project;
-- `docs/MILESTONE_3E_OBJECT_TREE_ASSETS.md` — object tree dan Humanize;
-- `docs/MILESTONE_3F_ASSET_LIBRARY.md` — pack management dan UI ringkas;
-- `docs/MILESTONE_3G_KAGGLE_ASSET_BUILDER.md` — ekstraksi, kurasi, dan export Kaggle.
+Contributions are welcome — read [`CONTRIBUTING.md`](CONTRIBUTING.md) first.
+
+---
+
+## Roadmap
+
+| Milestone | Scope | Status |
+| --- | --- | --- |
+| 1 — Application Foundation | Package, Tkinter shell, theme, menus, shortcuts, CI | Done |
+| 2 — Project and Workspace Core | Domain, `.batikcraft` serializer, atomic save, undo/redo | Done |
+| 3A — Basic Paint Layer | Brush, eraser, colour picker, one stroke per history entry | Done |
+| 3B — Brush Refinement | Smoothing, opacity, hardness, presets, circular cursor | Done |
+| 3C — Shape and Line Tools | Line, rectangle, ellipse, polygon, fill, stroke, modifiers | Done |
+| 3D — Cap Isen and Layout | Procedural isen, batik palette, mirror, rotate, preview | Done |
+| 3D.1 — Motif Pokok | Kawung, Truntum, Ceplok, Lereng, automatic isen filling | Done |
+| 3E — Object Tree and Humanize | Folders, sublayers, objects, `.batikasset`, metadata | Done |
+| 3F — Asset Library | `.batikpack`, pack management, menu-driven tool windows | Done |
+| 3G — Kaggle Asset Builder | Discovery, curation, validated pack export | Done |
+| 4 — Object Batikfication | Background removal, style selection, editable results | In progress |
+| 5 — Pattern Engine | Straight, mirror, half-drop, half-brick, seamless export | Planned |
+| 6 — AI Integration | Model loader, conditioning, worker threads, cancellation | In progress |
+| 7 — Licensing and Website Bridge | Versioning, hashing, watermark, publish manifest | Planned |
+
+Further manual tooling under consideration: group transform, vector path and node
+editing, per-point pressure curves, real-time canting symmetry, asset region recolour,
+and an in-application curation manager.
+
+---
+
+## Documentation
+
+Start at [`docs/README.md`](docs/README.md) for the full index.
+
+| Document | Covers |
+| --- | --- |
+| [`docs/USER_GUIDE.md`](docs/USER_GUIDE.md) | Working in the editor, tool by tool |
+| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Layers, session composition, threading |
+| [`docs/CANVAS_RENDERING.md`](docs/CANVAS_RENDERING.md) | Tile cache, zoom, coordinate spaces, hit testing |
+| [`docs/PROJECT_FORMAT.md`](docs/PROJECT_FORMAT.md) | The `.batikcraft` archive |
+| [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) | Environment, layout, and conventions |
+| [`docs/TESTING.md`](docs/TESTING.md) | Test suite organisation |
+| [`docs/EFFICIENCY_REFACTOR.md`](docs/EFFICIENCY_REFACTOR.md) | Performance and consolidation notes |
+| [`docs/AI_NFT_MARKETPLACE_AUDIT.md`](docs/AI_NFT_MARKETPLACE_AUDIT.md) | AI providers, training, NFT, marketplace |
+| [`docs/WEB_LISTING_FEE.md`](docs/WEB_LISTING_FEE.md) | Listing fees and the publish flow |
+
+---
+
+## Project Team
+
+| Name | Handle |
+| --- | --- |
+| Hasan Nafi Rais | Balyaapik |
+| Siti Fadilah Nur Khasanah | Dila |
+| Shabrina Enma | shabrina enma |
+| Palupi Fitria Ningrum | Wendy_Son |
+| Anindya Nareshwari Nugroho | — |
+
+See [`CONTRIBUTORS.md`](CONTRIBUTORS.md) for roles and contribution details.
+
+Parts of this codebase were written with the help of AI coding assistants. All
+AI-assisted output was reviewed, tested, and accepted by the team before it was merged.
+
+---
+
+## License and Notices
+
+Third-party dependency licences are listed in
+[`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
+
+Batik motifs carry cultural meaning. Historical motifs such as Kawung, Truntum, and
+Parang belong to a living tradition; treat generated and derived work with the respect
+that tradition deserves, and credit sources when a design is based on documented
+regional patterns.

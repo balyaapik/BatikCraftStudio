@@ -1,116 +1,113 @@
-# Melatih LoRA Gaya Batik SDXL untuk BatikBrew
+# Training an SDXL Batik Style LoRA for BatikBrew
 
 Notebook: `notebooks/kaggle_train_batikbrew_sdxl_style_lora.ipynb`
 
-## Untuk apa
+## Purpose
 
-Mengubah **foto objek apa pun** (botol, bunga, wayang, kendaraan) menjadi ornamen
-batik lewat **BatikBrew**. LoRA hanya mempelajari *gaya* batik; bentuk objek
-disuplai saat inferensi, sehingga objek target **tidak perlu ada di dataset**.
+Turn a photo of **any object** — a bottle, a flower, a wayang figure, a vehicle — into a
+batik ornament through **BatikBrew**. The LoRA learns *style* only. Object shape is
+supplied at inference time, so the target object **does not need to be in the dataset**.
 
-## Mengapa notebook baru
+## Why a Separate Notebook
 
-| | `kaggle_train_batik_style_any_object.ipynb` | notebook ini |
+| | `kaggle_train_batik_style_any_object.ipynb` | This notebook |
 | --- | --- | --- |
 | Base model | Stable Diffusion 1.5 | **Stable Diffusion XL** |
-| Resolusi | 512 px | 1024 px |
-| Dipakai fitur | Batifikasi Objek | **BatikBrew** |
+| Resolution | 512 px | 1024 px |
+| Used by | Object Batikfication | **BatikBrew** |
 | `base_model_family` | `sd15` | `sdxl` |
 
-BatikBrew memuat pipeline SDXL. LoRA `sd15` tidak dapat dipakai di sana (dan
-sebaliknya) — sejak 0.5.3 aplikasi mendeteksi ketidakcocokan ini dan
-menjalankan LoRA SD 1.5 pada pipeline SD 1.5.
+BatikBrew loads an SDXL pipeline. An `sd15` LoRA cannot be used there, and vice versa.
+Since 0.5.3 the application detects the mismatch and runs an SD 1.5 LoRA on an SD 1.5
+pipeline instead of failing.
 
-## Di mana pasangan "botol → botol gaya batik"?
+## Where Are the "Bottle → Batik Bottle" Pairs?
 
-Tidak ada di dataset, dan memang tidak diperlukan. Ini *style transfer*, bukan
-*paired translation*:
+There are none, and none are needed. This is *style transfer*, not *paired translation*:
 
-| Tahap | Sumber **bentuk** | Sumber **gaya** |
+| Stage | Source of **shape** | Source of **style** |
 | --- | --- | --- |
-| Latih | tidak ada objek | gambar batik + kata pemicu |
-| Inferensi | foto objek Anda (img2img + ControlNet Canny) | LoRA hasil latihan |
+| Training | no objects at all | batik images plus a trigger word |
+| Inference | your object photo (img2img + ControlNet Canny) | the trained LoRA |
 
-Botol tetap berbentuk botol karena dua hal: `strength` img2img yang rendah
-(0,40–0,55) dan **ControlNet Canny** yang mengunci siluet dari tepi gambar
-sumber. Karena bentuk tidak dipelajari, satu LoRA berlaku untuk objek apa pun —
-termasuk objek yang tidak pernah ada di dataset.
+A bottle stays bottle-shaped for two reasons: a low img2img `strength` (0.40–0.55), and
+**ControlNet Canny** locking the silhouette to the source image's edges. Because shape is
+never learned, one LoRA works for any object — including objects that never appeared in
+the dataset.
 
-Pelatihan berpasangan (ratusan pasang foto asli + versi batiknya) baru masuk akal
-bila Anda menginginkan transformasi yang sangat spesifik dan seragam. Biayanya
-besar dan hasilnya justru kurang umum; sel 5c pada notebook cukup untuk
-menghasilkan pasangan asli↔batik sebagai bahan kurasi, contoh marketplace, atau
-penyempurnaan lanjutan.
+Paired training — hundreds of original photos alongside batik versions — only makes sense
+if you want one very specific, uniform transformation. It is expensive and produces a less
+general result. Cell 5c in the notebook already generates original↔batik pairs if you need
+them for curation, marketplace examples, or later refinement.
 
-## Kebutuhan Kaggle
+## Kaggle Requirements
 
-- Accelerator **GPU T4 ×2** atau **P100** (butuh ±15 GB VRAM).
-- **Internet: On** (mengunduh SDXL base 1.0).
-- Dataset: folder berisi **gambar batik saja**, minimal ±20 gambar; 200–500
-  gambar memberi gaya yang jauh lebih konsisten.
+- Accelerator: **GPU T4 ×2** or **P100** (roughly 15 GB VRAM).
+- **Internet: On** — the SDXL 1.0 base is downloaded.
+- Dataset: a folder of **batik images only**. Twenty is the minimum; 200–500 gives a far
+  more consistent style.
 
-## Langkah
+## Steps
 
-1. Unggah gambar batik sebagai Kaggle Dataset.
-2. Buka notebook, ubah `CFG.dataset_root` ke path dataset tersebut.
-3. Opsional: sesuaikan `trigger_word`, `max_steps` (1200 ≈ 1,5–2 jam di T4),
-   dan `resolution` (turunkan ke 768 bila kehabisan VRAM).
-4. **Run All**. Sel 5 menampilkan pratinjau objek → batik.
-5. Unduh `*.batikmodel` dari panel Output.
+1. Upload your batik images as a Kaggle Dataset.
+2. Open the notebook and point `CFG.dataset_root` at that dataset.
+3. Optionally adjust `trigger_word`, `max_steps` (1200 ≈ 1.5–2 hours on a T4), and
+   `resolution` (drop to 768 if you run out of VRAM).
+4. **Run All.** Cell 5 shows an object → batik preview.
+5. Download the `*.batikmodel` file from the Output panel.
 
-## Mengunduh hasil dari Kaggle
+## Downloading the Result
 
-Pada panel **Output**, klik berkas `*.batikmodel` lalu gunakan tombol unduh pada
-berkas itu. **Hindari "Download All"** — Kaggle membungkus seluruh keluaran
-menjadi satu `.zip`, sehingga yang terunduh adalah arsip berisi paket, bukan
-paketnya. Bila terlanjur, ekstrak `.zip` tersebut dan ambil berkas
-`.batikmodel` di dalamnya.
+In the **Output** panel, click the `*.batikmodel` file and use that file's own download
+button. **Avoid "Download All"** — Kaggle wraps every output in a single `.zip`, so you
+get an archive containing the package rather than the package itself. If you already did,
+extract the `.zip` and take the `.batikmodel` from inside it.
 
-## Memperbaiki paket lama tanpa melatih ulang
+## Repairing an Old Package Without Retraining
 
-Bila Anda sudah punya hasil pelatihan (berkas `.zip`, `.safetensors`, atau
-`.batikmodel` yang ditolak), gunakan program kecil di repositori ini —
-bobotnya dipakai kembali, tidak ada pelatihan ulang:
+If you already have training output — a `.zip`, a `.safetensors`, or a `.batikmodel` that
+was rejected — this repository includes a small tool that reuses the weights instead of
+retraining:
 
 ```bash
 python scripts/repair_batikmodel.py output.zip
 python scripts/repair_batikmodel.py pytorch_lora_weights.safetensors --family sdxl
-python scripts/repair_batikmodel.py paket-lama.batikmodel -o diperbaiki.batikmodel
+python scripts/repair_batikmodel.py old-package.batikmodel -o repaired.batikmodel
 ```
 
-Program menerima ketiga bentuk masukan (termasuk `.zip` hasil "Download All"
-Kaggle), menebak keluarga model dari bobotnya, menyusun manifest yang lengkap,
-lalu memvalidasinya sebelum menulis berkas. Opsi `--family`, `--resolution`,
-`--id`, `--name`, `--trigger`, dan `--author` tersedia bila ingin menimpa
-nilai tebakan. Hanya memerlukan Python 3.11+ tanpa pustaka tambahan.
+It accepts all three input shapes, including Kaggle's "Download All" `.zip`, infers the
+model family from the weights, builds a complete manifest, and validates it before
+writing. Use `--family`, `--resolution`, `--id`, `--name`, `--trigger`, or `--author` to
+override any inferred value. It needs only Python 3.11+ and no extra libraries.
 
-## Memasang di aplikasi
+## Installing in the Application
 
-**Pusat Dependensi → tab Model AI Offline & LoRA → Pasang .batikmodel…**,
-lalu pilih model tersebut dan tekan **Aktifkan Model**. Pastikan base model
-yang aktif adalah **Model BatikBrew SDXL (base model)**.
+**Dependency Center → Offline AI Models & LoRA tab → Install .batikmodel…**, then select
+the model and press **Activate Model**. Make sure the active base model is
+**BatikBrew SDXL (base model)**.
 
-## Menggunakan
+## Using It
 
-Klik kanan objek/gambar di canvas → **Generate Motif/Pola BatikBrew**. Panel log
-akan menampilkan `Keluarga base model: Stable Diffusion XL` dan
-`Keluarga LoRA: Stable Diffusion XL` bila pasangannya benar.
+Right-click an object or image on the canvas → **Generate BatikBrew Motif/Pattern**. When
+the pairing is correct, the log panel shows `Base model family: Stable Diffusion XL` and
+`LoRA family: Stable Diffusion XL`.
 
-## Menyetel hasil
+## Tuning the Result
 
-| Gejala | Penyetelan |
+| Symptom | Adjustment |
 | --- | --- |
-| Bentuk objek berubah terlalu jauh | turunkan `strength` (0,40–0,50) |
-| Gaya batik kurang kuat | naikkan `strength` (0,65–0,75) atau bobot LoRA |
-| Motif terlalu ramai | kurangi `max_steps`, atau perkaya caption dataset |
-| Siluet objek tidak terjaga | naikkan `controlnet_conditioning_scale` (0,8–1,0) |
+| Object shape drifts too far | Lower `strength` (0.40–0.50) |
+| Batik style too weak | Raise `strength` (0.65–0.75) or the LoRA weight |
+| Motif too busy | Reduce `max_steps`, or enrich the dataset captions |
+| Silhouette not preserved | Raise `controlnet_conditioning_scale` (0.8–1.0) |
+| Colours drift from the batik palette | Add soga and indigo toned images to the dataset |
 
-## Bila muncul "Manifest model tidak valid"
+## If You See "Invalid model manifest"
 
-Aplikasi memvalidasi manifest secara ketat: kunci root harus tepat
-`format`, `schema_version`, `model`, `files`; blok `model` harus memuat 16
-field (termasuk `license` dan `controlnet_family`); setiap entri `files`
-memerlukan `path`, `role`, `sha256`, dan `size`. Sel pengemasan pada notebook
-sudah memeriksa semuanya sebelum berkas dibuat — pastikan Anda memakai notebook
-versi terbaru.
-| Warna meleset dari palet batik | tambah gambar bernuansa soga/indigo ke dataset |
+The application validates the manifest strictly: root keys must be exactly `format`,
+`schema_version`, `model`, and `files`; the `model` block must carry all 16 fields
+(including `license` and `controlnet_family`); and every `files` entry needs `path`,
+`role`, `sha256`, and `size`.
+
+The notebook's packaging cell checks all of this before writing the file, so make sure you
+are running the latest version of the notebook.
