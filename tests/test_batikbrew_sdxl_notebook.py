@@ -209,7 +209,13 @@ def test_packaged_manifest_passes_the_real_application_parser(tmp_path) -> None:
 
     namespace = {"cfg": Config(), "total_images": 12, "Path": Path, "__name__": "__main__"}
     exec(  # noqa: S102 - menjalankan sel notebook memang tujuan uji ini
-        packaging.replace('Path("/kaggle/working")', f'Path("{tmp_path}")'),
+        packaging.replace(
+            'Path("/kaggle/working")',
+            # repr() produces a safe Python string literal (backslashes escaped)
+            # that can be embedded directly into exec'd source without SyntaxError
+            # on Windows paths such as C:\Users\…
+            f"Path({repr(str(tmp_path))})",
+        ),
         namespace,
     )
 
