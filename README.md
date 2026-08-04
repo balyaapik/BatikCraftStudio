@@ -17,6 +17,11 @@ without an internet connection.
 
 ## Table of Contents
 
+- [Problem Statement](#problem-statement)
+- [Solution Description](#solution-description)
+- [Selected Challenge Theme](#selected-challenge-theme)
+- [AI Approach and Architecture](#ai-approach-and-architecture)
+- [How IBM Bob Was Used](#how-ibm-bob-was-used)
 - [What It Does](#what-it-does)
 - [Screens and Layout](#screens-and-layout)
 - [Installation](#installation)
@@ -30,6 +35,192 @@ without an internet connection.
 - [Documentation](#documentation)
 - [Project Team](#project-team)
 - [License and Notices](#license-and-notices)
+
+---
+
+## Problem Statement
+
+Batik is a UNESCO-recognised Indonesian heritage craft, and the people who carry it are
+running out of successors. The work is slow, the training is long, and a young designer
+who wants to explore a Kawung or Truntum variation has no practical way to do it other
+than by hand on cloth. Iterating on a motif costs hours and material.
+
+Three specific gaps shaped this project:
+
+**Digital tools do not understand batik.** General illustration software treats a motif
+as arbitrary vector art. It has no concept of *motif pokok* and *isen-isen*, no notion of
+the controlled irregularity that distinguishes hand-drawn *batik tulis* from a printed
+imitation, and no vocabulary a batik artisan would recognise.
+
+**Connectivity cannot be assumed.** Craft communities are concentrated in regional
+centres — Pekalongan, Solo, Cirebon, Yogyakarta — where a workshop cannot depend on
+reliable broadband, and where cloud subscription pricing is a real barrier. A tool that
+stops working offline is a tool that does not get adopted.
+
+**Documentation is scattered and undigitised.** Regional motif knowledge sits in books,
+private collections, and photographs of cloth. There is no reusable asset format for a
+studio to build on, so every project starts from nothing.
+
+Generative AI adds a fourth problem rather than solving the first three: a model that
+emits plausible batik-looking pixels produces an image, not an editable design, and
+gives the artisan no authorship over the result.
+
+---
+
+## Solution Description
+
+BatikCraft Studio is a native desktop application that treats batik as structured,
+editable design rather than as a flat picture, and runs completely offline.
+
+**A document model built around the craft.** Folders, sublayers, and objects mirror how a
+composition is actually assembled. Motif pokok, isen-isen, ornament, and texture are
+first-class categories. Humanize applies non-destructive irregularity, so a repeated
+stamp reads as hand-drawn rather than mechanically cloned — and it can be adjusted or
+removed at any time because it never rewrites the underlying object.
+
+**Offline by default.** The application ships with procedural fallbacks for Kawung,
+Truntum, Ceplok, and Lereng, and an asset library that lives on the machine. AI is
+optional and switched off until a runtime is installed. Nothing about the core workflow
+requires a network.
+
+**A reusable asset economy.** `.batikasset` carries a single portable asset;
+`.batikpack` bundles a library with manifest, tags, categories, thumbnails, and
+versioning. A Kaggle pipeline turns a raw dataset of cloth photographs into a curated
+pack — deduplication, extraction, alpha cleaning, category suggestion, contact sheets for
+human review, then validated export.
+
+**Segmentation is deliberately not automatic.** Historical motifs and interlocking areas
+of cloth require human curation, and the pipeline is built to route them to a person
+rather than guess.
+
+**AI produces editable objects, not final images.** Generated results enter the document
+as objects that can be moved, recoloured, and erased like anything else.
+
+**Companion marketplace.** [BatikCraftWeb](https://github.com/balyaapik/BatikCraftWeb)
+handles listing, auctions, licensing, and payouts, so creators can sell both finished
+motifs and the asset libraries and style models they train.
+
+---
+
+## Selected Challenge Theme
+
+**Culture and heritage preservation.**
+
+Preservation here means keeping the craft *practised*, not archived. A museum photograph
+of a Parang motif preserves an artefact; it does not help anyone make the next one.
+
+The design decisions follow from that reading. The document model uses the craft's own
+vocabulary so the tool is learnable by someone trained in batik rather than in software.
+Humanize exists because mechanical perfection is precisely what separates printed
+imitation from *batik tulis*. Offline operation is a heritage requirement, not a
+technical preference, because the practitioners are in regional workshops. The asset pack
+format exists so that regional motif knowledge, once digitised, is reusable by everyone
+rather than trapped in one person's project file.
+
+The same reasoning sets a limit on the AI. A model that generates finished batik would
+replace the artisan's judgement. A model that generates editable objects the artisan then
+composes, corrects, and signs keeps authorship where it belongs.
+
+---
+
+## AI Approach and Architecture
+
+AI is optional, off by default, and never required for the core workflow.
+
+### Two Families
+
+| | Local | Cloud |
+| --- | --- | --- |
+| Object batikfication | Stable Diffusion 1.5 + ControlNet | — |
+| Motif and pattern generation | SDXL + LoRA (BatikBrew) | OpenAI, Google Gemini, IBM watsonx.ai |
+| Runs on | The user's machine | Provider API |
+| Requires network | No | Yes |
+
+Providers are selected at runtime (`ai/generation_providers.py`); API keys are stored in
+the system keyring, never in a project file.
+
+### Why Style Transfer Instead of Paired Training
+
+The hard requirement is that *any* object — a bottle, a flower, a vehicle — can be
+rendered in batik style, including objects absent from the training data.
+
+Paired translation would need hundreds of original-and-batik photo pairs per object
+class, which does not scale and generalises poorly. So the LoRA learns **style only**;
+shape is supplied at inference:
+
+| Stage | Source of shape | Source of style |
+| --- | --- | --- |
+| Training | none — batik images only | batik images plus a trigger word |
+| Inference | the user's photo (img2img) | the trained LoRA |
+
+The silhouette survives because of two constraints: a low img2img `strength` (0.40–0.55)
+and **ControlNet Canny** locking the outline to the source image's edges. Because shape
+is never learned, one trained LoRA works for objects it has never seen.
+
+### Guardrails
+
+Running large models on unknown consumer hardware is where this kind of feature usually
+fails, so several checks sit in front of inference:
+
+- **Runtime integrity** — a model is only considered ready when the index, tokenisers,
+  encoders, UNet, VAE, and scheduler all exist with plausible file sizes. An incomplete
+  download is reported rather than failing halfway through generation.
+- **CUDA guard** — loading SDXL on CPU is refused when an NVIDIA GPU is present but the
+  installed wheel is CPU-only, before `from_pretrained()` can exhaust system RAM.
+- **Download deduplication** — the naive download pattern fetched every duplicate weight
+  (`.bin` *and* `.safetensors`, fp32 *and* fp16 *and* non-EMA) while the pipeline loads
+  one set. Deduplicating cut SD 1.5 from roughly 15 GB to 5.2 GB and ControlNet from
+  2.9 GB to 1.45 GB.
+- **Offline mode** — a Settings toggle that genuinely prevents any model host contact.
+
+### Training Path
+
+A creator can train their own style adapter: Dataset Studio prepares the data, local LoRA
+training runs with progress and cancellation, the result is stored in the local model
+library, and it can then be sold through the companion marketplace.
+
+### Where AI Sits in the Architecture
+
+```text
+ui/          →  application/  →  domain/
+                    ↓
+              imaging/, persistence/, ai/
+```
+
+`ai/` never manipulates Tkinter widgets, and `domain/` never imports from `ai/`.
+Inference runs on worker threads and returns plain data to the main thread. The
+deterministic procedural renderer is retained as both a fallback and a pre-processing
+stage for the model pipeline.
+
+---
+
+## How IBM Bob Was Used
+
+**Scope: code review, explanation, scaffolding, and boilerplate. Not feature
+implementation.**
+
+IBM Bob was used to read and explain existing code and to review diffs during the early
+milestones, and to produce scaffolding — package structure, CI configuration, and test
+templates — that the team then filled in.
+
+The development log kept during Milestones 1 through 2D
+(`docs/BOB_DEVELOPMENT_LOG.md`, available in the git history) recorded each milestone as
+*prepared for* Bob review, with the review status stated explicitly per entry. That log
+required every entry to distinguish code generated by Bob from code merely reviewed,
+explained, or prepared beforehand. This section follows the same rule.
+
+Features in this repository — the domain model, persistence, the canvas renderer, the
+tool set, the AI pipeline — were implemented and reviewed by the team.
+
+### AI Assistance Policy
+
+Parts of this codebase were written with the help of AI coding assistants. The team's
+standing rules, recorded in [`CONTRIBUTORS.md`](CONTRIBUTORS.md):
+
+- Assistant output is a draft, never a finished change.
+- A team member reviews the diff, runs the suite, and takes responsibility before merge.
+- Behavioural changes ship with regression tests that fail without the change.
+- Performance claims are backed by measurements recorded in the commit message.
 
 ---
 
