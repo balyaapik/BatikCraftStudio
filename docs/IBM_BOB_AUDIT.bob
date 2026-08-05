@@ -1,0 +1,233 @@
+{
+  "bob_artifact_version": "1.0",
+  "agent": "IBM Bob",
+  "artifact_type": "engineering_audit",
+  "generated_at": "2025-07-15T00:00:00+00:00",
+
+  "repository": {
+    "name": "BatikCraftStudio",
+    "version": "0.9.23",
+    "language": "Python",
+    "framework": "Tkinter",
+    "platform": "win32 (Windows 10.0.22631 x64)",
+    "python_requires": ">=3.11",
+    "entry_point": "batikcraft_studio.__main__:main",
+    "build_backend": "setuptools>=69"
+  },
+
+  "architecture_summary": {
+    "pattern": "Layered / Hexagonal",
+    "layers": [
+      {
+        "name": "Domain",
+        "path": "src/batikcraft_studio/domain/",
+        "files": 4,
+        "description": "Immutable value objects (Layer, LayerObject, Project, Transform). Full __post_init__ validation. Zero external dependencies."
+      },
+      {
+        "name": "Application",
+        "path": "src/batikcraft_studio/application/",
+        "files": 27,
+        "description": "25 session classes, CQRS-style mutations with full rollback, 100-entry undo/redo history."
+      },
+      {
+        "name": "Persistence",
+        "path": "src/batikcraft_studio/persistence/",
+        "files": 7,
+        "description": "Atomic ZIP archive (.batikcraft), SHA-256 asset integrity, manifest v1.0/1.1 migration, zip-bomb guards (4096 entries, 512 MB total)."
+      },
+      {
+        "name": "Imaging",
+        "path": "src/batikcraft_studio/imaging/",
+        "files": 32,
+        "description": "PIL-based raster pipeline, tile cache, brush engine, viewport renderer, non-ML batik pattern engine."
+      },
+      {
+        "name": "Assets",
+        "path": "src/batikcraft_studio/assets/",
+        "files": 6,
+        "description": "Asset library, pack builder, progressive install."
+      },
+      {
+        "name": "AI (BatikBrew)",
+        "path": "src/batikcraft_studio/ai/",
+        "files": 30,
+        "description": "SDXL LoRA inference pipeline, cloud (OpenAI/Gemini), offline runtime, model installer, CUDA guard, runtime repair chain."
+      },
+      {
+        "name": "UI",
+        "path": "src/batikcraft_studio/ui/",
+        "files": 115,
+        "description": "All Tkinter views, dialogs, editors. Bilingual EN/ID. 15 versioned hotfix patch files."
+      },
+      {
+        "name": "Web Bridge",
+        "path": "src/batikcraft_studio/web_bridge.py",
+        "files": 1,
+        "description": "Stdlib-only REST client for BatikCraftWeb marketplace: NFT publish, model marketplace, token auth via OS keyring."
+      }
+    ],
+    "startup_sequence": {
+      "steps": 15,
+      "description": "Linear boot chain: dependency bootstrap -> managed package activation -> storage init -> runtime compatibility patches -> AI model patches -> CUDA guard -> Windows identity -> Tkinter root -> UI patch installs -> application instantiation."
+    }
+  },
+
+  "audit": {
+    "findings": [
+      {
+        "severity": "High",
+        "status": "Fixed",
+        "title": "UnicodeEncodeError on Windows cp1252 console",
+        "location": "scripts/repair_batikmodel.py:229",
+        "description": "Non-ASCII characters (U+2192 RIGHT ARROW, U+2026 ELLIPSIS) in CLI print() crash on any Windows terminal not configured for UTF-8.",
+        "fix": "Replaced Unicode characters with ASCII equivalents: -> and trailing period removed."
+      },
+      {
+        "severity": "High",
+        "status": "Fixed",
+        "title": "SyntaxError when Windows path injected into exec'd Python source",
+        "location": "tests/test_batikbrew_sdxl_notebook.py:212",
+        "description": "f'Path(\"{tmp_path}\")' embeds raw Windows backslashes into an exec() string literal, producing SyntaxError on every Windows tmp_path.",
+        "fix": "Changed to f\"Path({repr(str(tmp_path))})\" so repr() escapes backslashes automatically."
+      },
+      {
+        "severity": "Medium",
+        "status": "Fixed",
+        "title": "Missing Windows DLL files in torch test fixture",
+        "location": "tests/test_runtime_truth_after_dependency_install.py:25",
+        "description": "_write_fake_torch() did not create torch/lib/*.dll stubs; inspect_torch_runtime() correctly requires them on Windows, causing the test to report a false integrity failure.",
+        "fix": "Added sys.platform == 'win32' conditional block creating asmjit.dll and torch_cpu.dll stubs (also added to RECORD)."
+      },
+      {
+        "severity": "Medium",
+        "status": "Recommended",
+        "title": "Image.getdata() deprecated by Pillow 13",
+        "location": "ai/batikbrew_generation_modes.py:329 and tests",
+        "description": "Deprecated since Pillow 13, removed in Pillow 14 (Oct 2027). Generates DeprecationWarning at runtime.",
+        "fix": "Replace with image.get_flattened_data() before Pillow 14 release."
+      },
+      {
+        "severity": "Medium",
+        "status": "Documented",
+        "title": "UI hotfix proliferation (15 versioned patch files)",
+        "location": "ui/context_tool_editor_hotfix_v2..v15.py",
+        "description": "Incremental monkey-patch chain creates opaque call graph and merge risk.",
+        "fix": "Consolidate into the primary editor class with a structured changelog."
+      },
+      {
+        "severity": "Medium",
+        "status": "Documented",
+        "title": "Duplicate ai-local and ai-training extras",
+        "location": "pyproject.toml:31-63",
+        "description": "Both extras carry identical package sets, creating silent drift risk.",
+        "fix": "Reference one extra from the other using extras_require chaining."
+      },
+      {
+        "severity": "Low",
+        "status": "Documented",
+        "title": "Plain-text auth token fallback in WebSessionStore",
+        "location": "web_bridge.py:137",
+        "description": "If OS keyring is unavailable, token persists to web_account.json in cleartext. chmod 0o600 mitigates on POSIX but not on Windows NTFS.",
+        "fix": "Document the fallback clearly; consider DPAPI on Windows as an alternative."
+      },
+      {
+        "severity": "Low",
+        "status": "Documented",
+        "title": "O(n) layer/object lookup in Project aggregate",
+        "location": "domain/project.py:601,323",
+        "description": "_layer_index() and get_object() perform linear scans. Acceptable for <100 layers but will degrade as projects grow.",
+        "fix": "Add dict[str, int] index for O(1) lookups when project exceeds ~50 layers."
+      },
+      {
+        "severity": "Low",
+        "status": "Noted",
+        "title": "diffusers pinned to a single release (>=0.39,<0.40)",
+        "location": "pyproject.toml:33",
+        "description": "Blocks security patches for the Diffusers library.",
+        "fix": "Widen to >=0.39,<1 once API compatibility is verified against newer releases."
+      }
+    ]
+  },
+
+  "security": {
+    "overall": "Pass",
+    "areas": [
+      { "area": "Archive loading",       "result": "Pass",       "notes": "Entry count cap, size limits, encrypted-entry rejection, SHA-256 per asset." },
+      { "area": "Path traversal",        "result": "Pass",       "notes": "normalize_archive_path() rejects absolute, .., backslash, null-byte, drive-prefix, non-canonical paths." },
+      { "area": "Credential storage",    "result": "Acceptable", "notes": "Keyring-first with chmod-600 file fallback. Cleartext risk on Windows NTFS without keyring." },
+      { "area": "HTTP client",           "result": "Pass",       "notes": "Stdlib urllib only. URL scheme validated. Timeout enforced (min 10 s). No SSRF risk." },
+      { "area": "Image loading",         "result": "Pass",       "notes": "PIL defaults apply (178 MPx warning). No DecompressionBombWarning override." },
+      { "area": "AI model loading",      "result": "Pass",       "notes": "Local paths only. SHA-256 verified before installation." },
+      { "area": "Dependency installer",  "result": "Pass",       "notes": "pip invoked in private child process. Scoped requirements set. No arbitrary code execution." },
+      { "area": "Multipart upload",      "result": "Pass",       "notes": "Manual MIME encoder. Filename sanitised. No shell injection (no subprocess used)." }
+    ]
+  },
+
+  "testing": {
+    "framework": "pytest>=8.0",
+    "test_files": 130,
+    "baseline": { "passed": 1063, "failed": 6, "warnings": 8 },
+    "post_fix":  { "passed": 1069, "failed": 0, "warnings": 8 },
+    "runtime_seconds": 17.6,
+    "coverage_areas": [
+      "Domain model", "Project CRUD", "Layer/object operations",
+      "Persistence round-trips", "Archive integrity", "Asset management",
+      "Brush engine", "Raster operations", "Viewport rendering",
+      "Undo/redo", "AI model installer", "CUDA runtime validation",
+      "Dependency bootstrap", "Web bridge", "NFT sealing",
+      "Recent projects", "Logging", "i18n", "UI icons",
+      "Printing", "Export", "Motif session", "BatikBrew generation"
+    ]
+  },
+
+  "improvements_applied": [
+    {
+      "file": "scripts/repair_batikmodel.py",
+      "lines_changed": 1,
+      "type": "Bug fix",
+      "description": "Replaced non-ASCII Unicode characters in print() with ASCII equivalents to prevent UnicodeEncodeError on Windows cp1252 consoles."
+    },
+    {
+      "file": "tests/test_batikbrew_sdxl_notebook.py",
+      "lines_changed": 7,
+      "type": "Bug fix",
+      "description": "Used repr(str(tmp_path)) to safely escape Windows backslash paths when embedding them into exec()'d Python source code."
+    },
+    {
+      "file": "tests/test_runtime_truth_after_dependency_install.py",
+      "lines_changed": 5,
+      "type": "Bug fix",
+      "description": "Added Windows-conditional DLL stub creation to _write_fake_torch() test fixture so it models the platform requirements that inspect_torch_runtime() enforces."
+    }
+  ],
+
+  "health_assessment": {
+    "overall_grade": "B+",
+    "scores": {
+      "domain_model_integrity":       95,
+      "persistence_archive_safety":   92,
+      "security_posture":             88,
+      "test_coverage_quality":        82,
+      "cross_platform_robustness":    78,
+      "ui_maintainability":           62
+    },
+    "strengths": [
+      "Immutable domain model with exhaustive constructor validation",
+      "Atomic saves: temp-file + os.replace() + os.fsync() with guaranteed cleanup",
+      "Thorough zip-bomb and path-traversal protections",
+      "Comprehensive 1069-test suite across all major subsystems",
+      "Bounded undo/redo with live-bitmap cleanup on session reset",
+      "Graceful degradation: AI, logging, UI each fail independently",
+      "Platform-aware paths (APPDATA/XDG/macOS Library) throughout"
+    ],
+    "top_recommendations": [
+      "Consolidate 15 versioned context_tool_editor_hotfix_v*.py files into primary editor class",
+      "Replace Image.getdata() with get_flattened_data() before Pillow 14 (Oct 2027)",
+      "Deduplicate ai-local and ai-training extras in pyproject.toml",
+      "Widen diffusers pin from <0.40 to <1 to allow security patch uptake",
+      "Standardise all public docstrings and module comments to English",
+      "Add dict-based layer index to Project for O(1) lookup at large layer counts"
+    ]
+  }
+}

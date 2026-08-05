@@ -226,7 +226,7 @@ def main(argv: list[str] | None = None) -> int:
     print(f"  kata pemicu : {', '.join(model['trigger_words'])}")
     print(f"  ukuran      : {output.stat().st_size / 1024**2:.1f} MB")
     print()
-    print("Pasang lewat: Pusat Dependensi → Model AI Offline & LoRA → Pasang .batikmodel…")
+    print("Pasang lewat: Pusat Dependensi -> Model AI Offline & LoRA -> Pasang .batikmodel")
     return 0
 
 

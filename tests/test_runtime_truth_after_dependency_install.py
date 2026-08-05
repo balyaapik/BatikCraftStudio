@@ -31,6 +31,11 @@ def _write_fake_torch(root: Path, *, include_amp: bool = True) -> None:
     }
     if include_amp:
         files["torch/amp/__init__.py"] = b"class autocast: pass\n"
+    # On Windows the integrity checker also requires DLLs under torch/lib/.
+    # Add a minimal pair so that the platform-specific check passes.
+    if sys.platform == "win32":
+        files["torch/lib/asmjit.dll"] = b"MZ-fake-dll"
+        files["torch/lib/torch_cpu.dll"] = b"MZ-fake-dll"
     for relative, content in files.items():
         _write_file(root / relative, content)
 
